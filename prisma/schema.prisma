@@ -1,0 +1,149 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Utente {
+  id           Int      @id @default(autoincrement())
+  nome         String
+  cognome      String
+  passwordHash String?  @map("password_hash")
+  ruolo        Ruolo    @default(DIPENDENTE)
+  attivo       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  attivita       Attivita[] @relation("UtenteAttivita")
+  attivitaCreate Attivita[] @relation("CreatoDa")
+
+  @@map("utenti")
+}
+
+enum Ruolo {
+  DIPENDENTE
+  RESPONSABILE
+}
+
+model Cliente {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  attivo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  cantieri Cantiere[]
+  attivita Attivita[]
+
+  @@map("clienti")
+}
+
+model Cantiere {
+  id         Int      @id @default(autoincrement())
+  clienteId  Int      @map("cliente_id")
+  nome       String
+  isGenerico Boolean  @default(false) @map("is_generico")
+  attivo     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  cliente      Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  tipiAttivita TipoAttivita[]
+  attivita     Attivita[]
+
+  @@map("cantieri")
+}
+
+model TipoAttivita {
+  id         Int      @id @default(autoincrement())
+  cantiereId Int      @map("cantiere_id")
+  nome       String
+  attivo     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  cantiere Cantiere   @relation(fields: [cantiereId], references: [id], onDelete: Cascade)
+  attivita Attivita[]
+
+  @@map("tipi_attivita")
+}
+
+model Attivita {
+  id              Int      @id @default(autoincrement())
+  utenteId        Int      @map("utente_id")
+  dataRiferimento DateTime @map("data_riferimento") @db.Date
+  oraInizio       String   @map("ora_inizio")
+  oraFine         String   @map("ora_fine")
+  durataMinuti    Int      @map("durata_minuti")
+  clienteId       Int      @map("cliente_id")
+  cantiereId      Int      @map("cantiere_id")
+  tipoAttivitaId  Int      @map("tipo_attivita_id")
+  note            String?
+  createdById     Int      @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  utente       Utente       @relation("UtenteAttivita", fields: [utenteId], references: [id])
+  cliente      Cliente      @relation(fields: [clienteId], references: [id])
+  cantiere     Cantiere     @relation(fields: [cantiereId], references: [id])
+  tipoAttivita TipoAttivita @relation(fields: [tipoAttivitaId], references: [id])
+  createdBy    Utente       @relation("CreatoDa", fields: [createdById], references: [id])
+
+  @@map("attivita")
+}
+
+model BackupLog {
+  id         Int         @id @default(autoincrement())
+  filename   String
+  tipo       TipoBackup
+  dimensione Int
+  stato      StatoBackup
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  @@map("backup_logs")
+}
+
+enum TipoBackup {
+  AUTOMATICO
+  MANUALE
+}
+
+enum StatoBackup {
+  COMPLETATO
+  ERRORE
+  IN_CORSO
+}
+
+model TipoAttributoExtra {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  attivo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  valori ValoreAttributoExtra[]
+
+  @@map("tipi_attributo_extra")
+}
+
+model ValoreAttributoExtra {
+  id                   Int      @id @default(autoincrement())
+  tipoAttributoExtraId Int      @map("tipo_attributo_extra_id")
+  valore               String
+  attivo               Boolean  @default(true)
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  tipoAttributoExtra TipoAttributoExtra @relation(fields: [tipoAttributoExtraId], references: [id], onDelete: Cascade)
+
+  @@map("valori_attributo_extra")
+}
+
+model Configurazione {
+  id     Int    @id @default(autoincrement())
+  chiave String @unique
+  valore String
+
+  @@map("configurazioni")
+}
