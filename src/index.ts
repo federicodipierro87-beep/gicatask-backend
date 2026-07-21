@@ -4,23 +4,23 @@ import cookie from '@fastify/cookie';
 import { config } from './config/index.js';
 import prismaPlugin from './plugins/prisma.js';
 import authPlugin from './plugins/auth.js';
-import { registerRoutes } from './routes/index.js';
+import routes from './routes/index.js';
 
 async function buildApp() {
-  const fastify = Fastify({
-    logger: {
-      level: config.isDev ? 'debug' : 'info',
-      transport: config.isDev
-        ? {
-            target: 'pino-pretty',
-            options: {
-              translateTime: 'HH:MM:ss Z',
-              ignore: 'pid,hostname',
-            },
-          }
-        : undefined,
-    },
-  });
+  const loggerConfig = config.isDev
+    ? {
+        level: 'debug' as const,
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            translateTime: 'HH:MM:ss Z',
+            ignore: 'pid,hostname',
+          },
+        },
+      }
+    : { level: 'info' as const };
+
+  const fastify = Fastify({ logger: loggerConfig });
 
   // Register CORS
   await fastify.register(cors, {
@@ -40,7 +40,7 @@ async function buildApp() {
   await fastify.register(authPlugin);
 
   // Register routes
-  await registerRoutes(fastify);
+  await fastify.register(routes);
 
   // Global error handler
   fastify.setErrorHandler((error, request, reply) => {

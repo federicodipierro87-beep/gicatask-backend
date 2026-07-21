@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import { AuthService } from '../services/auth.service.js';
 import type { JwtPayload, LoginRequest } from '../types/index.js';
 import { config } from '../config/index.js';

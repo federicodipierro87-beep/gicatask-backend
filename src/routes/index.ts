@@ -1,7 +1,8 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyPluginAsync } from 'fastify';
+import fp from 'fastify-plugin';
 import { authRoutes } from './auth.routes.js';
 
-export async function registerRoutes(fastify: FastifyInstance) {
+const routes: FastifyPluginAsync = async (fastify) => {
   // Health check
   fastify.get('/health', async () => {
     return { status: 'ok', timestamp: new Date().toISOString() };
@@ -16,4 +17,6 @@ export async function registerRoutes(fastify: FastifyInstance) {
   // await fastify.register(attivitaRoutes, { prefix: '/api/attivita' });
   // await fastify.register(utentiRoutes, { prefix: '/api/utenti' });
   // await fastify.register(backupRoutes, { prefix: '/api/backup' });
-}
+};
+
+export default fp(routes, { name: 'routes' });

@@ -10,7 +10,7 @@ declare module 'fastify' {
 
 async function prismaPlugin(fastify: FastifyInstance) {
   const prisma = new PrismaClient({
-    log: fastify.log.level === 'debug' ? ['query', 'info', 'warn', 'error'] : ['error'],
+    log: ['error'],
   });
 
   await prisma.$connect();
