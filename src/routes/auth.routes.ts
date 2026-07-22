@@ -85,7 +85,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         path: '/',
         httpOnly: true,
         secure: config.isProd,
-        sameSite: config.isProd ? 'strict' : 'lax',
+        sameSite: config.isProd ? 'none' : 'lax', // 'none' required for cross-site cookies
         maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
       });
 
