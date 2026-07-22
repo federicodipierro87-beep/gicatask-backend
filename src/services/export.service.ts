@@ -78,8 +78,9 @@ export class ExportService {
 
       let xPos = 55;
       headers.forEach((header, i) => {
-        doc.fillColor('#fff').text(header, xPos, tableTop + 5, { width: colWidths[i] - 5 });
-        xPos += colWidths[i];
+        const width = colWidths[i] ?? 80;
+        doc.fillColor('#fff').text(header, xPos, tableTop + 5, { width: width - 5 });
+        xPos += width;
       });
 
       // Table rows
@@ -112,8 +113,9 @@ export class ExportService {
         ];
 
         row.forEach((cell, i) => {
-          doc.text(cell.substring(0, 25), xPos, yPos, { width: colWidths[i] - 5 });
-          xPos += colWidths[i];
+          const width = colWidths[i] ?? 80;
+          doc.text(cell.substring(0, 25), xPos, yPos, { width: width - 5 });
+          xPos += width;
         });
 
         yPos += 16;
