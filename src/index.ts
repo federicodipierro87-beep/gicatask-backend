@@ -5,6 +5,7 @@ import { config } from './config/index.js';
 import prismaPlugin from './plugins/prisma.js';
 import authPlugin from './plugins/auth.js';
 import { registerRoutes } from './routes/index.js';
+import { initScheduler } from './services/scheduler.service.js';
 
 async function buildApp() {
   const fastify = Fastify({
@@ -57,6 +58,9 @@ async function start() {
   try {
     await app.listen({ port: config.port, host: config.host });
     console.log(`🚀 Server running at http://${config.host}:${config.port}`);
+
+    // Initialize scheduler for automatic backups
+    initScheduler(app.prisma);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

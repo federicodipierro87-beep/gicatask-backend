@@ -5,6 +5,7 @@ import { cantieriRoutes } from './cantieri.routes.js';
 import { tipiAttivitaRoutes } from './tipiAttivita.routes.js';
 import { utentiRoutes } from './utenti.routes.js';
 import { attivitaRoutes } from './attivita.routes.js';
+import { backupRoutes } from './backup.routes.js';
 import { runSeed } from '../services/seed.service.js';
 
 export const registerRoutes: FastifyPluginAsync = async (fastify) => {
@@ -33,7 +34,5 @@ export const registerRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(tipiAttivitaRoutes, { prefix: '/api/tipi-attivita' });
   await fastify.register(utentiRoutes, { prefix: '/api/utenti' });
   await fastify.register(attivitaRoutes, { prefix: '/api/attivita' });
-
-  // Future routes:
-  // await fastify.register(backupRoutes, { prefix: '/api/backup' });
+  await fastify.register(backupRoutes, { prefix: '/api/backup' });
 };
