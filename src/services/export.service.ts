@@ -80,7 +80,7 @@ export class ExportService {
 
       let xPos = startX + 2;
       headers.forEach((header, i) => {
-        const width = colWidths[i];
+        const width = colWidths[i] ?? 50;
         doc.fillColor('#fff').text(header, xPos, tableTop + 3, { width: width - 4 });
         xPos += width;
       });
@@ -116,7 +116,7 @@ export class ExportService {
         ];
 
         row.forEach((cell, i) => {
-          const width = colWidths[i];
+          const width = colWidths[i] ?? 50;
           const maxChars = Math.floor(width / 3.5);
           const truncated = cell.length > maxChars ? cell.substring(0, maxChars - 1) + '…' : cell;
           doc.text(truncated, xPos, yPos + 2, { width: width - 4 });
