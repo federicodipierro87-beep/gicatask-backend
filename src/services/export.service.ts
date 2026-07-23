@@ -133,7 +133,7 @@ export class ExportService {
     const worksheet = workbook.addWorksheet('Attività');
 
     // Header info
-    worksheet.mergeCells('A1:H1');
+    worksheet.mergeCells('A1:I1');
     worksheet.getCell('A1').value = 'Report Attività';
     worksheet.getCell('A1').font = { size: 16, bold: true };
     worksheet.getCell('A1').alignment = { horizontal: 'center' };
@@ -144,13 +144,13 @@ export class ExportService {
     if (filters.clienteNome) filterParts.push(`Cliente: ${filters.clienteNome}`);
     if (filters.utenteNome) filterParts.push(`Dipendente: ${filters.utenteNome}`);
 
-    worksheet.mergeCells('A2:H2');
+    worksheet.mergeCells('A2:I2');
     worksheet.getCell('A2').value = filterParts.length > 0 ? filterParts.join(' | ') : 'Tutti i dati';
     worksheet.getCell('A2').font = { size: 10, italic: true };
     worksheet.getCell('A2').alignment = { horizontal: 'center' };
 
     const totalMinutes = attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
-    worksheet.mergeCells('A3:H3');
+    worksheet.mergeCells('A3:I3');
     worksheet.getCell('A3').value = `Totale: ${attivita.length} attività - ${(totalMinutes / 60).toFixed(1)} ore`;
     worksheet.getCell('A3').font = { size: 10 };
     worksheet.getCell('A3').alignment = { horizontal: 'center' };
@@ -158,14 +158,14 @@ export class ExportService {
     // Column headers
     const headerRow = worksheet.addRow([
       'Data',
-      'Ora Inizio',
-      'Ora Fine',
-      'Durata (ore)',
       'Dipendente',
       'Cliente',
       'Cantiere',
       'Tipo Attività',
       'Note',
+      'Ora Inizio',
+      'Ora Fine',
+      'Durata (ore)',
     ]);
 
     headerRow.font = { bold: true };
@@ -178,29 +178,29 @@ export class ExportService {
 
     // Set column widths
     worksheet.columns = [
-      { width: 12 },
-      { width: 10 },
-      { width: 10 },
-      { width: 12 },
-      { width: 20 },
-      { width: 20 },
-      { width: 20 },
-      { width: 20 },
-      { width: 30 },
+      { width: 12 },  // Data
+      { width: 20 },  // Dipendente
+      { width: 20 },  // Cliente
+      { width: 20 },  // Cantiere
+      { width: 20 },  // Tipo Attività
+      { width: 30 },  // Note
+      { width: 10 },  // Ora Inizio
+      { width: 10 },  // Ora Fine
+      { width: 12 },  // Durata (ore)
     ];
 
     // Data rows
     attivita.forEach((att) => {
       worksheet.addRow([
         formatDate(att.dataRiferimento),
-        att.oraInizio,
-        att.oraFine,
-        parseFloat((att.durataMinuti / 60).toFixed(2)),
         `${att.utente.nome} ${att.utente.cognome}`,
         att.cliente.nome,
         att.cantiere.nome,
         att.tipoAttivita.nome,
         att.note || '',
+        att.oraInizio,
+        att.oraFine,
+        parseFloat((att.durataMinuti / 60).toFixed(2)),
       ]);
     });
 
