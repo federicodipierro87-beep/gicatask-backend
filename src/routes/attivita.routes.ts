@@ -79,8 +79,10 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     Body: {
       utenteId?: number;
       dataRiferimento: string;
-      oraInizio: string;
-      oraFine: string;
+      oraInizioMattino?: string;
+      oraFineMattino?: string;
+      oraInizioPomeriggio?: string;
+      oraFinePomeriggio?: string;
       clienteId: number;
       cantiereId: number;
       tipoAttivitaId: number;
@@ -91,12 +93,14 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     schema: {
       body: {
         type: 'object',
-        required: ['dataRiferimento', 'oraInizio', 'oraFine', 'clienteId', 'cantiereId', 'tipoAttivitaId'],
+        required: ['dataRiferimento', 'clienteId', 'cantiereId', 'tipoAttivitaId'],
         properties: {
           utenteId: { type: 'number' },
           dataRiferimento: { type: 'string' },
-          oraInizio: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
-          oraFine: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
+          oraInizioMattino: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
+          oraFineMattino: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
+          oraInizioPomeriggio: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
+          oraFinePomeriggio: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
           clienteId: { type: 'number' },
           cantiereId: { type: 'number' },
           tipoAttivitaId: { type: 'number' },
@@ -117,8 +121,10 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       const attivita = await service.create({
         utenteId: targetUtenteId,
         dataRiferimento: new Date(body.dataRiferimento),
-        oraInizio: body.oraInizio,
-        oraFine: body.oraFine,
+        oraInizioMattino: body.oraInizioMattino,
+        oraFineMattino: body.oraFineMattino,
+        oraInizioPomeriggio: body.oraInizioPomeriggio,
+        oraFinePomeriggio: body.oraFinePomeriggio,
         clienteId: body.clienteId,
         cantiereId: body.cantiereId,
         tipoAttivitaId: body.tipoAttivitaId,
@@ -138,8 +144,10 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     Params: { id: string };
     Body: {
       dataRiferimento?: string;
-      oraInizio?: string;
-      oraFine?: string;
+      oraInizioMattino?: string;
+      oraFineMattino?: string;
+      oraInizioPomeriggio?: string;
+      oraFinePomeriggio?: string;
       clienteId?: number;
       cantiereId?: number;
       tipoAttivitaId?: number;
@@ -157,8 +165,10 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
         id,
         {
           dataRiferimento: body.dataRiferimento ? new Date(body.dataRiferimento) : undefined,
-          oraInizio: body.oraInizio,
-          oraFine: body.oraFine,
+          oraInizioMattino: body.oraInizioMattino,
+          oraFineMattino: body.oraFineMattino,
+          oraInizioPomeriggio: body.oraInizioPomeriggio,
+          oraFinePomeriggio: body.oraFinePomeriggio,
           clienteId: body.clienteId,
           cantiereId: body.cantiereId,
           tipoAttivitaId: body.tipoAttivitaId,

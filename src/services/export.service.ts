@@ -5,14 +5,23 @@ import { Readable } from 'stream';
 interface AttivitaExport {
   id: number;
   dataRiferimento: Date;
-  oraInizio: string;
-  oraFine: string;
+  oraInizioMattino?: string | null;
+  oraFineMattino?: string | null;
+  oraInizioPomeriggio?: string | null;
+  oraFinePomeriggio?: string | null;
   durataMinuti: number;
   note?: string | null;
   cliente: { nome: string };
   cantiere: { nome: string };
   tipoAttivita: { nome: string };
   utente: { nome: string; cognome: string };
+}
+
+function formatTimeSlot(start?: string | null, end?: string | null): string {
+  if (start && end) {
+    return `${start}-${end}`;
+  }
+  return '-';
 }
 
 interface ReportFilters {
@@ -70,9 +79,9 @@ export class ExportService {
 
       // Table header - same order as Excel
       const tableTop = doc.y;
-      // Data, Dipendente, Cliente, Cantiere, Tipo, Note, Inizio, Fine, Durata
-      const colWidths = [55, 95, 95, 85, 85, 140, 40, 40, 45];
-      const headers = ['Data', 'Dipendente', 'Cliente', 'Cantiere', 'Tipo', 'Note', 'Inizio', 'Fine', 'Durata'];
+      // Data, Dipendente, Cliente, Cantiere, Tipo, Note, Mattino, Pomeriggio, Durata
+      const colWidths = [55, 90, 90, 80, 80, 120, 65, 65, 45];
+      const headers = ['Data', 'Dipendente', 'Cliente', 'Cantiere', 'Tipo', 'Note', 'Mattino', 'Pomeriggio', 'Durata'];
       const tableWidth = colWidths.reduce((a, b) => a + b, 0);
 
       doc.fontSize(7).fillColor('#fff');
@@ -110,8 +119,8 @@ export class ExportService {
           att.cantiere.nome,
           att.tipoAttivita.nome,
           att.note || '-',
-          att.oraInizio,
-          att.oraFine,
+          formatTimeSlot(att.oraInizioMattino, att.oraFineMattino),
+          formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio),
           formatDuration(att.durataMinuti),
         ];
 
@@ -168,8 +177,8 @@ export class ExportService {
       'Cantiere',
       'Tipo Attività',
       'Note',
-      'Ora Inizio',
-      'Ora Fine',
+      'Mattino',
+      'Pomeriggio',
       'Durata (ore)',
     ]);
 
@@ -189,8 +198,8 @@ export class ExportService {
       { width: 20 },  // Cantiere
       { width: 20 },  // Tipo Attività
       { width: 30 },  // Note
-      { width: 10 },  // Ora Inizio
-      { width: 10 },  // Ora Fine
+      { width: 12 },  // Mattino
+      { width: 12 },  // Pomeriggio
       { width: 12 },  // Durata (ore)
     ];
 
@@ -203,8 +212,8 @@ export class ExportService {
         att.cantiere.nome,
         att.tipoAttivita.nome,
         att.note || '',
-        att.oraInizio,
-        att.oraFine,
+        formatTimeSlot(att.oraInizioMattino, att.oraFineMattino),
+        formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio),
         parseFloat((att.durataMinuti / 60).toFixed(2)),
       ]);
     });

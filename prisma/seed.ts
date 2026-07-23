@@ -176,9 +176,11 @@ async function main() {
         {
           utenteId: dipendente1.id,
           dataRiferimento: today,
-          oraInizio: '08:00',
-          oraFine: '12:00',
-          durataMinuti: 240,
+          oraInizioMattino: '08:00',
+          oraFineMattino: '12:00',
+          oraInizioPomeriggio: '13:00',
+          oraFinePomeriggio: '17:00',
+          durataMinuti: 480, // 4h mattino + 4h pomeriggio
           clienteId: cliente2.id,
           cantiereId: cantiere2a.id,
           tipoAttivitaId: tipoAttivita2a.id,
@@ -188,9 +190,11 @@ async function main() {
         {
           utenteId: dipendente1.id,
           dataRiferimento: today,
-          oraInizio: '13:00',
-          oraFine: '17:00',
-          durataMinuti: 240,
+          oraInizioMattino: null,
+          oraFineMattino: null,
+          oraInizioPomeriggio: '14:00',
+          oraFinePomeriggio: '18:00',
+          durataMinuti: 240, // solo pomeriggio
           clienteId: cliente3.id,
           cantiereId: cantiere3a.id,
           tipoAttivitaId: tipoAttivita3a.id,
@@ -200,9 +204,11 @@ async function main() {
         {
           utenteId: dipendente2.id,
           dataRiferimento: yesterday,
-          oraInizio: '09:00',
-          oraFine: '13:30',
-          durataMinuti: 270,
+          oraInizioMattino: '09:00',
+          oraFineMattino: '13:00',
+          oraInizioPomeriggio: null,
+          oraFinePomeriggio: null,
+          durataMinuti: 240, // solo mattino
           clienteId: cliente2.id,
           cantiereId: generico2.id,
           tipoAttivitaId: tipoAttivitaGenerico.id,

@@ -4,13 +4,34 @@ import { calculateDurationMinutes, isWithinSameWeek } from '../utils/duration.js
 interface CreateAttivitaInput {
   utenteId: number;
   dataRiferimento: Date;
-  oraInizio: string;
-  oraFine: string;
+  oraInizioMattino?: string;
+  oraFineMattino?: string;
+  oraInizioPomeriggio?: string;
+  oraFinePomeriggio?: string;
   clienteId: number;
   cantiereId: number;
   tipoAttivitaId: number;
   note?: string;
   createdById: number;
+}
+
+function calculateTotalDuration(
+  oraInizioMattino?: string,
+  oraFineMattino?: string,
+  oraInizioPomeriggio?: string,
+  oraFinePomeriggio?: string
+): number {
+  let total = 0;
+
+  if (oraInizioMattino && oraFineMattino) {
+    total += calculateDurationMinutes(oraInizioMattino, oraFineMattino);
+  }
+
+  if (oraInizioPomeriggio && oraFinePomeriggio) {
+    total += calculateDurationMinutes(oraInizioPomeriggio, oraFinePomeriggio);
+  }
+
+  return total;
 }
 
 interface AttivitaWithRelations extends Attivita {
@@ -46,7 +67,7 @@ export class AttivitaService {
         tipoAttivita: { select: { id: true, nome: true } },
         utente: { select: { id: true, nome: true, cognome: true } },
       },
-      orderBy: [{ dataRiferimento: 'desc' }, { oraInizio: 'desc' }],
+      orderBy: [{ dataRiferimento: 'desc' }, { oraInizioMattino: 'desc' }],
     });
   }
 
@@ -79,7 +100,7 @@ export class AttivitaService {
         tipoAttivita: { select: { id: true, nome: true } },
         utente: { select: { id: true, nome: true, cognome: true } },
       },
-      orderBy: [{ dataRiferimento: 'desc' }, { oraInizio: 'desc' }],
+      orderBy: [{ dataRiferimento: 'desc' }, { oraInizioMattino: 'desc' }],
     });
   }
 
@@ -96,14 +117,29 @@ export class AttivitaService {
   }
 
   async create(input: CreateAttivitaInput): Promise<Attivita> {
-    const durataMinuti = calculateDurationMinutes(input.oraInizio, input.oraFine);
+    // Validate: at least one time slot must be provided
+    const hasMattino = input.oraInizioMattino && input.oraFineMattino;
+    const hasPomeriggio = input.oraInizioPomeriggio && input.oraFinePomeriggio;
+
+    if (!hasMattino && !hasPomeriggio) {
+      throw new Error('Devi inserire almeno una fascia oraria (mattino o pomeriggio)');
+    }
+
+    const durataMinuti = calculateTotalDuration(
+      input.oraInizioMattino,
+      input.oraFineMattino,
+      input.oraInizioPomeriggio,
+      input.oraFinePomeriggio
+    );
 
     return this.prisma.attivita.create({
       data: {
         utenteId: input.utenteId,
         dataRiferimento: input.dataRiferimento,
-        oraInizio: input.oraInizio,
-        oraFine: input.oraFine,
+        oraInizioMattino: input.oraInizioMattino || null,
+        oraFineMattino: input.oraFineMattino || null,
+        oraInizioPomeriggio: input.oraInizioPomeriggio || null,
+        oraFinePomeriggio: input.oraFinePomeriggio || null,
         durataMinuti,
         clienteId: input.clienteId,
         cantiereId: input.cantiereId,
@@ -137,18 +173,36 @@ export class AttivitaService {
       }
     }
 
-    const durataMinuti =
-      input.oraInizio && input.oraFine
-        ? calculateDurationMinutes(input.oraInizio, input.oraFine)
-        : undefined;
+    // Calculate new duration based on provided or existing values
+    const oraInizioMattino = input.oraInizioMattino !== undefined ? input.oraInizioMattino : attivita.oraInizioMattino;
+    const oraFineMattino = input.oraFineMattino !== undefined ? input.oraFineMattino : attivita.oraFineMattino;
+    const oraInizioPomeriggio = input.oraInizioPomeriggio !== undefined ? input.oraInizioPomeriggio : attivita.oraInizioPomeriggio;
+    const oraFinePomeriggio = input.oraFinePomeriggio !== undefined ? input.oraFinePomeriggio : attivita.oraFinePomeriggio;
+
+    // Validate: at least one time slot must be provided
+    const hasMattino = oraInizioMattino && oraFineMattino;
+    const hasPomeriggio = oraInizioPomeriggio && oraFinePomeriggio;
+
+    if (!hasMattino && !hasPomeriggio) {
+      throw new Error('Devi inserire almeno una fascia oraria (mattino o pomeriggio)');
+    }
+
+    const durataMinuti = calculateTotalDuration(
+      oraInizioMattino || undefined,
+      oraFineMattino || undefined,
+      oraInizioPomeriggio || undefined,
+      oraFinePomeriggio || undefined
+    );
 
     return this.prisma.attivita.update({
       where: { id },
       data: {
         ...(input.dataRiferimento ? { dataRiferimento: input.dataRiferimento } : {}),
-        ...(input.oraInizio ? { oraInizio: input.oraInizio } : {}),
-        ...(input.oraFine ? { oraFine: input.oraFine } : {}),
-        ...(durataMinuti ? { durataMinuti } : {}),
+        ...(input.oraInizioMattino !== undefined ? { oraInizioMattino: input.oraInizioMattino || null } : {}),
+        ...(input.oraFineMattino !== undefined ? { oraFineMattino: input.oraFineMattino || null } : {}),
+        ...(input.oraInizioPomeriggio !== undefined ? { oraInizioPomeriggio: input.oraInizioPomeriggio || null } : {}),
+        ...(input.oraFinePomeriggio !== undefined ? { oraFinePomeriggio: input.oraFinePomeriggio || null } : {}),
+        durataMinuti,
         ...(input.clienteId ? { clienteId: input.clienteId } : {}),
         ...(input.cantiereId ? { cantiereId: input.cantiereId } : {}),
         ...(input.tipoAttivitaId ? { tipoAttivitaId: input.tipoAttivitaId } : {}),

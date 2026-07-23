@@ -72,19 +72,21 @@ model TipoAttivita {
 }
 
 model Attivita {
-  id              Int      @id @default(autoincrement())
-  utenteId        Int      @map("utente_id")
-  dataRiferimento DateTime @map("data_riferimento") @db.Date
-  oraInizio       String   @map("ora_inizio")
-  oraFine         String   @map("ora_fine")
-  durataMinuti    Int      @map("durata_minuti")
-  clienteId       Int      @map("cliente_id")
-  cantiereId      Int      @map("cantiere_id")
-  tipoAttivitaId  Int      @map("tipo_attivita_id")
-  note            String?
-  createdById     Int      @map("created_by")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id                   Int      @id @default(autoincrement())
+  utenteId             Int      @map("utente_id")
+  dataRiferimento      DateTime @map("data_riferimento") @db.Date
+  oraInizioMattino     String?  @map("ora_inizio_mattino")
+  oraFineMattino       String?  @map("ora_fine_mattino")
+  oraInizioPomeriggio  String?  @map("ora_inizio_pomeriggio")
+  oraFinePomeriggio    String?  @map("ora_fine_pomeriggio")
+  durataMinuti         Int      @map("durata_minuti")
+  clienteId            Int      @map("cliente_id")
+  cantiereId           Int      @map("cantiere_id")
+  tipoAttivitaId       Int      @map("tipo_attivita_id")
+  note                 String?
+  createdById          Int      @map("created_by")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   utente       Utente       @relation("UtenteAttivita", fields: [utenteId], references: [id])
   cliente      Cliente      @relation(fields: [clienteId], references: [id])
