@@ -37,19 +37,21 @@ function formatDuration(minutes: number): string {
 export class ExportService {
   async generatePDF(attivita: AttivitaExport[], filters: ReportFilters): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 50, size: 'A4', layout: 'landscape' });
+      const doc = new PDFDocument({ margin: 25, size: 'A4', layout: 'landscape' });
       const chunks: Buffer[] = [];
 
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
+      const pageWidth = 842 - 50; // A4 landscape width minus margins
+      const startX = 25;
+
       // Title
-      doc.fontSize(18).text('Report Attività', { align: 'center' });
-      doc.moveDown(0.5);
+      doc.fontSize(14).text('Report Attività', { align: 'center' });
 
       // Filters info
-      doc.fontSize(10).fillColor('#666');
+      doc.fontSize(8).fillColor('#666');
       const filterParts: string[] = [];
       if (filters.startDate) filterParts.push(`Dal: ${filters.startDate}`);
       if (filters.endDate) filterParts.push(`Al: ${filters.endDate}`);
@@ -58,67 +60,70 @@ export class ExportService {
       if (filterParts.length > 0) {
         doc.text(filterParts.join(' | '), { align: 'center' });
       }
-      doc.text(`Generato il: ${new Date().toLocaleString('it-IT')}`, { align: 'center' });
-      doc.moveDown();
 
       // Summary
       const totalMinutes = attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
       const totalHours = (totalMinutes / 60).toFixed(1);
-      doc.fontSize(11).fillColor('#000');
-      doc.text(`Totale: ${attivita.length} attività - ${totalHours} ore (${formatDuration(totalMinutes)})`);
-      doc.moveDown();
+      doc.fontSize(9).fillColor('#000');
+      doc.text(`Totale: ${attivita.length} attività - ${totalHours} ore`, { align: 'center' });
+      doc.moveDown(0.3);
 
-      // Table header
+      // Table header - same order as Excel
       const tableTop = doc.y;
-      const colWidths = [70, 60, 45, 100, 100, 90, 100, 100];
-      const headers = ['Data', 'Orario', 'Durata', 'Dipendente', 'Cliente', 'Cantiere', 'Tipo', 'Note'];
+      // Data, Dipendente, Cliente, Cantiere, Tipo, Note, Inizio, Fine, Durata
+      const colWidths = [55, 95, 95, 85, 85, 140, 40, 40, 45];
+      const headers = ['Data', 'Dipendente', 'Cliente', 'Cantiere', 'Tipo', 'Note', 'Inizio', 'Fine', 'Durata'];
+      const tableWidth = colWidths.reduce((a, b) => a + b, 0);
 
-      doc.fontSize(9).fillColor('#fff');
-      doc.rect(50, tableTop, 742, 18).fill('#333');
+      doc.fontSize(7).fillColor('#fff');
+      doc.rect(startX, tableTop, tableWidth, 12).fill('#333');
 
-      let xPos = 55;
+      let xPos = startX + 2;
       headers.forEach((header, i) => {
-        const width = colWidths[i] ?? 80;
-        doc.fillColor('#fff').text(header, xPos, tableTop + 5, { width: width - 5 });
+        const width = colWidths[i];
+        doc.fillColor('#fff').text(header, xPos, tableTop + 3, { width: width - 4 });
         xPos += width;
       });
 
       // Table rows
-      let yPos = tableTop + 22;
-      doc.fillColor('#000');
+      let yPos = tableTop + 14;
+      const rowHeight = 11;
 
       attivita.forEach((att, index) => {
-        if (yPos > 520) {
+        if (yPos > 560) {
           doc.addPage();
-          yPos = 50;
+          yPos = 25;
         }
 
         // Alternate row background
         if (index % 2 === 0) {
-          doc.rect(50, yPos - 2, 742, 16).fill('#f5f5f5');
+          doc.rect(startX, yPos - 1, tableWidth, rowHeight).fill('#f8f8f8');
         }
 
-        xPos = 55;
-        doc.fillColor('#000').fontSize(8);
+        xPos = startX + 2;
+        doc.fillColor('#000').fontSize(6);
 
         const row = [
           formatDate(att.dataRiferimento),
-          `${att.oraInizio}-${att.oraFine}`,
-          formatDuration(att.durataMinuti),
           `${att.utente.nome} ${att.utente.cognome}`,
           att.cliente.nome,
           att.cantiere.nome,
           att.tipoAttivita.nome,
           att.note || '-',
+          att.oraInizio,
+          att.oraFine,
+          formatDuration(att.durataMinuti),
         ];
 
         row.forEach((cell, i) => {
-          const width = colWidths[i] ?? 80;
-          doc.text(cell.substring(0, 25), xPos, yPos, { width: width - 5 });
+          const width = colWidths[i];
+          const maxChars = Math.floor(width / 3.5);
+          const truncated = cell.length > maxChars ? cell.substring(0, maxChars - 1) + '…' : cell;
+          doc.text(truncated, xPos, yPos + 2, { width: width - 4 });
           xPos += width;
         });
 
-        yPos += 16;
+        yPos += rowHeight;
       });
 
       doc.end();
