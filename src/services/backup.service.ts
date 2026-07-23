@@ -74,14 +74,23 @@ export class BackupService {
       const filename = `backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
 
       // Upload to R2
-      await this.s3Client!.send(
-        new PutObjectCommand({
-          Bucket: this.bucketName,
-          Key: filename,
-          Body: buffer,
-          ContentType: 'application/json',
-        })
-      );
+      try {
+        await this.s3Client!.send(
+          new PutObjectCommand({
+            Bucket: this.bucketName,
+            Key: filename,
+            Body: buffer,
+            ContentType: 'application/json',
+          })
+        );
+      } catch (uploadError: any) {
+        console.error('[Backup] R2 upload error:', {
+          message: uploadError.message,
+          code: uploadError.Code || uploadError.code,
+          bucket: this.bucketName,
+        });
+        throw new Error(`Errore upload R2: ${uploadError.message || 'Access denied - verifica credenziali e permessi'}`);
+      }
 
       // Update log entry
       await this.prisma.backupLog.update({
@@ -260,6 +269,7 @@ export class BackupService {
     configured: boolean;
     lastBackup: { date: string; stato: string } | null;
     totalBackups: number;
+    config?: { accountId: string; bucket: string };
   }> {
     const lastBackup = await this.prisma.backupLog.findFirst({
       where: { stato: 'COMPLETATO' },
@@ -276,7 +286,34 @@ export class BackupService {
         ? { date: lastBackup.createdAt.toISOString(), stato: lastBackup.stato }
         : null,
       totalBackups,
+      // Show partial config for debugging (not secrets)
+      config: this.isConfigured() ? {
+        accountId: process.env.R2_ACCOUNT_ID?.substring(0, 8) + '...',
+        bucket: this.bucketName,
+      } : undefined,
     };
+  }
+
+  async testConnection(): Promise<{ success: boolean; message: string }> {
+    if (!this.isConfigured()) {
+      return { success: false, message: 'R2 non configurato' };
+    }
+
+    try {
+      // Try to list objects (even if empty) to test connection
+      await this.s3Client!.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucketName,
+          MaxKeys: 1,
+        })
+      );
+      return { success: true, message: 'Connessione R2 OK' };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: `Errore R2: ${error.message || error.Code || 'Unknown'}`
+      };
+    }
   }
 
   private formatBytes(bytes: number): string {

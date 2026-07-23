@@ -27,6 +27,19 @@ export async function backupRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Test R2 connection
+  fastify.get('/test', {
+    preHandler: [requireResponsabile],
+  }, async (request, reply) => {
+    try {
+      const result = await service.testConnection();
+      return reply.send(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Errore';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
   // List all backups
   fastify.get('/', {
     preHandler: [requireResponsabile],
