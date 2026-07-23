@@ -81,15 +81,18 @@ export async function authRoutes(fastify: FastifyInstance) {
         expiresIn: config.jwt.expiresIn,
       });
 
+      // Also set cookie for backwards compatibility
       reply.setCookie('token', token, {
         path: '/',
         httpOnly: true,
         secure: config.isProd,
-        sameSite: config.isProd ? 'none' : 'lax', // 'none' required for cross-site cookies
-        maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
+        sameSite: config.isProd ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60,
       });
 
+      // Return token in response body for localStorage storage
       return reply.send({
+        token,
         user: {
           id: result.user.id,
           nome: result.user.nome,

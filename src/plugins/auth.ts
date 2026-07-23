@@ -20,17 +20,25 @@ declare module 'fastify' {
 async function authPlugin(fastify: FastifyInstance) {
   await fastify.register(fastifyJwt, {
     secret: config.jwt.secret,
-    cookie: {
-      cookieName: 'token',
-      signed: false,
-    },
   });
 
   fastify.decorate(
     'authenticate',
     async function (request: FastifyRequest, reply: FastifyReply) {
       try {
-        await request.jwtVerify();
+        // Try Authorization header first, then cookie as fallback
+        const authHeader = request.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.substring(7);
+          const decoded = fastify.jwt.verify(token);
+          request.user = decoded;
+        } else if (request.cookies?.token) {
+          // Fallback to cookie for backwards compatibility
+          const decoded = fastify.jwt.verify(request.cookies.token);
+          request.user = decoded;
+        } else {
+          throw new Error('No token provided');
+        }
       } catch (err) {
         reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or expired token' });
       }
