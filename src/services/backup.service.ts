@@ -316,6 +316,55 @@ export class BackupService {
     }
   }
 
+  async cleanupOldBackups(daysToKeep: number = 7): Promise<{ deleted: number }> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+
+    // Find old completed backups
+    const oldBackups = await this.prisma.backupLog.findMany({
+      where: {
+        createdAt: { lt: cutoffDate },
+        stato: 'COMPLETATO',
+      },
+    });
+
+    let deleted = 0;
+
+    for (const backup of oldBackups) {
+      try {
+        // Delete from R2
+        if (this.isConfigured()) {
+          await this.s3Client!.send(
+            new DeleteObjectCommand({
+              Bucket: this.bucketName,
+              Key: backup.filename,
+            })
+          );
+        }
+
+        // Delete log entry
+        await this.prisma.backupLog.delete({
+          where: { id: backup.id },
+        });
+
+        deleted++;
+        console.log(`[Backup] Deleted old backup: ${backup.filename}`);
+      } catch (error) {
+        console.error(`[Backup] Failed to delete backup ${backup.id}:`, error);
+      }
+    }
+
+    // Also delete old error logs (older than 30 days)
+    await this.prisma.backupLog.deleteMany({
+      where: {
+        createdAt: { lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        stato: 'ERRORE',
+      },
+    });
+
+    return { deleted };
+  }
+
   private formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
     const k = 1024;
