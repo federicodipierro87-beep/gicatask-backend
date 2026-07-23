@@ -30,11 +30,11 @@ async function authPlugin(fastify: FastifyInstance) {
         const authHeader = request.headers.authorization;
         if (authHeader && authHeader.startsWith('Bearer ')) {
           const token = authHeader.substring(7);
-          const decoded = fastify.jwt.verify(token);
+          const decoded = fastify.jwt.verify<JwtPayload>(token);
           request.user = decoded;
         } else if (request.cookies?.token) {
           // Fallback to cookie for backwards compatibility
-          const decoded = fastify.jwt.verify(request.cookies.token);
+          const decoded = fastify.jwt.verify<JwtPayload>(request.cookies.token);
           request.user = decoded;
         } else {
           throw new Error('No token provided');
