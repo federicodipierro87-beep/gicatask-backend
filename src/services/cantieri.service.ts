@@ -3,6 +3,18 @@ import { PrismaClient, Cantiere } from '@prisma/client';
 export class CantieriService {
   constructor(private prisma: PrismaClient) {}
 
+  async getAll(includeInactive = false) {
+    return this.prisma.cantiere.findMany({
+      where: includeInactive ? {} : { attivo: true },
+      include: {
+        cliente: {
+          select: { id: true, nome: true },
+        },
+      },
+      orderBy: [{ cliente: { nome: 'asc' } }, { isGenerico: 'desc' }, { nome: 'asc' }],
+    });
+  }
+
   async getByCliente(clienteId: number, includeInactive = false): Promise<Cantiere[]> {
     return this.prisma.cantiere.findMany({
       where: {

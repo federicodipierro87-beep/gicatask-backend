@@ -4,6 +4,15 @@ import { CantieriService } from '../services/cantieri.service.js';
 export async function cantieriRoutes(fastify: FastifyInstance) {
   const service = new CantieriService(fastify.prisma);
 
+  // Get all cantieri (with cliente info)
+  fastify.get('/', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { includeInactive } = request.query as { includeInactive?: string };
+    const cantieri = await service.getAll(includeInactive === 'true');
+    return reply.send(cantieri);
+  });
+
   // Get cantieri by cliente
   fastify.get<{ Params: { clienteId: string } }>('/cliente/:clienteId', {
     preHandler: [fastify.authenticate],
