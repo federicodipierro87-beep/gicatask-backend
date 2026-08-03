@@ -10,7 +10,7 @@ interface CreateAttivitaInput {
   oraFinePomeriggio?: string;
   clienteId: number;
   cantiereId: number;
-  tipoAttivitaId: number;
+  tipoAttivitaId?: number | null;
   note?: string;
   createdById: number;
 }
@@ -37,7 +37,7 @@ function calculateTotalDuration(
 interface AttivitaWithRelations extends Attivita {
   cliente: { id: number; nome: string };
   cantiere: { id: number; nome: string };
-  tipoAttivita: { id: number; nome: string };
+  tipoAttivita: { id: number; nome: string } | null;
   utente: { id: number; nome: string; cognome: string };
 }
 
@@ -143,7 +143,7 @@ export class AttivitaService {
         durataMinuti,
         clienteId: input.clienteId,
         cantiereId: input.cantiereId,
-        tipoAttivitaId: input.tipoAttivitaId,
+        tipoAttivitaId: input.tipoAttivitaId ?? null,
         note: input.note,
         createdById: input.createdById,
       },
@@ -205,7 +205,7 @@ export class AttivitaService {
         durataMinuti,
         ...(input.clienteId ? { clienteId: input.clienteId } : {}),
         ...(input.cantiereId ? { cantiereId: input.cantiereId } : {}),
-        ...(input.tipoAttivitaId ? { tipoAttivitaId: input.tipoAttivitaId } : {}),
+        ...(input.tipoAttivitaId !== undefined ? { tipoAttivitaId: input.tipoAttivitaId || null } : {}),
         ...(input.note !== undefined ? { note: input.note } : {}),
       },
     });

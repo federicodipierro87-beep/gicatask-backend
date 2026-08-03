@@ -13,7 +13,7 @@ interface AttivitaExport {
   note?: string | null;
   cliente: { nome: string };
   cantiere: { nome: string };
-  tipoAttivita: { nome: string };
+  tipoAttivita: { nome: string } | null;
   utente: { nome: string; cognome: string };
 }
 
@@ -117,7 +117,7 @@ export class ExportService {
           `${att.utente.nome} ${att.utente.cognome}`,
           att.cliente.nome,
           att.cantiere.nome,
-          att.tipoAttivita.nome,
+          att.tipoAttivita?.nome ?? '',
           att.note || '-',
           formatTimeSlot(att.oraInizioMattino, att.oraFineMattino),
           formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio),
@@ -210,7 +210,7 @@ export class ExportService {
         `${att.utente.nome} ${att.utente.cognome}`,
         att.cliente.nome,
         att.cantiere.nome,
-        att.tipoAttivita.nome,
+        att.tipoAttivita?.nome ?? '',
         att.note || '',
         formatTimeSlot(att.oraInizioMattino, att.oraFineMattino),
         formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio),

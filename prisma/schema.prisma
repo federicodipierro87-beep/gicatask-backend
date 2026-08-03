@@ -79,7 +79,7 @@ model Attivita {
   durataMinuti         Int      @map("durata_minuti")
   clienteId            Int      @map("cliente_id")
   cantiereId           Int      @map("cantiere_id")
-  tipoAttivitaId       Int      @map("tipo_attivita_id")
+  tipoAttivitaId       Int?     @map("tipo_attivita_id")
   note                 String?
   createdById          Int      @map("created_by")
   createdAt            DateTime @default(now()) @map("created_at")
@@ -88,7 +88,7 @@ model Attivita {
   utente       Utente       @relation("UtenteAttivita", fields: [utenteId], references: [id])
   cliente      Cliente      @relation(fields: [clienteId], references: [id])
   cantiere     Cantiere     @relation(fields: [cantiereId], references: [id])
-  tipoAttivita TipoAttivita @relation(fields: [tipoAttivitaId], references: [id])
+  tipoAttivita TipoAttivita? @relation(fields: [tipoAttivitaId], references: [id])
   createdBy    Utente       @relation("CreatoDa", fields: [createdById], references: [id])
 
   @@map("attivita")

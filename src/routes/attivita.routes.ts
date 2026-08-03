@@ -85,7 +85,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       oraFinePomeriggio?: string;
       clienteId: number;
       cantiereId: number;
-      tipoAttivitaId: number;
+      tipoAttivitaId?: number | null;
       note?: string;
     };
   }>('/', {
@@ -93,7 +93,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     schema: {
       body: {
         type: 'object',
-        required: ['dataRiferimento', 'clienteId', 'cantiereId', 'tipoAttivitaId'],
+        required: ['dataRiferimento', 'clienteId', 'cantiereId'],
         properties: {
           utenteId: { type: 'number' },
           dataRiferimento: { type: 'string' },
@@ -103,7 +103,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
           oraFinePomeriggio: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
           clienteId: { type: 'number' },
           cantiereId: { type: 'number' },
-          tipoAttivitaId: { type: 'number' },
+          tipoAttivitaId: { type: ['number', 'null'] },
           note: { type: 'string' },
         },
       },
@@ -150,7 +150,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       oraFinePomeriggio?: string;
       clienteId?: number;
       cantiereId?: number;
-      tipoAttivitaId?: number;
+      tipoAttivitaId?: number | null;
       note?: string;
     };
   }>('/:id', {
