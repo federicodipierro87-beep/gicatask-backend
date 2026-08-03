@@ -23,21 +23,7 @@ export class ClientiService {
   }
 
   async create(nome: string): Promise<Cliente> {
-    // Create cliente with automatic generic cantiere
-    const cliente = await this.prisma.cliente.create({
-      data: { nome },
-    });
-
-    // Create generic cantiere
-    await this.prisma.cantiere.create({
-      data: {
-        clienteId: cliente.id,
-        nome: 'Generico',
-        isGenerico: true,
-      },
-    });
-
-    return cliente;
+    return this.prisma.cliente.create({ data: { nome } });
   }
 
   async update(id: number, nome: string): Promise<Cliente> {

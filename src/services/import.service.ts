@@ -55,7 +55,7 @@ export class ImportService {
 
       rows.push({
         cliente: cliente.trim(),
-        cantiere: cantiere?.trim() || 'Generico',
+        cantiere: cantiere?.trim() || '',
         tipoAttivita: tipoAttivita?.trim() || '',
       });
     });
@@ -94,57 +94,42 @@ export class ImportService {
           if (existingCliente) {
             clienteId = existingCliente.id;
           } else {
-            // Create client with automatic "Generico" cantiere
             const newCliente = await this.prisma.cliente.create({
-              data: {
-                nome: row.cliente,
-                cantieri: {
-                  create: {
-                    nome: 'Generico',
-                    isGenerico: true,
-                  },
-                },
-              },
-              include: { cantieri: true },
+              data: { nome: row.cliente },
             });
             clienteId = newCliente.id;
             clientiCreati++;
-
-            // Cache the generic cantiere
-            const genericoCantiere = newCliente.cantieri.find(c => c.isGenerico);
-            if (genericoCantiere) {
-              cantieriCache.set(`${clienteId}-generico`, genericoCantiere.id);
-            }
           }
           clientiCache.set(row.cliente.toLowerCase(), clienteId);
         }
 
-        // 2. Get or create cantiere
-        const cantiereKey = `${clienteId}-${row.cantiere.toLowerCase()}`;
-        let cantiereId = cantieriCache.get(cantiereKey);
+        // 2. Get or create cantiere (only if specified)
+        if (row.cantiere) {
+          const cantiereKey = `${clienteId}-${row.cantiere.toLowerCase()}`;
+          let cantiereId = cantieriCache.get(cantiereKey);
 
-        if (!cantiereId) {
-          const existingCantiere = await this.prisma.cantiere.findFirst({
-            where: {
-              clienteId,
-              nome: { equals: row.cantiere, mode: 'insensitive' },
-            },
-          });
-
-          if (existingCantiere) {
-            cantiereId = existingCantiere.id;
-          } else {
-            const newCantiere = await this.prisma.cantiere.create({
-              data: {
-                nome: row.cantiere,
+          if (!cantiereId) {
+            const existingCantiere = await this.prisma.cantiere.findFirst({
+              where: {
                 clienteId,
-                isGenerico: row.cantiere.toLowerCase() === 'generico',
+                nome: { equals: row.cantiere, mode: 'insensitive' },
               },
             });
-            cantiereId = newCantiere.id;
-            cantieriCreati++;
+
+            if (existingCantiere) {
+              cantiereId = existingCantiere.id;
+            } else {
+              const newCantiere = await this.prisma.cantiere.create({
+                data: {
+                  nome: row.cantiere,
+                  clienteId,
+                },
+              });
+              cantiereId = newCantiere.id;
+              cantieriCreati++;
+            }
+            cantieriCache.set(cantiereKey, cantiereId);
           }
-          cantieriCache.set(cantiereKey, cantiereId);
         }
 
         // 3. Get or create tipo attività (only if specified)
@@ -171,7 +156,8 @@ export class ImportService {
           }
         }
       } catch (error: any) {
-        errori.push(`Errore processando "${row.cliente} > ${row.cantiere}": ${error.message}`);
+        const descrizione = row.cantiere ? `${row.cliente} > ${row.cantiere}` : row.cliente;
+        errori.push(`Errore processando "${descrizione}": ${error.message}`);
       }
     }
 
@@ -235,7 +221,7 @@ export class ImportService {
     worksheet.addRow({ cliente: 'Esempio Cliente 1', cantiere: 'Magazzino Nord', tipoAttivita: 'Carico/Scarico' });
     worksheet.addRow({ cliente: 'Esempio Cliente 1', cantiere: 'Magazzino Nord', tipoAttivita: 'Picking' });
     worksheet.addRow({ cliente: 'Esempio Cliente 1', cantiere: 'Magazzino Sud', tipoAttivita: 'Inventario' });
-    worksheet.addRow({ cliente: 'Esempio Cliente 2', cantiere: 'Generico', tipoAttivita: 'Trasporto' });
+    worksheet.addRow({ cliente: 'Esempio Cliente 2', cantiere: '', tipoAttivita: 'Trasporto' });
 
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);

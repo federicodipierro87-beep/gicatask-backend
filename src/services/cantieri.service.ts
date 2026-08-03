@@ -11,7 +11,7 @@ export class CantieriService {
           select: { id: true, nome: true },
         },
       },
-      orderBy: [{ cliente: { nome: 'asc' } }, { isGenerico: 'desc' }, { nome: 'asc' }],
+      orderBy: [{ cliente: { nome: 'asc' } }, { nome: 'asc' }],
     });
   }
 
@@ -21,7 +21,7 @@ export class CantieriService {
         clienteId,
         ...(includeInactive ? {} : { attivo: true }),
       },
-      orderBy: [{ isGenerico: 'desc' }, { nome: 'asc' }],
+      orderBy: { nome: 'asc' },
     });
   }
 
@@ -35,16 +35,10 @@ export class CantieriService {
   }
 
   async create(clienteId: number, nome: string): Promise<Cantiere> {
-    // Cannot create cantiere named "Generico" - reserved
-    if (nome.toLowerCase() === 'generico') {
-      throw new Error('Il nome "Generico" è riservato');
-    }
-
     return this.prisma.cantiere.create({
       data: {
         clienteId,
         nome,
-        isGenerico: false,
       },
     });
   }
@@ -56,14 +50,6 @@ export class CantieriService {
       throw new Error('Cantiere non trovato');
     }
 
-    if (cantiere.isGenerico) {
-      throw new Error('Non è possibile modificare il cantiere generico');
-    }
-
-    if (nome.toLowerCase() === 'generico') {
-      throw new Error('Il nome "Generico" è riservato');
-    }
-
     return this.prisma.cantiere.update({
       where: { id },
       data: { nome },
@@ -71,12 +57,6 @@ export class CantieriService {
   }
 
   async deactivate(id: number): Promise<Cantiere> {
-    const cantiere = await this.prisma.cantiere.findUnique({ where: { id } });
-
-    if (cantiere?.isGenerico) {
-      throw new Error('Non è possibile disattivare il cantiere generico');
-    }
-
     return this.prisma.cantiere.update({
       where: { id },
       data: { attivo: false },

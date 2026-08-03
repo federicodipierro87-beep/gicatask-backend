@@ -121,14 +121,29 @@ export class AttivitaService {
     });
   }
 
+  // The cantiere is mandatory only for clienti that have at least one active cantiere
+  private async assertCantiereWhenRequired(clienteId: number, cantiereId?: number | null) {
+    if (cantiereId) return;
+
+    const count = await this.prisma.cantiere.count({
+      where: { clienteId, attivo: true },
+    });
+
+    if (count > 0) {
+      throw new Error('Il cantiere è obbligatorio per questo cliente');
+    }
+  }
+
   async create(input: CreateAttivitaInput): Promise<Attivita> {
     // With an absence selected, cliente/cantiere and time slots are optional
     const isAssenza = input.assenzaId != null;
 
     if (!isAssenza) {
-      if (!input.clienteId || !input.cantiereId) {
-        throw new Error('Cliente e cantiere sono obbligatori');
+      if (!input.clienteId) {
+        throw new Error('Il cliente è obbligatorio');
       }
+
+      await this.assertCantiereWhenRequired(input.clienteId, input.cantiereId);
 
       const hasMattino = input.oraInizioMattino && input.oraFineMattino;
       const hasPomeriggio = input.oraInizioPomeriggio && input.oraFinePomeriggio;
@@ -202,9 +217,11 @@ export class AttivitaService {
     const isAssenza = assenzaId != null;
 
     if (!isAssenza) {
-      if (!clienteId || !cantiereId) {
-        throw new Error('Cliente e cantiere sono obbligatori');
+      if (!clienteId) {
+        throw new Error('Il cliente è obbligatorio');
       }
+
+      await this.assertCantiereWhenRequired(clienteId, cantiereId);
 
       const hasMattino = oraInizioMattino && oraFineMattino;
       const hasPomeriggio = oraInizioPomeriggio && oraFinePomeriggio;

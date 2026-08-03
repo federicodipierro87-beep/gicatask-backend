@@ -6,7 +6,7 @@ import prismaPlugin from './plugins/prisma.js';
 import authPlugin from './plugins/auth.js';
 import { registerRoutes } from './routes/index.js';
 import { initScheduler } from './services/scheduler.service.js';
-import { seedTipiAssenza } from './services/seed.service.js';
+import { seedTipiAssenza, removeCantieriGenerici } from './services/seed.service.js';
 
 async function buildApp() {
   const fastify = Fastify({
@@ -72,6 +72,9 @@ async function start() {
 
     // Seed default absence types if the table is empty
     await seedTipiAssenza(app.prisma);
+
+    // One-off cleanup: remove the legacy generic cantieri
+    await removeCantieriGenerici(app.prisma);
 
     // Initialize scheduler for automatic backups
     initScheduler(app.prisma);
