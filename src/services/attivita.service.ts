@@ -8,9 +8,10 @@ interface CreateAttivitaInput {
   oraFineMattino?: string;
   oraInizioPomeriggio?: string;
   oraFinePomeriggio?: string;
-  clienteId: number;
-  cantiereId: number;
+  clienteId?: number | null;
+  cantiereId?: number | null;
   tipoAttivitaId?: number | null;
+  assenzaId?: number | null;
   note?: string;
   createdById: number;
 }
@@ -35,9 +36,10 @@ function calculateTotalDuration(
 }
 
 interface AttivitaWithRelations extends Attivita {
-  cliente: { id: number; nome: string };
-  cantiere: { id: number; nome: string };
+  cliente: { id: number; nome: string } | null;
+  cantiere: { id: number; nome: string } | null;
   tipoAttivita: { id: number; nome: string } | null;
+  assenza: { id: number; nome: string } | null;
   utente: { id: number; nome: string; cognome: string };
 }
 
@@ -65,6 +67,7 @@ export class AttivitaService {
         cliente: { select: { id: true, nome: true } },
         cantiere: { select: { id: true, nome: true } },
         tipoAttivita: { select: { id: true, nome: true } },
+        assenza: { select: { id: true, nome: true } },
         utente: { select: { id: true, nome: true, cognome: true } },
       },
       orderBy: [{ dataRiferimento: 'desc' }, { oraInizioMattino: 'desc' }],
@@ -98,6 +101,7 @@ export class AttivitaService {
         cliente: { select: { id: true, nome: true } },
         cantiere: { select: { id: true, nome: true } },
         tipoAttivita: { select: { id: true, nome: true } },
+        assenza: { select: { id: true, nome: true } },
         utente: { select: { id: true, nome: true, cognome: true } },
       },
       orderBy: [{ dataRiferimento: 'desc' }, { oraInizioMattino: 'desc' }],
@@ -111,18 +115,27 @@ export class AttivitaService {
         cliente: { select: { id: true, nome: true } },
         cantiere: { select: { id: true, nome: true } },
         tipoAttivita: { select: { id: true, nome: true } },
+        assenza: { select: { id: true, nome: true } },
         utente: { select: { id: true, nome: true, cognome: true } },
       },
     });
   }
 
   async create(input: CreateAttivitaInput): Promise<Attivita> {
-    // Validate: at least one time slot must be provided
-    const hasMattino = input.oraInizioMattino && input.oraFineMattino;
-    const hasPomeriggio = input.oraInizioPomeriggio && input.oraFinePomeriggio;
+    // With an absence selected, cliente/cantiere and time slots are optional
+    const isAssenza = input.assenzaId != null;
 
-    if (!hasMattino && !hasPomeriggio) {
-      throw new Error('Devi inserire almeno una fascia oraria (mattino o pomeriggio)');
+    if (!isAssenza) {
+      if (!input.clienteId || !input.cantiereId) {
+        throw new Error('Cliente e cantiere sono obbligatori');
+      }
+
+      const hasMattino = input.oraInizioMattino && input.oraFineMattino;
+      const hasPomeriggio = input.oraInizioPomeriggio && input.oraFinePomeriggio;
+
+      if (!hasMattino && !hasPomeriggio) {
+        throw new Error('Devi inserire almeno una fascia oraria (mattino o pomeriggio)');
+      }
     }
 
     const durataMinuti = calculateTotalDuration(
@@ -141,9 +154,10 @@ export class AttivitaService {
         oraInizioPomeriggio: input.oraInizioPomeriggio || null,
         oraFinePomeriggio: input.oraFinePomeriggio || null,
         durataMinuti,
-        clienteId: input.clienteId,
-        cantiereId: input.cantiereId,
+        clienteId: input.clienteId ?? null,
+        cantiereId: input.cantiereId ?? null,
         tipoAttivitaId: input.tipoAttivitaId ?? null,
+        assenzaId: input.assenzaId ?? null,
         note: input.note,
         createdById: input.createdById,
       },
@@ -179,12 +193,25 @@ export class AttivitaService {
     const oraInizioPomeriggio = input.oraInizioPomeriggio !== undefined ? input.oraInizioPomeriggio : attivita.oraInizioPomeriggio;
     const oraFinePomeriggio = input.oraFinePomeriggio !== undefined ? input.oraFinePomeriggio : attivita.oraFinePomeriggio;
 
-    // Validate: at least one time slot must be provided
-    const hasMattino = oraInizioMattino && oraFineMattino;
-    const hasPomeriggio = oraInizioPomeriggio && oraFinePomeriggio;
+    // Merge the other fields too, to validate against the resulting record
+    const clienteId = input.clienteId !== undefined ? input.clienteId : attivita.clienteId;
+    const cantiereId = input.cantiereId !== undefined ? input.cantiereId : attivita.cantiereId;
+    const assenzaId = input.assenzaId !== undefined ? input.assenzaId : attivita.assenzaId;
 
-    if (!hasMattino && !hasPomeriggio) {
-      throw new Error('Devi inserire almeno una fascia oraria (mattino o pomeriggio)');
+    // With an absence selected, cliente/cantiere and time slots are optional
+    const isAssenza = assenzaId != null;
+
+    if (!isAssenza) {
+      if (!clienteId || !cantiereId) {
+        throw new Error('Cliente e cantiere sono obbligatori');
+      }
+
+      const hasMattino = oraInizioMattino && oraFineMattino;
+      const hasPomeriggio = oraInizioPomeriggio && oraFinePomeriggio;
+
+      if (!hasMattino && !hasPomeriggio) {
+        throw new Error('Devi inserire almeno una fascia oraria (mattino o pomeriggio)');
+      }
     }
 
     const durataMinuti = calculateTotalDuration(
@@ -203,9 +230,10 @@ export class AttivitaService {
         ...(input.oraInizioPomeriggio !== undefined ? { oraInizioPomeriggio: input.oraInizioPomeriggio || null } : {}),
         ...(input.oraFinePomeriggio !== undefined ? { oraFinePomeriggio: input.oraFinePomeriggio || null } : {}),
         durataMinuti,
-        ...(input.clienteId ? { clienteId: input.clienteId } : {}),
-        ...(input.cantiereId ? { cantiereId: input.cantiereId } : {}),
+        ...(input.clienteId !== undefined ? { clienteId: input.clienteId ?? null } : {}),
+        ...(input.cantiereId !== undefined ? { cantiereId: input.cantiereId ?? null } : {}),
         ...(input.tipoAttivitaId !== undefined ? { tipoAttivitaId: input.tipoAttivitaId || null } : {}),
+        ...(input.assenzaId !== undefined ? { assenzaId: input.assenzaId ?? null } : {}),
         ...(input.note !== undefined ? { note: input.note } : {}),
       },
     });

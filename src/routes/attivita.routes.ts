@@ -83,9 +83,10 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       oraFineMattino?: string;
       oraInizioPomeriggio?: string;
       oraFinePomeriggio?: string;
-      clienteId: number;
-      cantiereId: number;
+      clienteId?: number | null;
+      cantiereId?: number | null;
       tipoAttivitaId?: number | null;
+      assenzaId?: number | null;
       note?: string;
     };
   }>('/', {
@@ -93,7 +94,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     schema: {
       body: {
         type: 'object',
-        required: ['dataRiferimento', 'clienteId', 'cantiereId'],
+        required: ['dataRiferimento'],
         properties: {
           utenteId: { type: 'number' },
           dataRiferimento: { type: 'string' },
@@ -101,9 +102,10 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
           oraFineMattino: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
           oraInizioPomeriggio: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
           oraFinePomeriggio: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
-          clienteId: { type: 'number' },
-          cantiereId: { type: 'number' },
+          clienteId: { type: ['number', 'null'] },
+          cantiereId: { type: ['number', 'null'] },
           tipoAttivitaId: { type: ['number', 'null'] },
+          assenzaId: { type: ['number', 'null'] },
           note: { type: 'string' },
         },
       },
@@ -128,6 +130,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
         clienteId: body.clienteId,
         cantiereId: body.cantiereId,
         tipoAttivitaId: body.tipoAttivitaId,
+        assenzaId: body.assenzaId,
         note: body.note,
         createdById: user.id,
       });
@@ -148,9 +151,10 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       oraFineMattino?: string;
       oraInizioPomeriggio?: string;
       oraFinePomeriggio?: string;
-      clienteId?: number;
-      cantiereId?: number;
+      clienteId?: number | null;
+      cantiereId?: number | null;
       tipoAttivitaId?: number | null;
+      assenzaId?: number | null;
       note?: string;
     };
   }>('/:id', {
@@ -172,6 +176,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
           clienteId: body.clienteId,
           cantiereId: body.cantiereId,
           tipoAttivitaId: body.tipoAttivitaId,
+          assenzaId: body.assenzaId,
           note: body.note,
         },
         user.id,
@@ -364,7 +369,9 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       _sum: { durataMinuti: true },
     });
 
-    const clientiIds = byCliente.map((c) => c.clienteId);
+    const clientiIds = byCliente
+      .map((c) => c.clienteId)
+      .filter((id): id is number => id !== null);
     const clienti = await fastify.prisma.cliente.findMany({
       where: { id: { in: clientiIds } },
       select: { id: true, nome: true },
@@ -398,7 +405,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       perCliente: byCliente
         .map((c) => ({
           clienteId: c.clienteId,
-          clienteNome: clientiMap.get(c.clienteId) || 'Unknown',
+          clienteNome: c.clienteId === null ? 'Assenze' : (clientiMap.get(c.clienteId) || 'Unknown'),
           attivita: c._count,
           durataMinuti: c._sum.durataMinuti || 0,
         }))

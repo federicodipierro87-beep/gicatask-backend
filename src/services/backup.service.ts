@@ -1,6 +1,7 @@
 import { PrismaClient, TipoBackup, StatoBackup } from '@prisma/client';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
+import { seedTipiAssenza } from './seed.service.js';
 
 interface BackupData {
   version: string;
@@ -10,6 +11,7 @@ interface BackupData {
     clienti: any[];
     cantieri: any[];
     tipiAttivita: any[];
+    tipiAssenza?: any[];
     attivita: any[];
     configurazioni: any[];
   };
@@ -64,6 +66,7 @@ export class BackupService {
           clienti: await this.prisma.cliente.findMany(),
           cantieri: await this.prisma.cantiere.findMany(),
           tipiAttivita: await this.prisma.tipoAttivita.findMany(),
+          tipiAssenza: await this.prisma.tipoAssenza.findMany(),
           attivita: await this.prisma.attivita.findMany(),
           configurazioni: await this.prisma.configurazione.findMany(),
         },
@@ -183,6 +186,7 @@ export class BackupService {
     await this.prisma.$transaction(async (tx) => {
       // Delete existing data (in reverse order of dependencies)
       await tx.attivita.deleteMany();
+      await tx.tipoAssenza.deleteMany();
       await tx.tipoAttivita.deleteMany();
       await tx.cantiere.deleteMany();
       await tx.cliente.deleteMany();
@@ -210,6 +214,12 @@ export class BackupService {
         stats.tipiAttivita = backupData.tables.tipiAttivita.length;
       }
 
+      const tipiAssenza = backupData.tables.tipiAssenza ?? [];
+      if (tipiAssenza.length > 0) {
+        await tx.tipoAssenza.createMany({ data: tipiAssenza });
+        stats.tipiAssenza = tipiAssenza.length;
+      }
+
       if (backupData.tables.attivita.length > 0) {
         await tx.attivita.createMany({ data: backupData.tables.attivita });
         stats.attivita = backupData.tables.attivita.length;
@@ -221,7 +231,7 @@ export class BackupService {
       }
 
       // Reset sequences for PostgreSQL
-      const tables = ['utenti', 'clienti', 'cantieri', 'tipi_attivita', 'attivita', 'configurazioni'];
+      const tables = ['utenti', 'clienti', 'cantieri', 'tipi_attivita', 'tipi_assenza', 'attivita', 'configurazioni'];
       for (const table of tables) {
         try {
           await tx.$executeRawUnsafe(
@@ -232,6 +242,9 @@ export class BackupService {
         }
       }
     });
+
+    // Backups predating the absence feature leave tipi_assenza empty
+    await seedTipiAssenza(this.prisma);
 
     return { restored: true, stats };
   }

@@ -68,6 +68,18 @@ model TipoAttivita {
   @@map("tipi_attivita")
 }
 
+model TipoAssenza {
+  id        Int      @id @default(autoincrement())
+  nome      String   @unique
+  attivo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  attivita Attivita[]
+
+  @@map("tipi_assenza")
+}
+
 model Attivita {
   id                   Int      @id @default(autoincrement())
   utenteId             Int      @map("utente_id")
@@ -77,18 +89,20 @@ model Attivita {
   oraInizioPomeriggio  String?  @map("ora_inizio_pomeriggio")
   oraFinePomeriggio    String?  @map("ora_fine_pomeriggio")
   durataMinuti         Int      @map("durata_minuti")
-  clienteId            Int      @map("cliente_id")
-  cantiereId           Int      @map("cantiere_id")
+  clienteId            Int?     @map("cliente_id")
+  cantiereId           Int?     @map("cantiere_id")
   tipoAttivitaId       Int?     @map("tipo_attivita_id")
+  assenzaId            Int?     @map("assenza_id")
   note                 String?
   createdById          Int      @map("created_by")
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
   utente       Utente       @relation("UtenteAttivita", fields: [utenteId], references: [id])
-  cliente      Cliente      @relation(fields: [clienteId], references: [id])
-  cantiere     Cantiere     @relation(fields: [cantiereId], references: [id])
+  cliente      Cliente?     @relation(fields: [clienteId], references: [id])
+  cantiere     Cantiere?    @relation(fields: [cantiereId], references: [id])
   tipoAttivita TipoAttivita? @relation(fields: [tipoAttivitaId], references: [id])
+  assenza      TipoAssenza? @relation(fields: [assenzaId], references: [id])
   createdBy    Utente       @relation("CreatoDa", fields: [createdById], references: [id])
 
   @@map("attivita")

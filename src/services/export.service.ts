@@ -11,9 +11,10 @@ interface AttivitaExport {
   oraFinePomeriggio?: string | null;
   durataMinuti: number;
   note?: string | null;
-  cliente: { nome: string };
-  cantiere: { nome: string };
+  cliente: { nome: string } | null;
+  cantiere: { nome: string } | null;
   tipoAttivita: { nome: string } | null;
+  assenza: { nome: string } | null;
   utente: { nome: string; cognome: string };
 }
 
@@ -79,9 +80,9 @@ export class ExportService {
 
       // Table header - same order as Excel
       const tableTop = doc.y;
-      // Data, Dipendente, Cliente, Cantiere, Tipo, Note, Mattino, Pomeriggio, Durata
-      const colWidths = [55, 90, 90, 80, 80, 120, 65, 65, 45];
-      const headers = ['Data', 'Dipendente', 'Cliente', 'Cantiere', 'Tipo', 'Note', 'Mattino', 'Pomeriggio', 'Durata'];
+      // Data, Dipendente, Cliente, Cantiere, Tipo, Assenza, Note, Mattino, Pomeriggio, Durata
+      const colWidths = [55, 92, 92, 82, 78, 78, 125, 66, 66, 46];
+      const headers = ['Data', 'Dipendente', 'Cliente', 'Cantiere', 'Tipo', 'Assenza', 'Note', 'Mattino', 'Pomeriggio', 'Durata'];
       const tableWidth = colWidths.reduce((a, b) => a + b, 0);
 
       doc.fontSize(7).fillColor('#fff');
@@ -115,9 +116,10 @@ export class ExportService {
         const row = [
           formatDate(att.dataRiferimento),
           `${att.utente.nome} ${att.utente.cognome}`,
-          att.cliente.nome,
-          att.cantiere.nome,
+          att.cliente?.nome ?? '',
+          att.cantiere?.nome ?? '',
           att.tipoAttivita?.nome ?? '',
+          att.assenza?.nome ?? '',
           att.note || '-',
           formatTimeSlot(att.oraInizioMattino, att.oraFineMattino),
           formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio),
@@ -147,7 +149,7 @@ export class ExportService {
     const worksheet = workbook.addWorksheet('Attività');
 
     // Header info
-    worksheet.mergeCells('A1:I1');
+    worksheet.mergeCells('A1:J1');
     worksheet.getCell('A1').value = 'Report Attività';
     worksheet.getCell('A1').font = { size: 16, bold: true };
     worksheet.getCell('A1').alignment = { horizontal: 'center' };
@@ -158,13 +160,13 @@ export class ExportService {
     if (filters.clienteNome) filterParts.push(`Cliente: ${filters.clienteNome}`);
     if (filters.utenteNome) filterParts.push(`Dipendente: ${filters.utenteNome}`);
 
-    worksheet.mergeCells('A2:I2');
+    worksheet.mergeCells('A2:J2');
     worksheet.getCell('A2').value = filterParts.length > 0 ? filterParts.join(' | ') : 'Tutti i dati';
     worksheet.getCell('A2').font = { size: 10, italic: true };
     worksheet.getCell('A2').alignment = { horizontal: 'center' };
 
     const totalMinutes = attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
-    worksheet.mergeCells('A3:I3');
+    worksheet.mergeCells('A3:J3');
     worksheet.getCell('A3').value = `Totale: ${attivita.length} attività - ${(totalMinutes / 60).toFixed(1)} ore`;
     worksheet.getCell('A3').font = { size: 10 };
     worksheet.getCell('A3').alignment = { horizontal: 'center' };
@@ -176,6 +178,7 @@ export class ExportService {
       'Cliente',
       'Cantiere',
       'Tipo Attività',
+      'Assenza',
       'Note',
       'Mattino',
       'Pomeriggio',
@@ -197,6 +200,7 @@ export class ExportService {
       { width: 20 },  // Cliente
       { width: 20 },  // Cantiere
       { width: 20 },  // Tipo Attività
+      { width: 18 },  // Assenza
       { width: 30 },  // Note
       { width: 12 },  // Mattino
       { width: 12 },  // Pomeriggio
@@ -208,9 +212,10 @@ export class ExportService {
       worksheet.addRow([
         formatDate(att.dataRiferimento),
         `${att.utente.nome} ${att.utente.cognome}`,
-        att.cliente.nome,
-        att.cantiere.nome,
+        att.cliente?.nome ?? '',
+        att.cantiere?.nome ?? '',
         att.tipoAttivita?.nome ?? '',
+        att.assenza?.nome ?? '',
         att.note || '',
         formatTimeSlot(att.oraInizioMattino, att.oraFineMattino),
         formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio),
@@ -227,7 +232,7 @@ export class ExportService {
 
     const clientStats = new Map<string, { count: number; minutes: number }>();
     attivita.forEach((att) => {
-      const key = att.cliente.nome;
+      const key = att.cliente?.nome ?? 'Assenze';
       const existing = clientStats.get(key) || { count: 0, minutes: 0 };
       clientStats.set(key, {
         count: existing.count + 1,

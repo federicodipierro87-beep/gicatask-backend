@@ -6,6 +6,7 @@ import prismaPlugin from './plugins/prisma.js';
 import authPlugin from './plugins/auth.js';
 import { registerRoutes } from './routes/index.js';
 import { initScheduler } from './services/scheduler.service.js';
+import { seedTipiAssenza } from './services/seed.service.js';
 
 async function buildApp() {
   const fastify = Fastify({
@@ -68,6 +69,9 @@ async function start() {
   try {
     await app.listen({ port: config.port, host: config.host });
     console.log(`🚀 Server running at http://${config.host}:${config.port}`);
+
+    // Seed default absence types if the table is empty
+    await seedTipiAssenza(app.prisma);
 
     // Initialize scheduler for automatic backups
     initScheduler(app.prisma);
