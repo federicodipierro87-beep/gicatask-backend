@@ -16,6 +16,9 @@ interface CreateAttivitaInput {
   createdById: number;
 }
 
+// Un'assenza vale una giornata lavorativa piena, a prescindere dagli orari inseriti
+const DURATA_ASSENZA_MINUTI = 8 * 60 + 12;
+
 function calculateTotalDuration(
   oraInizioMattino?: string,
   oraFineMattino?: string,
@@ -153,12 +156,14 @@ export class AttivitaService {
       }
     }
 
-    const durataMinuti = calculateTotalDuration(
-      input.oraInizioMattino,
-      input.oraFineMattino,
-      input.oraInizioPomeriggio,
-      input.oraFinePomeriggio
-    );
+    const durataMinuti = isAssenza
+      ? DURATA_ASSENZA_MINUTI
+      : calculateTotalDuration(
+          input.oraInizioMattino,
+          input.oraFineMattino,
+          input.oraInizioPomeriggio,
+          input.oraFinePomeriggio
+        );
 
     return this.prisma.attivita.create({
       data: {
@@ -231,12 +236,14 @@ export class AttivitaService {
       }
     }
 
-    const durataMinuti = calculateTotalDuration(
-      oraInizioMattino || undefined,
-      oraFineMattino || undefined,
-      oraInizioPomeriggio || undefined,
-      oraFinePomeriggio || undefined
-    );
+    const durataMinuti = isAssenza
+      ? DURATA_ASSENZA_MINUTI
+      : calculateTotalDuration(
+          oraInizioMattino || undefined,
+          oraFineMattino || undefined,
+          oraInizioPomeriggio || undefined,
+          oraFinePomeriggio || undefined
+        );
 
     return this.prisma.attivita.update({
       where: { id },
