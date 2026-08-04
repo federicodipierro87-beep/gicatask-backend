@@ -1,5 +1,11 @@
 /**
- * Calculate duration in minutes between two time strings
+ * Calculate duration in minutes between two time strings.
+ *
+ * If the end time is earlier than the start time the shift is considered
+ * overnight: the end time belongs to the next day (17:00 -> 05:00 = 12h).
+ * The hours are always attributed to the starting day, i.e. to the
+ * dataRiferimento of the activity.
+ *
  * @param oraInizio Start time in HH:mm format
  * @param oraFine End time in HH:mm format
  * @returns Duration in minutes
@@ -21,10 +27,15 @@ export function calculateDurationMinutes(
   }
 
   const startTotalMinutes = startHours * 60 + startMinutes;
-  const endTotalMinutes = endHours * 60 + endMinutes;
+  let endTotalMinutes = endHours * 60 + endMinutes;
 
-  if (endTotalMinutes <= startTotalMinutes) {
-    throw new Error('End time must be after start time');
+  if (endTotalMinutes === startTotalMinutes) {
+    throw new Error('End time must be different from start time');
+  }
+
+  // Overnight shift: the end time belongs to the next day
+  if (endTotalMinutes < startTotalMinutes) {
+    endTotalMinutes += 24 * 60;
   }
 
   return endTotalMinutes - startTotalMinutes;

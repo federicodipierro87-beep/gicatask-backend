@@ -20,7 +20,7 @@ interface AttivitaExport {
 
 function formatTimeSlot(start?: string | null, end?: string | null): string {
   if (start && end) {
-    return `${start}-${end}`;
+    return end < start ? `${start}-${end} (+1)` : `${start}-${end}`;
   }
   return '-';
 }
