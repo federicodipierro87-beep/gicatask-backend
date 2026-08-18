@@ -1,5 +1,5 @@
 import { PrismaClient, Attivita } from '@prisma/client';
-import { calculateDurationMinutes, isWithinSameWeek } from '../utils/duration.js';
+import { calculateDurationMinutes } from '../utils/duration.js';
 
 interface CreateAttivitaInput {
   utenteId: number;
@@ -186,7 +186,7 @@ export class AttivitaService {
 
   async update(
     id: number,
-    input: Partial<Omit<CreateAttivitaInput, 'utenteId' | 'createdById'>>,
+    input: Partial<Omit<CreateAttivitaInput, 'createdById'>>,
     requesterId: number,
     isResponsabile: boolean
   ): Promise<Attivita> {
@@ -196,15 +196,9 @@ export class AttivitaService {
       throw new Error('Attività non trovata');
     }
 
-    // Check if user can edit (responsabile can always edit, dipendente only in same week)
-    if (!isResponsabile) {
-      if (attivita.utenteId !== requesterId) {
-        throw new Error('Non puoi modificare attività di altri utenti');
-      }
-
-      if (!isWithinSameWeek(attivita.dataRiferimento)) {
-        throw new Error('Puoi modificare solo attività della settimana corrente');
-      }
+    // A dipendente can only edit their own activities
+    if (!isResponsabile && attivita.utenteId !== requesterId) {
+      throw new Error('Non puoi modificare attività di altri utenti');
     }
 
     // Calculate new duration based on provided or existing values
@@ -248,6 +242,7 @@ export class AttivitaService {
     return this.prisma.attivita.update({
       where: { id },
       data: {
+        ...(input.utenteId !== undefined ? { utenteId: input.utenteId } : {}),
         ...(input.dataRiferimento ? { dataRiferimento: input.dataRiferimento } : {}),
         ...(input.oraInizioMattino !== undefined ? { oraInizioMattino: input.oraInizioMattino || null } : {}),
         ...(input.oraFineMattino !== undefined ? { oraFineMattino: input.oraFineMattino || null } : {}),
@@ -270,14 +265,8 @@ export class AttivitaService {
       throw new Error('Attività non trovata');
     }
 
-    if (!isResponsabile) {
-      if (attivita.utenteId !== requesterId) {
-        throw new Error('Non puoi eliminare attività di altri utenti');
-      }
-
-      if (!isWithinSameWeek(attivita.dataRiferimento)) {
-        throw new Error('Puoi eliminare solo attività della settimana corrente');
-      }
+    if (!isResponsabile && attivita.utenteId !== requesterId) {
+      throw new Error('Non puoi eliminare attività di altri utenti');
     }
 
     await this.prisma.attivita.delete({ where: { id } });

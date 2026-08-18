@@ -146,6 +146,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
   fastify.put<{
     Params: { id: string };
     Body: {
+      utenteId?: number;
       dataRiferimento?: string;
       oraInizioMattino?: string;
       oraFineMattino?: string;
@@ -168,6 +169,8 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       const attivita = await service.update(
         id,
         {
+          // Only a responsabile can move an activity to another employee
+          utenteId: user.ruolo === 'RESPONSABILE' ? body.utenteId : undefined,
           dataRiferimento: body.dataRiferimento ? new Date(body.dataRiferimento) : undefined,
           oraInizioMattino: body.oraInizioMattino,
           oraFineMattino: body.oraFineMattino,

@@ -68,36 +68,3 @@ export function isValidTimeFormat(time: string): boolean {
   const regex = /^([01]\d|2[0-3]):([0-5]\d)$/;
   return regex.test(time);
 }
-
-/**
- * Check if a date is within the same week (Monday-Sunday)
- * @param date Date to check
- * @param referenceDate Reference date (defaults to now)
- * @returns True if within the same week
- */
-export function isWithinSameWeek(
-  date: Date,
-  referenceDate: Date = new Date()
-): boolean {
-  const getMonday = (d: Date): Date => {
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(d);
-    monday.setDate(diff);
-    monday.setHours(0, 0, 0, 0);
-    return monday;
-  };
-
-  const getSunday = (d: Date): Date => {
-    const monday = getMonday(d);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    sunday.setHours(23, 59, 59, 999);
-    return sunday;
-  };
-
-  const weekStart = getMonday(referenceDate);
-  const weekEnd = getSunday(referenceDate);
-
-  return date >= weekStart && date <= weekEnd;
-}
