@@ -44,6 +44,49 @@ function formatDuration(minutes: number): string {
   return `${hours}h ${mins}m`;
 }
 
+// An activity can have the afternoon slot only, and an absence has no slot at all
+function orarioInizio(att: AttivitaExport): string {
+  return att.oraInizioMattino || att.oraInizioPomeriggio || '';
+}
+
+/**
+ * Order the rows for the Excel report: grouped by employee and, inside each
+ * group, chronologically (oldest first, then by start time).
+ *
+ * The employee is sorted on "Nome Cognome", the same string shown in the
+ * column, so the order is evident to whoever reads the sheet.
+ */
+function sortForReport(attivita: AttivitaExport[]): AttivitaExport[] {
+  return [...attivita].sort((a, b) => {
+    const utenteA = `${a.utente.nome} ${a.utente.cognome}`;
+    const utenteB = `${b.utente.nome} ${b.utente.cognome}`;
+    const byUtente = utenteA.localeCompare(utenteB, 'it');
+    if (byUtente !== 0) return byUtente;
+
+    const dataA = new Date(a.dataRiferimento).getTime();
+    const dataB = new Date(b.dataRiferimento).getTime();
+    if (dataA !== dataB) return dataA - dataB;
+
+    return orarioInizio(a).localeCompare(orarioInizio(b));
+  });
+}
+
+const NOTE_PAROLE_PER_RIGA = 8;
+
+// Break long notes every few words, so they stay readable inside the cell
+function wrapNote(note?: string | null): string {
+  if (!note) return '';
+
+  const parole = note.trim().split(/\s+/);
+  const righe: string[] = [];
+
+  for (let i = 0; i < parole.length; i += NOTE_PAROLE_PER_RIGA) {
+    righe.push(parole.slice(i, i + NOTE_PAROLE_PER_RIGA).join(' '));
+  }
+
+  return righe.join('\n');
+}
+
 export class ExportService {
   async generatePDF(attivita: AttivitaExport[], filters: ReportFilters): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -141,35 +184,18 @@ export class ExportService {
     });
   }
 
-  async generateExcel(attivita: AttivitaExport[], filters: ReportFilters): Promise<Buffer> {
+  async generateExcel(attivita: AttivitaExport[]): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'GicaTask';
     workbook.created = new Date();
 
     const worksheet = workbook.addWorksheet('Attività');
 
-    // Header info
+    // Title. The period is carried by the file name, not by a row here
     worksheet.mergeCells('A1:J1');
-    worksheet.getCell('A1').value = 'Report Attività';
-    worksheet.getCell('A1').font = { size: 16, bold: true };
+    worksheet.getCell('A1').value = "REPORT ATTIVITA'";
+    worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: 'FFFF0000' } };
     worksheet.getCell('A1').alignment = { horizontal: 'center' };
-
-    const filterParts: string[] = [];
-    if (filters.startDate) filterParts.push(`Dal: ${filters.startDate}`);
-    if (filters.endDate) filterParts.push(`Al: ${filters.endDate}`);
-    if (filters.clienteNome) filterParts.push(`Cliente: ${filters.clienteNome}`);
-    if (filters.utenteNome) filterParts.push(`Dipendente: ${filters.utenteNome}`);
-
-    worksheet.mergeCells('A2:J2');
-    worksheet.getCell('A2').value = filterParts.length > 0 ? filterParts.join(' | ') : 'Tutti i dati';
-    worksheet.getCell('A2').font = { size: 10, italic: true };
-    worksheet.getCell('A2').alignment = { horizontal: 'center' };
-
-    const totalMinutes = attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
-    worksheet.mergeCells('A3:J3');
-    worksheet.getCell('A3').value = `Totale: ${attivita.length} attività - ${(totalMinutes / 60).toFixed(1)} ore`;
-    worksheet.getCell('A3').font = { size: 10 };
-    worksheet.getCell('A3').alignment = { horizontal: 'center' };
 
     // Column headers
     const headerRow = worksheet.addRow([
@@ -201,26 +227,31 @@ export class ExportService {
       { width: 20 },  // Cantiere
       { width: 20 },  // Tipo Attività
       { width: 18 },  // Assenza
-      { width: 30 },  // Note
+      // Wide enough to hold the eight words per line of wrapNote(): with a
+      // narrower column Excel would wrap on the width and ignore the breaks
+      { width: 60 },  // Note
       { width: 12 },  // Mattino
       { width: 12 },  // Pomeriggio
       { width: 12 },  // Durata (ore)
     ];
 
-    // Data rows
-    attivita.forEach((att) => {
-      worksheet.addRow([
+    // Data rows, grouped by employee and ordered by date and start time
+    sortForReport(attivita).forEach((att) => {
+      const row = worksheet.addRow([
         formatDate(att.dataRiferimento),
         `${att.utente.nome} ${att.utente.cognome}`,
         att.cliente?.nome ?? '',
         att.cantiere?.nome ?? '',
         att.tipoAttivita?.nome ?? '',
         att.assenza?.nome ?? '',
-        att.note || '',
+        wrapNote(att.note),
         formatTimeSlot(att.oraInizioMattino, att.oraFineMattino),
         formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio),
         parseFloat((att.durataMinuti / 60).toFixed(2)),
       ]);
+
+      // Without wrapText Excel shows the line breaks as a single long line
+      row.getCell(7).alignment = { wrapText: true, vertical: 'top' };
     });
 
     // Aggregation by client

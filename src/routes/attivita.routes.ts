@@ -3,6 +3,24 @@ import { AttivitaService } from '../services/attivita.service.js';
 import { ExportService } from '../services/export.service.js';
 import type { JwtPayload } from '../types/index.js';
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Build the period fragment of the export file name.
+ *
+ * The dates come from the query string and end up in the Content-Disposition
+ * header, so anything that is not a plain YYYY-MM-DD is discarded: it would be
+ * a header injection vector. Without a valid period the download date is used,
+ * as before.
+ */
+function periodoPerNomeFile(startDate?: string, endDate?: string): string {
+  if (startDate && endDate && ISO_DATE.test(startDate) && ISO_DATE.test(endDate)) {
+    return `${startDate}_${endDate}`;
+  }
+
+  return new Date().toISOString().split('T')[0] as string;
+}
+
 export async function attivitaRoutes(fastify: FastifyInstance) {
   const service = new AttivitaService(fastify.prisma);
   const exportService = new ExportService();
@@ -262,7 +280,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       utenteNome,
     });
 
-    const filename = `report-attivita-${new Date().toISOString().split('T')[0]}.pdf`;
+    const filename = `report-attivita-${periodoPerNomeFile(startDate, endDate)}.pdf`;
 
     return reply
       .header('Content-Type', 'application/pdf')
@@ -298,32 +316,9 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
 
     const attivita = await service.getAll(filters);
 
-    // Get names for filters
-    let clienteNome: string | undefined;
-    let utenteNome: string | undefined;
+    const excelBuffer = await exportService.generateExcel(attivita);
 
-    if (clienteId) {
-      const cliente = await fastify.prisma.cliente.findUnique({
-        where: { id: parseInt(clienteId) },
-      });
-      clienteNome = cliente?.nome;
-    }
-
-    if (utenteId) {
-      const utente = await fastify.prisma.utente.findUnique({
-        where: { id: parseInt(utenteId) },
-      });
-      utenteNome = utente ? `${utente.nome} ${utente.cognome}` : undefined;
-    }
-
-    const excelBuffer = await exportService.generateExcel(attivita, {
-      startDate,
-      endDate,
-      clienteNome,
-      utenteNome,
-    });
-
-    const filename = `report-attivita-${new Date().toISOString().split('T')[0]}.xlsx`;
+    const filename = `report-attivita-${periodoPerNomeFile(startDate, endDate)}.xlsx`;
 
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
