@@ -50,22 +50,22 @@ function orarioInizio(att: AttivitaExport): string {
 }
 
 /**
- * Order the rows for the Excel report: grouped by employee and, inside each
- * group, chronologically (oldest first, then by start time).
+ * Order the rows for the Excel report: day by day (oldest first) and, inside
+ * each day, grouped by employee and ordered by start time.
  *
  * The employee is sorted on "Nome Cognome", the same string shown in the
  * column, so the order is evident to whoever reads the sheet.
  */
 function sortForReport(attivita: AttivitaExport[]): AttivitaExport[] {
   return [...attivita].sort((a, b) => {
+    const dataA = new Date(a.dataRiferimento).getTime();
+    const dataB = new Date(b.dataRiferimento).getTime();
+    if (dataA !== dataB) return dataA - dataB;
+
     const utenteA = `${a.utente.nome} ${a.utente.cognome}`;
     const utenteB = `${b.utente.nome} ${b.utente.cognome}`;
     const byUtente = utenteA.localeCompare(utenteB, 'it');
     if (byUtente !== 0) return byUtente;
-
-    const dataA = new Date(a.dataRiferimento).getTime();
-    const dataB = new Date(b.dataRiferimento).getTime();
-    if (dataA !== dataB) return dataA - dataB;
 
     return orarioInizio(a).localeCompare(orarioInizio(b));
   });
