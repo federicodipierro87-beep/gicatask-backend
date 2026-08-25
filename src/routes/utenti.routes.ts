@@ -49,7 +49,10 @@ export async function utentiRoutes(fastify: FastifyInstance) {
   });
 
   // Update user (responsabile only)
-  fastify.put<{ Params: { id: string }; Body: { nome?: string; cognome?: string; ruolo?: Ruolo } }>('/:id', {
+  fastify.put<{
+    Params: { id: string };
+    Body: { nome?: string; cognome?: string; ruolo?: Ruolo; abilitatoBollettini?: boolean };
+  }>('/:id', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
     schema: {
       body: {
@@ -58,6 +61,7 @@ export async function utentiRoutes(fastify: FastifyInstance) {
           nome: { type: 'string', minLength: 1 },
           cognome: { type: 'string', minLength: 1 },
           ruolo: { type: 'string', enum: ['DIPENDENTE', 'RESPONSABILE'] },
+          abilitatoBollettini: { type: 'boolean' },
         },
       },
     },

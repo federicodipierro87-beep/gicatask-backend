@@ -51,6 +51,7 @@ export class UtentiService {
       nome?: string;
       cognome?: string;
       ruolo?: Ruolo;
+      abilitatoBollettini?: boolean;
     }
   ): Promise<Omit<Utente, 'passwordHash'>> {
     const utente = await this.prisma.utente.update({

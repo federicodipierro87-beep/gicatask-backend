@@ -8,17 +8,19 @@ datasource db {
 }
 
 model Utente {
-  id           Int      @id @default(autoincrement())
-  nome         String
-  cognome      String
-  passwordHash String?  @map("password_hash")
-  ruolo        Ruolo    @default(DIPENDENTE)
-  attivo       Boolean  @default(true)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                  Int      @id @default(autoincrement())
+  nome                String
+  cognome             String
+  passwordHash        String?  @map("password_hash")
+  ruolo               Ruolo    @default(DIPENDENTE)
+  attivo              Boolean  @default(true)
+  abilitatoBollettini Boolean  @default(false) @map("abilitato_bollettini")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   attivita       Attivita[] @relation("UtenteAttivita")
   attivitaCreate Attivita[] @relation("CreatoDa")
+  bollettini     Bollettino[] @relation("UtenteBollettini")
 
   @@map("utenti")
 }
@@ -52,6 +54,7 @@ model Cantiere {
 
   cliente      Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   attivita     Attivita[]
+  bollettini   Bollettino[]
 
   @@map("cantieri")
 }
@@ -159,4 +162,75 @@ model Configurazione {
   valore String
 
   @@map("configurazioni")
+}
+
+enum TipoVoce {
+  MEZZO
+  MATERIALE
+  TRASPORTO
+}
+
+model VoceBollettino {
+  id        Int      @id @default(autoincrement())
+  tipo      TipoVoce
+  nome      String
+  attivo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  righe RigaBollettino[]
+
+  @@unique([tipo, nome])
+  @@index([tipo, attivo])
+  @@map("voci_bollettino")
+}
+
+model Bollettino {
+  id              Int      @id @default(autoincrement())
+  utenteId        Int      @map("utente_id")
+  cantiereId      Int      @map("cantiere_id")
+  dataRiferimento DateTime @map("data_riferimento") @db.Date
+  attivita        String   @db.Text
+  numeroOperai    Int      @default(0) @map("numero_operai")
+  // Ore per singolo operaio: il totale ore-uomo e' numeroOperai * ore
+  ore             Float    @default(0)
+
+  // Copia dei nomi al momento della firma: il documento non deve cambiare
+  // se cliente o cantiere vengono rinominati in seguito
+  clienteNome  String @map("cliente_nome")
+  cantiereNome String @map("cantiere_nome")
+
+  firmaOperatoreNome   String @map("firma_operatore_nome")
+  firmaOperatoreImg    String @map("firma_operatore_img")   @db.Text
+  firmaCommittenteNome String @map("firma_committente_nome")
+  firmaCommittenteImg  String @map("firma_committente_img") @db.Text
+
+  createdById Int      @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  utente   Utente   @relation("UtenteBollettini", fields: [utenteId], references: [id])
+  cantiere Cantiere @relation(fields: [cantiereId], references: [id])
+  righe    RigaBollettino[]
+
+  @@index([cantiereId, dataRiferimento])
+  @@index([utenteId, dataRiferimento])
+  @@map("bollettini")
+}
+
+model RigaBollettino {
+  id           Int      @id @default(autoincrement())
+  bollettinoId Int      @map("bollettino_id")
+  tipo         TipoVoce
+  voceId       Int?     @map("voce_id")
+  // Copia del nome della voce al momento della firma
+  descrizione  String
+  // Ore per i mezzi, quantita' per i materiali, viaggi per i trasporti
+  quantita     Float    @default(0)
+
+  bollettino Bollettino      @relation(fields: [bollettinoId], references: [id], onDelete: Cascade)
+  voce       VoceBollettino? @relation(fields: [voceId], references: [id], onDelete: SetNull)
+
+  @@index([bollettinoId, tipo])
+  @@map("righe_bollettino")
 }

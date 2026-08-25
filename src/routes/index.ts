@@ -8,6 +8,8 @@ import { utentiRoutes } from './utenti.routes.js';
 import { attivitaRoutes } from './attivita.routes.js';
 import { backupRoutes } from './backup.routes.js';
 import { importRoutes } from './import.routes.js';
+import { vociBollettinoRoutes } from './vociBollettino.routes.js';
+import { bollettiniRoutes } from './bollettini.routes.js';
 
 export const registerRoutes: FastifyPluginAsync = async (fastify) => {
   // Health check
@@ -27,4 +29,6 @@ export const registerRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(attivitaRoutes, { prefix: '/api/attivita' });
   await fastify.register(backupRoutes, { prefix: '/api/backup' });
   await fastify.register(importRoutes, { prefix: '/api/import' });
+  await fastify.register(vociBollettinoRoutes, { prefix: '/api/voci-bollettino' });
+  await fastify.register(bollettiniRoutes, { prefix: '/api/bollettini' });
 };

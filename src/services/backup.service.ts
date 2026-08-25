@@ -14,6 +14,11 @@ interface BackupData {
     tipiAssenza?: any[];
     attivita: any[];
     configurazioni: any[];
+    // Opzionali: i backup creati prima della sezione bollettini non le hanno
+    // e devono restare ripristinabili
+    vociBollettino?: any[];
+    bollettini?: any[];
+    righeBollettino?: any[];
   };
 }
 
@@ -69,6 +74,9 @@ export class BackupService {
           tipiAssenza: await this.prisma.tipoAssenza.findMany(),
           attivita: await this.prisma.attivita.findMany(),
           configurazioni: await this.prisma.configurazione.findMany(),
+          vociBollettino: await this.prisma.voceBollettino.findMany(),
+          bollettini: await this.prisma.bollettino.findMany(),
+          righeBollettino: await this.prisma.rigaBollettino.findMany(),
         },
       };
 
@@ -184,7 +192,12 @@ export class BackupService {
     const stats: Record<string, number> = {};
 
     await this.prisma.$transaction(async (tx) => {
-      // Delete existing data (in reverse order of dependencies)
+      // Delete existing data (in reverse order of dependencies).
+      // I bollettini referenziano utenti e cantieri: se restassero in piedi,
+      // le deleteMany qui sotto fallirebbero sul vincolo di chiave esterna
+      await tx.rigaBollettino.deleteMany();
+      await tx.bollettino.deleteMany();
+      await tx.voceBollettino.deleteMany();
       await tx.attivita.deleteMany();
       await tx.tipoAssenza.deleteMany();
       await tx.tipoAttivita.deleteMany();
@@ -230,8 +243,37 @@ export class BackupService {
         stats.configurazioni = backupData.tables.configurazioni.length;
       }
 
+      const vociBollettino = backupData.tables.vociBollettino ?? [];
+      if (vociBollettino.length > 0) {
+        await tx.voceBollettino.createMany({ data: vociBollettino });
+        stats.vociBollettino = vociBollettino.length;
+      }
+
+      const bollettini = backupData.tables.bollettini ?? [];
+      if (bollettini.length > 0) {
+        await tx.bollettino.createMany({ data: bollettini });
+        stats.bollettini = bollettini.length;
+      }
+
+      const righeBollettino = backupData.tables.righeBollettino ?? [];
+      if (righeBollettino.length > 0) {
+        await tx.rigaBollettino.createMany({ data: righeBollettino });
+        stats.righeBollettino = righeBollettino.length;
+      }
+
       // Reset sequences for PostgreSQL
-      const tables = ['utenti', 'clienti', 'cantieri', 'tipi_attivita', 'tipi_assenza', 'attivita', 'configurazioni'];
+      const tables = [
+        'utenti',
+        'clienti',
+        'cantieri',
+        'tipi_attivita',
+        'tipi_assenza',
+        'attivita',
+        'configurazioni',
+        'voci_bollettino',
+        'bollettini',
+        'righe_bollettino',
+      ];
       for (const table of tables) {
         try {
           await tx.$executeRawUnsafe(

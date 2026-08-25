@@ -98,6 +98,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           nome: result.user.nome,
           cognome: result.user.cognome,
           ruolo: result.user.ruolo,
+          abilitatoBollettini: result.user.abilitatoBollettini,
         },
       });
     }
@@ -132,6 +133,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           nome: user.nome,
           cognome: user.cognome,
           ruolo: user.ruolo,
+          abilitatoBollettini: user.abilitatoBollettini,
         },
       });
     }
