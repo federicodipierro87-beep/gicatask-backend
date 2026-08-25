@@ -1,6 +1,7 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import { BollettiniService, type RigaInput } from '../services/bollettini.service.js';
 import { BollettinoPdfService, sanitizeFilenamePart } from '../services/bollettinoPdf.service.js';
+import { assertAccessoBollettini } from '../utils/bollettiniAccess.js';
 import type { JwtPayload } from '../types/index.js';
 
 // Due firme dense più il resto del corpo sfiorano il limite Fastify di 1 MB,
@@ -61,35 +62,6 @@ interface CreateBody {
   firmaOperatoreImg: string;
   firmaCommittenteNome: string;
   firmaCommittenteImg: string;
-}
-
-/**
- * Accesso alla sezione bollettini.
- *
- * Il flag è letto dal database a ogni richiesta e non dal token: il JWT dura
- * sette giorni, quindi metterlo dentro significherebbe non poter revocare
- * l'accesso prima della scadenza.
- */
-async function assertAccessoBollettini(
-  fastify: FastifyInstance,
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<boolean> {
-  const user = request.user as JwtPayload;
-
-  if (user.ruolo === 'RESPONSABILE') return true;
-
-  const dbUser = await fastify.prisma.utente.findUnique({
-    where: { id: user.id },
-    select: { abilitatoBollettini: true },
-  });
-
-  if (!dbUser?.abilitatoBollettini) {
-    reply.status(403).send({ error: 'Non autorizzato ai bollettini' });
-    return false;
-  }
-
-  return true;
 }
 
 export async function bollettiniRoutes(fastify: FastifyInstance) {
@@ -181,10 +153,12 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // Eliminazione (solo responsabile)
+  // Eliminazione (solo responsabile, e solo se abilitato)
   fastify.delete<{ Params: { id: string } }>('/:id', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
     const id = parseInt(request.params.id, 10);
 
     const bollettino = await service.getById(id);
@@ -224,10 +198,12 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
       .send(pdfBuffer);
   });
 
-  // PDF cumulativo di cantiere (solo responsabile)
+  // PDF cumulativo di cantiere (solo responsabile, e solo se abilitato)
   fastify.get<{ Params: { cantiereId: string } }>('/cantiere/:cantiereId/pdf', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
     const cantiereId = parseInt(request.params.cantiereId, 10);
     const { startDate, endDate } = request.query as { startDate?: string; endDate?: string };
 

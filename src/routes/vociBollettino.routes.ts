@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { TipoVoce } from '@prisma/client';
 import { VociBollettinoService } from '../services/vociBollettino.service.js';
+import { assertAccessoBollettini } from '../utils/bollettiniAccess.js';
 
 const TIPO_SLUGS = ['mezzi', 'materiali', 'trasporti'] as const;
 type TipoSlug = (typeof TIPO_SLUGS)[number];
@@ -45,6 +46,8 @@ export async function vociBollettinoRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate],
     schema: { params: tipoParamsSchema },
   }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
     const { includeInactive } = request.query as { includeInactive?: string };
     const voci = await service.getAll(
       SLUG_TO_TIPO[request.params.tipo],
@@ -58,6 +61,8 @@ export async function vociBollettinoRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.requireRole('RESPONSABILE')],
     schema: { params: tipoParamsSchema, body: nomeBodySchema },
   }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
     try {
       const voce = await service.create(
         SLUG_TO_TIPO[request.params.tipo],
@@ -77,6 +82,8 @@ export async function vociBollettinoRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.requireRole('RESPONSABILE')],
     schema: { body: nomeBodySchema },
   }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
     const id = parseInt(request.params.id, 10);
 
     try {
@@ -94,6 +101,8 @@ export async function vociBollettinoRoutes(fastify: FastifyInstance) {
   fastify.delete<{ Params: { id: string } }>('/:id', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
     const id = parseInt(request.params.id, 10);
     await service.deactivate(id);
     return reply.send({ success: true });
@@ -103,6 +112,8 @@ export async function vociBollettinoRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>('/:id/activate', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
     const id = parseInt(request.params.id, 10);
     const voce = await service.activate(id);
     return reply.send(voce);
