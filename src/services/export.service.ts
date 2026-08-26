@@ -71,6 +71,74 @@ function sortForReport(attivita: AttivitaExport[]): AttivitaExport[] {
   });
 }
 
+/**
+ * PDF layout. The report is printed by the customer on A3 landscape, so the
+ * page is 1191x842pt and the table can use 1141pt of width.
+ */
+const PDF_MARGIN = 25;
+const PDF_PAGE_HEIGHT = 842;
+const PDF_BOTTOM = PDF_PAGE_HEIGHT - PDF_MARGIN;
+
+const CELL_PAD_X = 3;
+const CELL_PAD_Y = 3;
+const HEADER_HEIGHT = 16;
+const MIN_ROW_HEIGHT = 14;
+
+const BODY_FONT_SIZE = 8;
+const HEADER_FONT_SIZE = 8;
+
+const GRID_COLOR = '#999999';
+const GRID_LINE_WIDTH = 0.5;
+
+interface PdfColumn {
+  header: string;
+  width: number;
+  value: (att: AttivitaExport) => string;
+}
+
+// The widths add up to 1141: A3 landscape width minus the two margins
+const PDF_COLUMNS: PdfColumn[] = [
+  { header: 'Data', width: 62, value: (a) => formatDate(a.dataRiferimento) },
+  { header: 'Dipendente', width: 130, value: (a) => `${a.utente.nome} ${a.utente.cognome}` },
+  { header: 'Cliente', width: 150, value: (a) => a.cliente?.nome ?? '' },
+  { header: 'Cantiere', width: 140, value: (a) => a.cantiere?.nome ?? '' },
+  { header: 'Tipo', width: 120, value: (a) => a.tipoAttivita?.nome ?? '' },
+  { header: 'Assenza', width: 100, value: (a) => a.assenza?.nome ?? '' },
+  { header: 'Note', width: 234, value: (a) => a.note || '-' },
+  {
+    header: 'Mattino',
+    width: 75,
+    value: (a) => formatTimeSlot(a.oraInizioMattino, a.oraFineMattino),
+  },
+  {
+    header: 'Pomeriggio',
+    width: 75,
+    value: (a) => formatTimeSlot(a.oraInizioPomeriggio, a.oraFinePomeriggio),
+  },
+  { header: 'Durata', width: 55, value: (a) => formatDuration(a.durataMinuti) },
+];
+
+const TABLE_WIDTH = PDF_COLUMNS.reduce((sum, col) => sum + col.width, 0);
+
+// Hard bound on a single row: a cell taller than a whole page would never fit
+// after a page break, and the break check would loop forever
+const MAX_ROW_HEIGHT = PDF_BOTTOM - PDF_MARGIN - HEADER_HEIGHT;
+
+// Explicit borders and not `pageSetup.showGridLines`: the sheet gridlines are
+// an on/off switch for the whole used range, title row included
+const GRID_BORDER: Partial<ExcelJS.Borders> = {
+  top: { style: 'thin', color: { argb: 'FF999999' } },
+  left: { style: 'thin', color: { argb: 'FF999999' } },
+  bottom: { style: 'thin', color: { argb: 'FF999999' } },
+  right: { style: 'thin', color: { argb: 'FF999999' } },
+};
+
+function applyGrid(row: ExcelJS.Row, columnCount: number): void {
+  for (let i = 1; i <= columnCount; i++) {
+    row.getCell(i).border = GRID_BORDER;
+  }
+}
+
 const NOTE_PAROLE_PER_RIGA = 8;
 
 // Break long notes every few words, so they stay readable inside the cell
@@ -90,94 +158,113 @@ function wrapNote(note?: string | null): string {
 export class ExportService {
   async generatePDF(attivita: AttivitaExport[], filters: ReportFilters): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 25, size: 'A4', layout: 'landscape' });
+      const doc = new PDFDocument({ margin: PDF_MARGIN, size: 'A3', layout: 'landscape' });
       const chunks: Buffer[] = [];
 
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const pageWidth = 842 - 50; // A4 landscape width minus margins
-      const startX = 25;
+      // One rectangle per cell: the vertical separators stay visible even on
+      // the rows where a cell is empty
+      const drawGrid = (y: number, height: number): void => {
+        doc.lineWidth(GRID_LINE_WIDTH).strokeColor(GRID_COLOR);
+
+        let x = PDF_MARGIN;
+        PDF_COLUMNS.forEach((col) => {
+          doc.rect(x, y, col.width, height).stroke();
+          x += col.width;
+        });
+      };
+
+      // Leaves the body style active, so the caller can go straight back to
+      // measuring and drawing rows
+      const drawTableHeader = (y: number): number => {
+        doc.rect(PDF_MARGIN, y, TABLE_WIDTH, HEADER_HEIGHT).fill('#333333');
+        doc.font('Helvetica-Bold').fontSize(HEADER_FONT_SIZE).fillColor('#ffffff');
+
+        let x = PDF_MARGIN;
+        PDF_COLUMNS.forEach((col) => {
+          doc.text(col.header, x + CELL_PAD_X, y + CELL_PAD_Y + 1, {
+            width: col.width - CELL_PAD_X * 2,
+            height: HEADER_HEIGHT - CELL_PAD_Y,
+          });
+          x += col.width;
+        });
+
+        drawGrid(y, HEADER_HEIGHT);
+        doc.font('Helvetica').fontSize(BODY_FONT_SIZE).fillColor('#000000');
+
+        return y + HEADER_HEIGHT;
+      };
 
       // Title
-      doc.fontSize(14).text('Report Attività', { align: 'center' });
+      doc.font('Helvetica-Bold').fontSize(16).fillColor('#000000');
+      doc.text('Report Attività', PDF_MARGIN, PDF_MARGIN, { width: TABLE_WIDTH, align: 'center' });
 
       // Filters info
-      doc.fontSize(8).fillColor('#666');
+      doc.font('Helvetica').fontSize(9).fillColor('#666666');
       const filterParts: string[] = [];
       if (filters.startDate) filterParts.push(`Dal: ${filters.startDate}`);
       if (filters.endDate) filterParts.push(`Al: ${filters.endDate}`);
       if (filters.clienteNome) filterParts.push(`Cliente: ${filters.clienteNome}`);
       if (filters.utenteNome) filterParts.push(`Dipendente: ${filters.utenteNome}`);
       if (filterParts.length > 0) {
-        doc.text(filterParts.join(' | '), { align: 'center' });
+        doc.text(filterParts.join(' | '), { width: TABLE_WIDTH, align: 'center' });
       }
 
       // Summary
       const totalMinutes = attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
       const totalHours = (totalMinutes / 60).toFixed(1);
-      doc.fontSize(9).fillColor('#000');
-      doc.text(`Totale: ${attivita.length} attività - ${totalHours} ore`, { align: 'center' });
-      doc.moveDown(0.3);
-
-      // Table header - same order as Excel
-      const tableTop = doc.y;
-      // Data, Dipendente, Cliente, Cantiere, Tipo, Assenza, Note, Mattino, Pomeriggio, Durata
-      const colWidths = [55, 92, 92, 82, 78, 78, 125, 66, 66, 46];
-      const headers = ['Data', 'Dipendente', 'Cliente', 'Cantiere', 'Tipo', 'Assenza', 'Note', 'Mattino', 'Pomeriggio', 'Durata'];
-      const tableWidth = colWidths.reduce((a, b) => a + b, 0);
-
-      doc.fontSize(7).fillColor('#fff');
-      doc.rect(startX, tableTop, tableWidth, 12).fill('#333');
-
-      let xPos = startX + 2;
-      headers.forEach((header, i) => {
-        const width = colWidths[i] ?? 50;
-        doc.fillColor('#fff').text(header, xPos, tableTop + 3, { width: width - 4 });
-        xPos += width;
+      doc.fontSize(10).fillColor('#000000');
+      doc.text(`Totale: ${attivita.length} attività - ${totalHours} ore`, {
+        width: TABLE_WIDTH,
+        align: 'center',
       });
+      doc.moveDown(0.5);
 
-      // Table rows
-      let yPos = tableTop + 14;
-      const rowHeight = 11;
+      // Table. Same columns and same order as the Excel sheet
+      let y = drawTableHeader(doc.y);
 
-      attivita.forEach((att, index) => {
-        if (yPos > 560) {
+      sortForReport(attivita).forEach((att, index) => {
+        const cells = PDF_COLUMNS.map((col) => ({ col, text: col.value(att) }));
+
+        // Text wraps inside the cell, so the row is as tall as its tallest cell
+        const contentHeight = cells.reduce(
+          (max, { col, text }) =>
+            Math.max(max, doc.heightOfString(text, { width: col.width - CELL_PAD_X * 2 })),
+          0
+        );
+        const rowHeight = Math.min(
+          Math.max(contentHeight + CELL_PAD_Y * 2, MIN_ROW_HEIGHT),
+          MAX_ROW_HEIGHT
+        );
+
+        if (y + rowHeight > PDF_BOTTOM) {
           doc.addPage();
-          yPos = 25;
+          y = drawTableHeader(PDF_MARGIN);
         }
 
-        // Alternate row background
         if (index % 2 === 0) {
-          doc.rect(startX, yPos - 1, tableWidth, rowHeight).fill('#f8f8f8');
+          doc.rect(PDF_MARGIN, y, TABLE_WIDTH, rowHeight).fill('#f5f5f5');
         }
 
-        xPos = startX + 2;
-        doc.fillColor('#000').fontSize(6);
-
-        const row = [
-          formatDate(att.dataRiferimento),
-          `${att.utente.nome} ${att.utente.cognome}`,
-          att.cliente?.nome ?? '',
-          att.cantiere?.nome ?? '',
-          att.tipoAttivita?.nome ?? '',
-          att.assenza?.nome ?? '',
-          att.note || '-',
-          formatTimeSlot(att.oraInizioMattino, att.oraFineMattino),
-          formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio),
-          formatDuration(att.durataMinuti),
-        ];
-
-        row.forEach((cell, i) => {
-          const width = colWidths[i] ?? 50;
-          const maxChars = Math.floor(width / 3.5);
-          const truncated = cell.length > maxChars ? cell.substring(0, maxChars - 1) + '…' : cell;
-          doc.text(truncated, xPos, yPos + 2, { width: width - 4 });
-          xPos += width;
+        doc.fillColor('#000000');
+        let x = PDF_MARGIN;
+        cells.forEach(({ col, text }) => {
+          // height keeps the cell inside its own row: a row clamped to
+          // MAX_ROW_HEIGHT would otherwise spill over the ones below.
+          // No `ellipsis`: pdfkit appends it whenever the *next* line would not
+          // fit, so with a height set every cell would end in "…"
+          doc.text(text, x + CELL_PAD_X, y + CELL_PAD_Y, {
+            width: col.width - CELL_PAD_X * 2,
+            height: rowHeight - CELL_PAD_Y,
+          });
+          x += col.width;
         });
 
-        yPos += rowHeight;
+        drawGrid(y, rowHeight);
+        y += rowHeight;
       });
 
       doc.end();
@@ -218,6 +305,7 @@ export class ExportService {
       fgColor: { argb: 'FF333333' },
     };
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    applyGrid(headerRow, 10);
 
     // Set column widths
     worksheet.columns = [
@@ -252,6 +340,7 @@ export class ExportService {
 
       // Without wrapText Excel shows the line breaks as a single long line
       row.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+      applyGrid(row, 10);
     });
 
     // Aggregation by client
@@ -273,16 +362,18 @@ export class ExportService {
 
     const clientHeaderRow = summarySheet.addRow(['Cliente', 'Attività', 'Ore', 'Durata']);
     clientHeaderRow.font = { bold: true };
+    applyGrid(clientHeaderRow, 4);
 
     Array.from(clientStats.entries())
       .sort((a, b) => b[1].minutes - a[1].minutes)
       .forEach(([cliente, stats]) => {
-        summarySheet.addRow([
+        const row = summarySheet.addRow([
           cliente,
           stats.count,
           (stats.minutes / 60).toFixed(1),
           formatDuration(stats.minutes),
         ]);
+        applyGrid(row, 4);
       });
 
     summarySheet.columns = [
@@ -301,6 +392,7 @@ export class ExportService {
 
     const empHeaderRow = summarySheet.addRow(['Dipendente', 'Attività', 'Ore', 'Durata']);
     empHeaderRow.font = { bold: true };
+    applyGrid(empHeaderRow, 4);
 
     const empStats = new Map<string, { count: number; minutes: number }>();
     attivita.forEach((att) => {
@@ -315,12 +407,13 @@ export class ExportService {
     Array.from(empStats.entries())
       .sort((a, b) => b[1].minutes - a[1].minutes)
       .forEach(([dipendente, stats]) => {
-        summarySheet.addRow([
+        const row = summarySheet.addRow([
           dipendente,
           stats.count,
           (stats.minutes / 60).toFixed(1),
           formatDuration(stats.minutes),
         ]);
+        applyGrid(row, 4);
       });
 
     const buffer = await workbook.xlsx.writeBuffer();
