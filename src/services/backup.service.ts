@@ -19,6 +19,7 @@ interface BackupData {
     vociBollettino?: any[];
     bollettini?: any[];
     righeBollettino?: any[];
+    calendarioEventi?: any[];
   };
 }
 
@@ -77,6 +78,7 @@ export class BackupService {
           vociBollettino: await this.prisma.voceBollettino.findMany(),
           bollettini: await this.prisma.bollettino.findMany(),
           righeBollettino: await this.prisma.rigaBollettino.findMany(),
+          calendarioEventi: await this.prisma.calendarioEvento.findMany(),
         },
       };
 
@@ -199,6 +201,9 @@ export class BackupService {
       await tx.bollettino.deleteMany();
       await tx.voceBollettino.deleteMany();
       await tx.attivita.deleteMany();
+      // Anche gli eventi referenziano i clienti: senza questa riga la
+      // deleteMany dei clienti fallirebbe sul vincolo di chiave esterna
+      await tx.calendarioEvento.deleteMany();
       await tx.tipoAssenza.deleteMany();
       await tx.tipoAttivita.deleteMany();
       await tx.cantiere.deleteMany();
@@ -215,6 +220,13 @@ export class BackupService {
       if (backupData.tables.clienti.length > 0) {
         await tx.cliente.createMany({ data: backupData.tables.clienti });
         stats.clienti = backupData.tables.clienti.length;
+      }
+
+      // I backup creati prima del calendario eventi non hanno la sezione
+      const calendarioEventi = backupData.tables.calendarioEventi ?? [];
+      if (calendarioEventi.length > 0) {
+        await tx.calendarioEvento.createMany({ data: calendarioEventi });
+        stats.calendarioEventi = calendarioEventi.length;
       }
 
       if (backupData.tables.cantieri.length > 0) {
@@ -273,6 +285,7 @@ export class BackupService {
         'voci_bollettino',
         'bollettini',
         'righe_bollettino',
+        'calendario_eventi',
       ];
       for (const table of tables) {
         try {

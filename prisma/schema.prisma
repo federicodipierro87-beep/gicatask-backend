@@ -39,6 +39,7 @@ model Cliente {
 
   cantieri Cantiere[]
   attivita Attivita[]
+  eventi   CalendarioEvento[]
 
   @@map("clienti")
 }
@@ -109,6 +110,28 @@ model Attivita {
   createdBy    Utente       @relation("CreatoDa", fields: [createdById], references: [id])
 
   @@map("attivita")
+}
+
+/// Eventi del calendario annuale: durata dell'evento piu' le date opzionali
+/// di consegna e smontaggio, che possono cadere in un anno diverso.
+/// Le date sono @db.Date perche' contano i giorni, non gli istanti.
+model CalendarioEvento {
+  id             Int       @id @default(autoincrement())
+  clienteId      Int       @map("cliente_id")
+  nome           String?
+  dataInizio     DateTime  @map("data_inizio")     @db.Date
+  dataFine       DateTime  @map("data_fine")       @db.Date
+  dataConsegna   DateTime? @map("data_consegna")   @db.Date
+  dataSmontaggio DateTime? @map("data_smontaggio") @db.Date
+  importo        Float?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt      @map("updated_at")
+
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+
+  @@index([dataInizio])
+  @@index([clienteId])
+  @@map("calendario_eventi")
 }
 
 model BackupLog {
