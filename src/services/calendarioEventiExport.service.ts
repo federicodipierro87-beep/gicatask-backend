@@ -38,9 +38,9 @@ const BORDO_HAIR = {
 export type Pallino = 'consegna' | 'evento' | 'smontaggio';
 
 const COLORE_PALLINO: Record<Pallino, string> = {
-  consegna: VERDE,
+  consegna: ROSSO,
   evento: NERO,
-  smontaggio: ROSSO,
+  smontaggio: VERDE,
 };
 
 // Nella stessa cella possono cadere piu' tipi: l'ordine e' sempre questo,
