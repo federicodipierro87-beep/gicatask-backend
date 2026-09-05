@@ -11,6 +11,8 @@ import { importRoutes } from './import.routes.js';
 import { vociBollettinoRoutes } from './vociBollettino.routes.js';
 import { bollettiniRoutes } from './bollettini.routes.js';
 import { calendarioEventiRoutes } from './calendarioEventi.routes.js';
+import { dreamVeicoliRoutes } from './dreamVeicoli.routes.js';
+import { dreamNoleggiRoutes } from './dreamNoleggi.routes.js';
 
 export const registerRoutes: FastifyPluginAsync = async (fastify) => {
   // Health check
@@ -33,4 +35,6 @@ export const registerRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(vociBollettinoRoutes, { prefix: '/api/voci-bollettino' });
   await fastify.register(bollettiniRoutes, { prefix: '/api/bollettini' });
   await fastify.register(calendarioEventiRoutes, { prefix: '/api/calendario-eventi' });
+  await fastify.register(dreamVeicoliRoutes, { prefix: '/api/dream-veicoli' });
+  await fastify.register(dreamNoleggiRoutes, { prefix: '/api/dream-noleggi' });
 };

@@ -20,6 +20,8 @@ interface BackupData {
     bollettini?: any[];
     righeBollettino?: any[];
     calendarioEventi?: any[];
+    dreamVeicoli?: any[];
+    dreamNoleggi?: any[];
   };
 }
 
@@ -79,6 +81,8 @@ export class BackupService {
           bollettini: await this.prisma.bollettino.findMany(),
           righeBollettino: await this.prisma.rigaBollettino.findMany(),
           calendarioEventi: await this.prisma.calendarioEvento.findMany(),
+          dreamVeicoli: await this.prisma.dreamVeicolo.findMany(),
+          dreamNoleggi: await this.prisma.dreamNoleggio.findMany(),
         },
       };
 
@@ -204,6 +208,9 @@ export class BackupService {
       // Anche gli eventi referenziano i clienti: senza questa riga la
       // deleteMany dei clienti fallirebbe sul vincolo di chiave esterna
       await tx.calendarioEvento.deleteMany();
+      // I noleggi referenziano i veicoli: vanno svuotati per primi
+      await tx.dreamNoleggio.deleteMany();
+      await tx.dreamVeicolo.deleteMany();
       await tx.tipoAssenza.deleteMany();
       await tx.tipoAttivita.deleteMany();
       await tx.cantiere.deleteMany();
@@ -273,6 +280,19 @@ export class BackupService {
         stats.righeBollettino = righeBollettino.length;
       }
 
+      // I backup creati prima di Dream Noleggio non hanno le due sezioni
+      const dreamVeicoli = backupData.tables.dreamVeicoli ?? [];
+      if (dreamVeicoli.length > 0) {
+        await tx.dreamVeicolo.createMany({ data: dreamVeicoli });
+        stats.dreamVeicoli = dreamVeicoli.length;
+      }
+
+      const dreamNoleggi = backupData.tables.dreamNoleggi ?? [];
+      if (dreamNoleggi.length > 0) {
+        await tx.dreamNoleggio.createMany({ data: dreamNoleggi });
+        stats.dreamNoleggi = dreamNoleggi.length;
+      }
+
       // Reset sequences for PostgreSQL
       const tables = [
         'utenti',
@@ -286,6 +306,8 @@ export class BackupService {
         'bollettini',
         'righe_bollettino',
         'calendario_eventi',
+        'dream_veicoli',
+        'dream_noleggi',
       ];
       for (const table of tables) {
         try {

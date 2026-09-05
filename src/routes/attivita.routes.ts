@@ -13,7 +13,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * a header injection vector. Without a valid period the download date is used,
  * as before.
  */
-function periodoPerNomeFile(startDate?: string, endDate?: string): string {
+export function periodoPerNomeFile(startDate?: string, endDate?: string): string {
   if (startDate && endDate && ISO_DATE.test(startDate) && ISO_DATE.test(endDate)) {
     return `${startDate}_${endDate}`;
   }

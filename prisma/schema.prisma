@@ -134,6 +134,44 @@ model CalendarioEvento {
   @@map("calendario_eventi")
 }
 
+enum QuotaNoleggio {
+  SETTANTA_TRENTA
+  CENTO
+}
+
+model DreamVeicolo {
+  id        Int      @id @default(autoincrement())
+  nome      String   @unique
+  attivo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  noleggi DreamNoleggio[]
+
+  @@map("dream_veicoli")
+}
+
+/// Il veicolo si disattiva e non si cancella, quindi la relazione non ha
+/// bisogno di onDelete. `importoCalcolato` e' persistito e non ricalcolato in
+/// lettura: il report somma una colonna esistente e uno storico non cambia se
+/// un giorno cambia la percentuale.
+model DreamNoleggio {
+  id               Int           @id @default(autoincrement())
+  veicoloId        Int           @map("veicolo_id")
+  data             DateTime      @db.Date
+  osservazioni     String?       @db.Text
+  importo          Float
+  quota            QuotaNoleggio
+  importoCalcolato Float         @map("importo_calcolato")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt      @map("updated_at")
+
+  veicolo DreamVeicolo @relation(fields: [veicoloId], references: [id])
+
+  @@index([data])
+  @@map("dream_noleggi")
+}
+
 model BackupLog {
   id         Int         @id @default(autoincrement())
   filename   String
