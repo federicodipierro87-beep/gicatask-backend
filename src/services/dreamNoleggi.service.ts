@@ -33,6 +33,7 @@ export function calcolaImporto(importo: number, quota: QuotaNoleggio): number {
 
 export interface DreamNoleggioInput {
   veicoloId: number;
+  clienteId?: number | null;
   data: string;
   osservazioni?: string | null;
   importo: number;
@@ -45,8 +46,9 @@ export interface DreamNoleggiFilters {
   veicoloId?: number;
 }
 
-const includeVeicolo = {
+const includeRelazioni = {
   veicolo: { select: { id: true, nome: true } },
+  cliente: { select: { id: true, nome: true } },
 } satisfies Prisma.DreamNoleggioInclude;
 
 function toData(input: DreamNoleggioInput) {
@@ -54,6 +56,7 @@ function toData(input: DreamNoleggioInput) {
 
   return {
     veicoloId: input.veicoloId,
+    clienteId: input.clienteId ?? null,
     data: parseDataSolo(input.data),
     osservazioni: osservazioni ? osservazioni : null,
     importo: input.importo,
@@ -81,7 +84,7 @@ export class DreamNoleggiService {
         ...(data ? { data } : {}),
         ...(veicoloId ? { veicoloId } : {}),
       },
-      include: includeVeicolo,
+      include: includeRelazioni,
       orderBy: [{ data: 'asc' }, { id: 'asc' }],
     });
   }
@@ -89,14 +92,14 @@ export class DreamNoleggiService {
   async getById(id: number) {
     return this.prisma.dreamNoleggio.findUnique({
       where: { id },
-      include: includeVeicolo,
+      include: includeRelazioni,
     });
   }
 
   async create(input: DreamNoleggioInput) {
     return this.prisma.dreamNoleggio.create({
       data: toData(input),
-      include: includeVeicolo,
+      include: includeRelazioni,
     });
   }
 
@@ -104,7 +107,7 @@ export class DreamNoleggiService {
     return this.prisma.dreamNoleggio.update({
       where: { id },
       data: toData(input),
-      include: includeVeicolo,
+      include: includeRelazioni,
     });
   }
 

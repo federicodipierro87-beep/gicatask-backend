@@ -37,9 +37,10 @@ model Cliente {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  cantieri Cantiere[]
-  attivita Attivita[]
-  eventi   CalendarioEvento[]
+  cantieri      Cantiere[]
+  attivita      Attivita[]
+  eventi        CalendarioEvento[]
+  dreamNoleggi  DreamNoleggio[]
 
   @@map("clienti")
 }
@@ -158,6 +159,7 @@ model DreamVeicolo {
 model DreamNoleggio {
   id               Int           @id @default(autoincrement())
   veicoloId        Int           @map("veicolo_id")
+  clienteId        Int?          @map("cliente_id")
   data             DateTime      @db.Date
   osservazioni     String?       @db.Text
   importo          Float
@@ -167,6 +169,7 @@ model DreamNoleggio {
   updatedAt        DateTime      @updatedAt      @map("updated_at")
 
   veicolo DreamVeicolo @relation(fields: [veicoloId], references: [id])
+  cliente Cliente?     @relation(fields: [clienteId], references: [id])
 
   @@index([data])
   @@map("dream_noleggi")

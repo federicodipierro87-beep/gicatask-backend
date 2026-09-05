@@ -13,6 +13,7 @@ const noleggioBodySchema = {
   required: ['veicoloId', 'data', 'importo', 'quota'],
   properties: {
     veicoloId: { type: 'integer' },
+    clienteId: { type: ['integer', 'null'] },
     data: { type: 'string', pattern: ISO_DATE_PATTERN },
     osservazioni: { type: ['string', 'null'] },
     importo: { type: 'number' },
@@ -63,7 +64,7 @@ export async function dreamNoleggiRoutes(fastify: FastifyInstance) {
     }
 
     const buffer = await pdfService.generaPdf(noleggi, { startDate, endDate });
-    const filename = `dream-noleggio-${periodoPerNomeFile(startDate, endDate)}.pdf`;
+    const filename = `dream-${periodoPerNomeFile(startDate, endDate)}.pdf`;
 
     return reply
       .header('Content-Type', 'application/pdf')

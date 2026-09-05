@@ -8,6 +8,7 @@ interface NoleggioExport {
   quota: QuotaNoleggio;
   importoCalcolato: number;
   veicolo: { nome: string };
+  cliente: { nome: string } | null;
 }
 
 interface PeriodoFiltri {
@@ -56,12 +57,13 @@ interface PdfColumn {
 
 // Le larghezze sommano a 545: A4 verticale meno i due margini
 const PDF_COLUMNS: PdfColumn[] = [
-  { header: 'Data', width: 60, value: (n) => formatData(n.data) },
-  { header: 'Veicolo', width: 115, value: (n) => n.veicolo.nome },
-  { header: 'Osservazioni', width: 210, value: (n) => n.osservazioni || '-' },
-  { header: 'Importo', width: 65, value: (n) => formatImporto(n.importo) },
+  { header: 'Data', width: 55, value: (n) => formatData(n.data) },
+  { header: 'Veicolo', width: 95, value: (n) => n.veicolo.nome },
+  { header: 'Cliente', width: 95, value: (n) => n.cliente?.nome || '-' },
+  { header: 'Osservazioni', width: 140, value: (n) => n.osservazioni || '-' },
+  { header: 'Importo', width: 60, value: (n) => formatImporto(n.importo) },
   { header: 'Quota', width: 45, value: (n) => etichettaQuota(n.quota) },
-  { header: 'Importo calc.', width: 50, value: (n) => formatImporto(n.importoCalcolato) },
+  { header: 'Importo calc.', width: 55, value: (n) => formatImporto(n.importoCalcolato) },
 ];
 
 const TABLE_WIDTH = PDF_COLUMNS.reduce((sum, col) => sum + col.width, 0);
@@ -115,7 +117,7 @@ export class DreamNoleggiPdfService {
 
       // Titolo
       doc.font('Helvetica-Bold').fontSize(16).fillColor('#000000');
-      doc.text('Report Dream Noleggio', PDF_MARGIN, PDF_MARGIN, {
+      doc.text('Report Dream', PDF_MARGIN, PDF_MARGIN, {
         width: TABLE_WIDTH,
         align: 'center',
       });
@@ -174,7 +176,7 @@ export class DreamNoleggiPdfService {
       const totaleImporto = noleggi.reduce((sum, n) => sum + n.importo, 0);
       const totaleCalcolato = noleggi.reduce((sum, n) => sum + n.importoCalcolato, 0);
 
-      const totali = ['', '', 'TOTALE', formatImporto(totaleImporto), '-', formatImporto(totaleCalcolato)];
+      const totali = ['', '', '', 'TOTALE', formatImporto(totaleImporto), '-', formatImporto(totaleCalcolato)];
 
       if (y + MIN_ROW_HEIGHT > PDF_BOTTOM) {
         doc.addPage();
