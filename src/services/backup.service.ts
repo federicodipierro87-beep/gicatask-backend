@@ -21,6 +21,7 @@ interface BackupData {
     righeBollettino?: any[];
     calendarioEventi?: any[];
     dreamVeicoli?: any[];
+    dreamClienti?: any[];
     dreamNoleggi?: any[];
   };
 }
@@ -82,6 +83,7 @@ export class BackupService {
           righeBollettino: await this.prisma.rigaBollettino.findMany(),
           calendarioEventi: await this.prisma.calendarioEvento.findMany(),
           dreamVeicoli: await this.prisma.dreamVeicolo.findMany(),
+          dreamClienti: await this.prisma.dreamCliente.findMany(),
           dreamNoleggi: await this.prisma.dreamNoleggio.findMany(),
         },
       };
@@ -208,9 +210,10 @@ export class BackupService {
       // Anche gli eventi referenziano i clienti: senza questa riga la
       // deleteMany dei clienti fallirebbe sul vincolo di chiave esterna
       await tx.calendarioEvento.deleteMany();
-      // I noleggi referenziano i veicoli: vanno svuotati per primi
+      // I noleggi referenziano veicoli e clienti Dream: vanno svuotati per primi
       await tx.dreamNoleggio.deleteMany();
       await tx.dreamVeicolo.deleteMany();
+      await tx.dreamCliente.deleteMany();
       await tx.tipoAssenza.deleteMany();
       await tx.tipoAttivita.deleteMany();
       await tx.cantiere.deleteMany();
@@ -280,11 +283,17 @@ export class BackupService {
         stats.righeBollettino = righeBollettino.length;
       }
 
-      // I backup creati prima di Dream Noleggio non hanno le due sezioni
+      // I backup creati prima di Dream non hanno queste sezioni
       const dreamVeicoli = backupData.tables.dreamVeicoli ?? [];
       if (dreamVeicoli.length > 0) {
         await tx.dreamVeicolo.createMany({ data: dreamVeicoli });
         stats.dreamVeicoli = dreamVeicoli.length;
+      }
+
+      const dreamClienti = backupData.tables.dreamClienti ?? [];
+      if (dreamClienti.length > 0) {
+        await tx.dreamCliente.createMany({ data: dreamClienti });
+        stats.dreamClienti = dreamClienti.length;
       }
 
       const dreamNoleggi = backupData.tables.dreamNoleggi ?? [];
@@ -307,6 +316,7 @@ export class BackupService {
         'righe_bollettino',
         'calendario_eventi',
         'dream_veicoli',
+        'dream_clienti',
         'dream_noleggi',
       ];
       for (const table of tables) {

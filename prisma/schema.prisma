@@ -37,10 +37,9 @@ model Cliente {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  cantieri      Cantiere[]
-  attivita      Attivita[]
-  eventi        CalendarioEvento[]
-  dreamNoleggi  DreamNoleggio[]
+  cantieri Cantiere[]
+  attivita Attivita[]
+  eventi   CalendarioEvento[]
 
   @@map("clienti")
 }
@@ -152,10 +151,24 @@ model DreamVeicolo {
   @@map("dream_veicoli")
 }
 
-/// Il veicolo si disattiva e non si cancella, quindi la relazione non ha
-/// bisogno di onDelete. `importoCalcolato` e' persistito e non ricalcolato in
-/// lettura: il report somma una colonna esistente e uno storico non cambia se
-/// un giorno cambia la percentuale.
+/// Anagrafica separata da `clienti`: i clienti del noleggio Dream sono un
+/// insieme diverso da quelli dei cantieri, non un sottoinsieme.
+model DreamCliente {
+  id        Int      @id @default(autoincrement())
+  nome      String   @unique
+  attivo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  noleggi DreamNoleggio[]
+
+  @@map("dream_clienti")
+}
+
+/// Veicolo e cliente si disattivano e non si cancellano, quindi le relazioni
+/// non hanno bisogno di onDelete. `importoCalcolato` e' persistito e non
+/// ricalcolato in lettura: il report somma una colonna esistente e uno storico
+/// non cambia se un giorno cambia la percentuale.
 model DreamNoleggio {
   id               Int           @id @default(autoincrement())
   veicoloId        Int           @map("veicolo_id")
@@ -168,8 +181,8 @@ model DreamNoleggio {
   createdAt        DateTime      @default(now()) @map("created_at")
   updatedAt        DateTime      @updatedAt      @map("updated_at")
 
-  veicolo DreamVeicolo @relation(fields: [veicoloId], references: [id])
-  cliente Cliente?     @relation(fields: [clienteId], references: [id])
+  veicolo DreamVeicolo  @relation(fields: [veicoloId], references: [id])
+  cliente DreamCliente? @relation(fields: [clienteId], references: [id])
 
   @@index([data])
   @@map("dream_noleggi")
