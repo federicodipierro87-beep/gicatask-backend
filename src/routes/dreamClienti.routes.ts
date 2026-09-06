@@ -1,11 +1,16 @@
 import { FastifyInstance } from 'fastify';
 import { DreamClientiService } from '../services/dreamClienti.service.js';
 
+/**
+ * Anche la lettura vuole il ruolo, a differenza di `clienti.routes.ts`: quella
+ * e' l'anagrafica generale e serve ai dipendenti nei form, questa vive solo
+ * dentro l'area Dream, che e' gia' riservata al responsabile.
+ */
 export async function dreamClientiRoutes(fastify: FastifyInstance) {
   const service = new DreamClientiService(fastify.prisma);
 
   fastify.get('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
     const { includeInactive } = request.query as { includeInactive?: string };
     const clienti = await service.getAll(includeInactive === 'true');
@@ -13,7 +18,7 @@ export async function dreamClientiRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get<{ Params: { id: string } }>('/:id', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
     const cliente = await service.getById(parseInt(request.params.id, 10));
 

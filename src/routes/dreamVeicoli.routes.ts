@@ -1,11 +1,16 @@
 import { FastifyInstance } from 'fastify';
 import { DreamVeicoliService } from '../services/dreamVeicoli.service.js';
 
+/**
+ * Anche la lettura vuole il ruolo, a differenza di `cantieri.routes.ts` da cui
+ * queste route derivano: li' la lista serve ai dipendenti per compilare i form,
+ * qui l'unica consumatrice e' l'area Dream, che e' gia' solo da responsabile.
+ */
 export async function dreamVeicoliRoutes(fastify: FastifyInstance) {
   const service = new DreamVeicoliService(fastify.prisma);
 
   fastify.get('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
     const { includeInactive } = request.query as { includeInactive?: string };
     const veicoli = await service.getAll(includeInactive === 'true');
@@ -13,7 +18,7 @@ export async function dreamVeicoliRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get<{ Params: { id: string } }>('/:id', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
     const veicolo = await service.getById(parseInt(request.params.id, 10));
 
