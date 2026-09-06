@@ -44,6 +44,17 @@ function formatDuration(minutes: number): string {
   return `${hours}h ${mins}m`;
 }
 
+// Ore in decimali, sempre con due cifre: e' il formato della colonna
+// "Durata (ore)" in entrambi gli export, cosi' la colonna resta incolonnata e
+// il totale in fondo si legge come la somma delle righe sopra
+function oreDecimali(minutes: number): number {
+  return parseFloat((minutes / 60).toFixed(2));
+}
+
+function formatOreDecimali(minutes: number): string {
+  return (minutes / 60).toFixed(2);
+}
+
 // An activity can have the afternoon slot only, and an absence has no slot at all
 function orarioInizio(att: AttivitaExport): string {
   return att.oraInizioMattino || att.oraInizioPomeriggio || '';
@@ -104,7 +115,9 @@ const PDF_COLUMNS: PdfColumn[] = [
   { header: 'Cantiere', width: 140, value: (a) => a.cantiere?.nome ?? '' },
   { header: 'Tipo', width: 120, value: (a) => a.tipoAttivita?.nome ?? '' },
   { header: 'Assenza', width: 100, value: (a) => a.assenza?.nome ?? '' },
-  { header: 'Note', width: 234, value: (a) => a.note || '-' },
+  // 229 e non 234: i 5pt in meno sono andati a "Durata (ore)", la cui
+  // intestazione e' piu' lunga della "Durata" di prima
+  { header: 'Note', width: 229, value: (a) => a.note || '-' },
   {
     header: 'Mattino',
     width: 75,
@@ -115,8 +128,15 @@ const PDF_COLUMNS: PdfColumn[] = [
     width: 75,
     value: (a) => formatTimeSlot(a.oraInizioPomeriggio, a.oraFinePomeriggio),
   },
-  { header: 'Durata', width: 55, value: (a) => formatDuration(a.durataMinuti) },
+  // 60 e non 55: l'intestazione misura 45pt a 8pt grassetto e nella larghezza
+  // di prima le restavano meno di 4pt di margine, troppo pochi per non
+  // rischiare che vada a capo e sfondi l'altezza fissa della testata
+  { header: 'Durata (ore)', width: 60, value: (a) => formatOreDecimali(a.durataMinuti) },
 ];
+
+// La riga dei totali porta l'etichetta nella prima colonna e la somma sotto
+// l'ultima, dove stanno i valori che somma
+const PDF_COLONNA_TOTALE = PDF_COLUMNS.length - 1;
 
 const TABLE_WIDTH = PDF_COLUMNS.reduce((sum, col) => sum + col.width, 0);
 
@@ -215,7 +235,7 @@ export class ExportService {
 
       // Summary
       const totalMinutes = attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
-      const totalHours = (totalMinutes / 60).toFixed(1);
+      const totalHours = formatOreDecimali(totalMinutes);
       doc.fontSize(10).fillColor('#000000');
       doc.text(`Totale: ${attivita.length} attività - ${totalHours} ore`, {
         width: TABLE_WIDTH,
@@ -266,6 +286,31 @@ export class ExportService {
         drawGrid(y, rowHeight);
         y += rowHeight;
       });
+
+      // Riga totali. Se non entra nella pagina corrente ne apre una nuova con
+      // l'intestazione ripetuta, come per le righe normali
+      if (y + MIN_ROW_HEIGHT > PDF_BOTTOM) {
+        doc.addPage();
+        y = drawTableHeader(PDF_MARGIN);
+      }
+
+      doc.font('Helvetica-Bold').fillColor('#000000');
+      let xTotali = PDF_MARGIN;
+      PDF_COLUMNS.forEach((col, index) => {
+        const testo =
+          index === 0 ? 'TOTALE' : index === PDF_COLONNA_TOTALE ? totalHours : '';
+
+        if (testo) {
+          doc.text(testo, xTotali + CELL_PAD_X, y + CELL_PAD_Y, {
+            width: col.width - CELL_PAD_X * 2,
+            height: MIN_ROW_HEIGHT - CELL_PAD_Y,
+          });
+        }
+        xTotali += col.width;
+      });
+
+      drawGrid(y, MIN_ROW_HEIGHT);
+      doc.font('Helvetica');
 
       doc.end();
     });
@@ -335,13 +380,22 @@ export class ExportService {
         wrapNote(att.note),
         formatTimeSlot(att.oraInizioMattino, att.oraFineMattino),
         formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio),
-        parseFloat((att.durataMinuti / 60).toFixed(2)),
+        oreDecimali(att.durataMinuti),
       ]);
 
       // Without wrapText Excel shows the line breaks as a single long line
       row.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+      // Il valore e' un numero: senza formato Excel mostrerebbe 1,5 invece di 1,50
+      row.getCell(10).numFmt = '0.00';
       applyGrid(row, 10);
     });
+
+    // Riga totali in fondo alla tabella
+    const totaleMinuti = attivita.reduce((sum, att) => sum + att.durataMinuti, 0);
+    const totaliRow = worksheet.addRow(['TOTALE', '', '', '', '', '', '', '', '', oreDecimali(totaleMinuti)]);
+    totaliRow.font = { bold: true };
+    totaliRow.getCell(10).numFmt = '0.00';
+    applyGrid(totaliRow, 10);
 
     // Aggregation by client
     const summarySheet = workbook.addWorksheet('Riepilogo');
