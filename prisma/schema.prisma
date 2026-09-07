@@ -146,7 +146,8 @@ model DreamVeicolo {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  noleggi DreamNoleggio[]
+  noleggi     DreamNoleggio[]
+  noleggiGica GicaNoleggio[]
 
   @@map("dream_veicoli")
 }
@@ -160,7 +161,8 @@ model DreamCliente {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  noleggi DreamNoleggio[]
+  noleggi     DreamNoleggio[]
+  noleggiGica GicaNoleggio[]
 
   @@map("dream_clienti")
 }
@@ -186,6 +188,25 @@ model DreamNoleggio {
 
   @@index([data])
   @@map("dream_noleggi")
+}
+
+/// Registro Gica: stessa anagrafica del noleggio Dream (veicoli e clienti sono
+/// condivisi) ma senza quota, quindi senza importo calcolato.
+model GicaNoleggio {
+  id           Int      @id @default(autoincrement())
+  veicoloId    Int      @map("veicolo_id")
+  clienteId    Int?     @map("cliente_id")
+  data         DateTime @db.Date
+  osservazioni String?  @db.Text
+  importo      Float
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
+
+  veicolo DreamVeicolo  @relation(fields: [veicoloId], references: [id])
+  cliente DreamCliente? @relation(fields: [clienteId], references: [id])
+
+  @@index([data])
+  @@map("gica_noleggi")
 }
 
 model BackupLog {

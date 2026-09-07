@@ -23,6 +23,7 @@ interface BackupData {
     dreamVeicoli?: any[];
     dreamClienti?: any[];
     dreamNoleggi?: any[];
+    gicaNoleggi?: any[];
   };
 }
 
@@ -85,6 +86,7 @@ export class BackupService {
           dreamVeicoli: await this.prisma.dreamVeicolo.findMany(),
           dreamClienti: await this.prisma.dreamCliente.findMany(),
           dreamNoleggi: await this.prisma.dreamNoleggio.findMany(),
+          gicaNoleggi: await this.prisma.gicaNoleggio.findMany(),
         },
       };
 
@@ -210,8 +212,10 @@ export class BackupService {
       // Anche gli eventi referenziano i clienti: senza questa riga la
       // deleteMany dei clienti fallirebbe sul vincolo di chiave esterna
       await tx.calendarioEvento.deleteMany();
-      // I noleggi referenziano veicoli e clienti Dream: vanno svuotati per primi
+      // I noleggi Dream e Gica referenziano veicoli e clienti Dream: vanno
+      // svuotati per primi
       await tx.dreamNoleggio.deleteMany();
+      await tx.gicaNoleggio.deleteMany();
       await tx.dreamVeicolo.deleteMany();
       await tx.dreamCliente.deleteMany();
       await tx.tipoAssenza.deleteMany();
@@ -302,6 +306,12 @@ export class BackupService {
         stats.dreamNoleggi = dreamNoleggi.length;
       }
 
+      const gicaNoleggi = backupData.tables.gicaNoleggi ?? [];
+      if (gicaNoleggi.length > 0) {
+        await tx.gicaNoleggio.createMany({ data: gicaNoleggi });
+        stats.gicaNoleggi = gicaNoleggi.length;
+      }
+
       // Reset sequences for PostgreSQL
       const tables = [
         'utenti',
@@ -318,6 +328,7 @@ export class BackupService {
         'dream_veicoli',
         'dream_clienti',
         'dream_noleggi',
+        'gica_noleggi',
       ];
       for (const table of tables) {
         try {

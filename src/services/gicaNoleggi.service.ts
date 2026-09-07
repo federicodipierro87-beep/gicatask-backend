@@ -1,26 +1,15 @@
-import { PrismaClient, Prisma, QuotaNoleggio } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { parseDataSolo } from '../utils/dataSolo.js';
 
-/**
- * Con la quota 70/30 l'azienda incassa il 70% del noleggio, con la quota 100
- * l'intero importo. Il calcolo sta qui e non sul client: il form ne mostra solo
- * un'anteprima, il valore salvato e' quello prodotto dal server.
- */
-export function calcolaImporto(importo: number, quota: QuotaNoleggio): number {
-  const lordo = quota === 'SETTANTA_TRENTA' ? importo * 0.7 : importo;
-  return Math.round(lordo * 100) / 100;
-}
-
-export interface DreamNoleggioInput {
+export interface GicaNoleggioInput {
   veicoloId: number;
   clienteId?: number | null;
   data: string;
   osservazioni?: string | null;
   importo: number;
-  quota: QuotaNoleggio;
 }
 
-export interface DreamNoleggiFilters {
+export interface GicaNoleggiFilters {
   startDate?: string;
   endDate?: string;
   veicoloId?: number;
@@ -29,9 +18,9 @@ export interface DreamNoleggiFilters {
 const includeRelazioni = {
   veicolo: { select: { id: true, nome: true } },
   cliente: { select: { id: true, nome: true } },
-} satisfies Prisma.DreamNoleggioInclude;
+} satisfies Prisma.GicaNoleggioInclude;
 
-function toData(input: DreamNoleggioInput) {
+function toData(input: GicaNoleggioInput) {
   const osservazioni = input.osservazioni?.trim();
 
   return {
@@ -40,15 +29,13 @@ function toData(input: DreamNoleggioInput) {
     data: parseDataSolo(input.data),
     osservazioni: osservazioni ? osservazioni : null,
     importo: input.importo,
-    quota: input.quota,
-    importoCalcolato: calcolaImporto(input.importo, input.quota),
   };
 }
 
-export class DreamNoleggiService {
+export class GicaNoleggiService {
   constructor(private prisma: PrismaClient) {}
 
-  async getAll(filters: DreamNoleggiFilters = {}) {
+  async getAll(filters: GicaNoleggiFilters = {}) {
     const { startDate, endDate, veicoloId } = filters;
 
     const data =
@@ -59,7 +46,7 @@ export class DreamNoleggiService {
           }
         : undefined;
 
-    return this.prisma.dreamNoleggio.findMany({
+    return this.prisma.gicaNoleggio.findMany({
       where: {
         ...(data ? { data } : {}),
         ...(veicoloId ? { veicoloId } : {}),
@@ -70,21 +57,21 @@ export class DreamNoleggiService {
   }
 
   async getById(id: number) {
-    return this.prisma.dreamNoleggio.findUnique({
+    return this.prisma.gicaNoleggio.findUnique({
       where: { id },
       include: includeRelazioni,
     });
   }
 
-  async create(input: DreamNoleggioInput) {
-    return this.prisma.dreamNoleggio.create({
+  async create(input: GicaNoleggioInput) {
+    return this.prisma.gicaNoleggio.create({
       data: toData(input),
       include: includeRelazioni,
     });
   }
 
-  async update(id: number, input: DreamNoleggioInput) {
-    return this.prisma.dreamNoleggio.update({
+  async update(id: number, input: GicaNoleggioInput) {
+    return this.prisma.gicaNoleggio.update({
       where: { id },
       data: toData(input),
       include: includeRelazioni,
@@ -92,6 +79,6 @@ export class DreamNoleggiService {
   }
 
   async delete(id: number) {
-    await this.prisma.dreamNoleggio.delete({ where: { id } });
+    await this.prisma.gicaNoleggio.delete({ where: { id } });
   }
 }
