@@ -36,12 +36,16 @@ function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString('it-IT');
 }
 
+// Il segno va davanti alla stringa intera: un Recupero ore vale -492 minuti e
+// scomporlo con Math.floor produrrebbe "-9h -12m"
 function formatDuration(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hours === 0) return `${mins}m`;
-  if (mins === 0) return `${hours}h`;
-  return `${hours}h ${mins}m`;
+  const segno = minutes < 0 ? '-' : '';
+  const assoluti = Math.abs(minutes);
+  const hours = Math.floor(assoluti / 60);
+  const mins = assoluti % 60;
+  if (hours === 0) return `${segno}${mins}m`;
+  if (mins === 0) return `${segno}${hours}h`;
+  return `${segno}${hours}h ${mins}m`;
 }
 
 // Ore in decimali, sempre con due cifre: e' il formato della colonna

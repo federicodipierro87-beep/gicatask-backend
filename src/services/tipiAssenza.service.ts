@@ -1,4 +1,5 @@
 import { PrismaClient, TipoAssenza } from '@prisma/client';
+import { isAssenzaNegativa } from '../utils/assenze.js';
 
 export class TipiAssenzaService {
   constructor(private prisma: PrismaClient) {}
@@ -23,6 +24,24 @@ export class TipiAssenzaService {
   }
 
   async update(id: number, nome: string): Promise<TipoAssenza> {
+    // Il segno delle ore dipende dal nome: un rename che lo attraversa
+    // cambierebbe di significato tutte le assenze gia' registrate
+    const attuale = await this.prisma.tipoAssenza.findUnique({
+      where: { id },
+      select: { nome: true },
+    });
+
+    if (!attuale) {
+      throw new Error('Tipo assenza non trovato');
+    }
+
+    if (isAssenzaNegativa(attuale.nome) !== isAssenzaNegativa(nome)) {
+      throw new Error(
+        'Questo nome cambierebbe il segno delle ore registrate. ' +
+          'Crea un nuovo tipo assenza invece di rinominare questo.'
+      );
+    }
+
     return this.prisma.tipoAssenza.update({
       where: { id },
       data: { nome },

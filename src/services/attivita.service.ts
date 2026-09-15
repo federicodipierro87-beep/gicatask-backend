@@ -1,5 +1,6 @@
 import { PrismaClient, Attivita } from '@prisma/client';
 import { calculateDurationMinutes } from '../utils/duration.js';
+import { durataAssenzaMinuti } from '../utils/assenze.js';
 
 interface CreateAttivitaInput {
   utenteId: number;
@@ -15,9 +16,6 @@ interface CreateAttivitaInput {
   note?: string;
   createdById: number;
 }
-
-// Un'assenza vale una giornata lavorativa piena, a prescindere dagli orari inseriti
-const DURATA_ASSENZA_MINUTI = 8 * 60 + 12;
 
 function calculateTotalDuration(
   oraInizioMattino?: string,
@@ -137,11 +135,26 @@ export class AttivitaService {
     }
   }
 
+  // Un'assenza vale una giornata lavorativa piena, col segno che dipende dal
+  // tipo: il Recupero ore sottrae le ore invece di aggiungerle
+  private async durataAssenza(assenzaId: number): Promise<number> {
+    const tipo = await this.prisma.tipoAssenza.findUnique({
+      where: { id: assenzaId },
+      select: { nome: true },
+    });
+
+    if (!tipo) {
+      throw new Error('Tipo assenza non valido');
+    }
+
+    return durataAssenzaMinuti(tipo.nome);
+  }
+
   async create(input: CreateAttivitaInput): Promise<Attivita> {
     // With an absence selected, cliente/cantiere and time slots are optional
-    const isAssenza = input.assenzaId != null;
+    const assenzaId = input.assenzaId ?? null;
 
-    if (!isAssenza) {
+    if (assenzaId === null) {
       if (!input.clienteId) {
         throw new Error('Il cliente è obbligatorio');
       }
@@ -156,8 +169,8 @@ export class AttivitaService {
       }
     }
 
-    const durataMinuti = isAssenza
-      ? DURATA_ASSENZA_MINUTI
+    const durataMinuti = assenzaId !== null
+      ? await this.durataAssenza(assenzaId)
       : calculateTotalDuration(
           input.oraInizioMattino,
           input.oraFineMattino,
@@ -230,8 +243,8 @@ export class AttivitaService {
       }
     }
 
-    const durataMinuti = isAssenza
-      ? DURATA_ASSENZA_MINUTI
+    const durataMinuti = assenzaId !== null
+      ? await this.durataAssenza(assenzaId)
       : calculateTotalDuration(
           oraInizioMattino || undefined,
           oraFineMattino || undefined,

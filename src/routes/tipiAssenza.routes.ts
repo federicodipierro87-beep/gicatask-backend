@@ -58,8 +58,14 @@ export async function tipiAssenzaRoutes(fastify: FastifyInstance) {
     },
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
-    const tipo = await service.update(id, request.body.nome);
-    return reply.send(tipo);
+
+    try {
+      const tipo = await service.update(id, request.body.nome);
+      return reply.send(tipo);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Errore';
+      return reply.status(400).send({ error: message });
+    }
   });
 
   // Deactivate tipo assenza (responsabile only)
