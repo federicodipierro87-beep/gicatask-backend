@@ -1,9 +1,30 @@
 import { FastifyInstance } from 'fastify';
 import { AttivitaService } from '../services/attivita.service.js';
 import { ExportService } from '../services/export.service.js';
+import type { ReportFilters } from '../services/export.service.js';
 import type { JwtPayload } from '../types/index.js';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+interface ExportQuery {
+  utenteId?: string;
+  clienteId?: string;
+  cantiereId?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+/**
+ * Id preso dalla query string, `undefined` se non e' un intero.
+ *
+ * `parseInt('abc')` da' `NaN` e un `findUnique({ where: { id: NaN } })` fa
+ * esplodere Prisma con un 500: un id malformato vale come filtro assente.
+ */
+function idNumerico(valore?: string): number | undefined {
+  if (!valore) return undefined;
+  const numero = Number(valore);
+  return Number.isInteger(numero) ? numero : undefined;
+}
 
 /**
  * Build the period fragment of the export file name.
@@ -227,6 +248,40 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Le due route di export leggono gli stessi filtri e hanno bisogno degli
+  // stessi nomi: l'unica differenza e' il formato del file prodotto
+  const datiExport = async (query: ExportQuery) => {
+    const utenteId = idNumerico(query.utenteId);
+    const clienteId = idNumerico(query.clienteId);
+    const cantiereId = idNumerico(query.cantiereId);
+
+    const attivita = await service.getAll({
+      utenteId,
+      clienteId,
+      cantiereId,
+      startDate: query.startDate ? new Date(query.startDate) : undefined,
+      endDate: query.endDate ? new Date(query.endDate) : undefined,
+    });
+
+    const cliente = clienteId !== undefined
+      ? await fastify.prisma.cliente.findUnique({ where: { id: clienteId } })
+      : null;
+
+    const utente = utenteId !== undefined
+      ? await fastify.prisma.utente.findUnique({ where: { id: utenteId } })
+      : null;
+
+    const filters: ReportFilters = {
+      startDate: query.startDate,
+      endDate: query.endDate,
+      clienteNome: cliente?.nome,
+      utenteNome: utente ? `${utente.nome} ${utente.cognome}` : undefined,
+      soloDipendente: utenteId !== undefined && clienteId === undefined && cantiereId === undefined,
+    };
+
+    return { attivita, filters };
+  };
+
   // Export PDF (responsabile only)
   fastify.get('/export/pdf', {
     preHandler: [fastify.authenticate],
@@ -237,50 +292,12 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       return reply.status(403).send({ error: 'Non autorizzato' });
     }
 
-    const { utenteId, clienteId, cantiereId, startDate, endDate } = request.query as {
-      utenteId?: string;
-      clienteId?: string;
-      cantiereId?: string;
-      startDate?: string;
-      endDate?: string;
-    };
+    const query = request.query as ExportQuery;
+    const { attivita, filters } = await datiExport(query);
 
-    const filters = {
-      utenteId: utenteId ? parseInt(utenteId) : undefined,
-      clienteId: clienteId ? parseInt(clienteId) : undefined,
-      cantiereId: cantiereId ? parseInt(cantiereId) : undefined,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
-    };
+    const pdfBuffer = await exportService.generatePDF(attivita, filters);
 
-    const attivita = await service.getAll(filters);
-
-    // Get names for filters
-    let clienteNome: string | undefined;
-    let utenteNome: string | undefined;
-
-    if (clienteId) {
-      const cliente = await fastify.prisma.cliente.findUnique({
-        where: { id: parseInt(clienteId) },
-      });
-      clienteNome = cliente?.nome;
-    }
-
-    if (utenteId) {
-      const utente = await fastify.prisma.utente.findUnique({
-        where: { id: parseInt(utenteId) },
-      });
-      utenteNome = utente ? `${utente.nome} ${utente.cognome}` : undefined;
-    }
-
-    const pdfBuffer = await exportService.generatePDF(attivita, {
-      startDate,
-      endDate,
-      clienteNome,
-      utenteNome,
-    });
-
-    const filename = `report-attivita-${periodoPerNomeFile(startDate, endDate)}.pdf`;
+    const filename = `report-attivita-${periodoPerNomeFile(query.startDate, query.endDate)}.pdf`;
 
     return reply
       .header('Content-Type', 'application/pdf')
@@ -298,27 +315,12 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       return reply.status(403).send({ error: 'Non autorizzato' });
     }
 
-    const { utenteId, clienteId, cantiereId, startDate, endDate } = request.query as {
-      utenteId?: string;
-      clienteId?: string;
-      cantiereId?: string;
-      startDate?: string;
-      endDate?: string;
-    };
+    const query = request.query as ExportQuery;
+    const { attivita, filters } = await datiExport(query);
 
-    const filters = {
-      utenteId: utenteId ? parseInt(utenteId) : undefined,
-      clienteId: clienteId ? parseInt(clienteId) : undefined,
-      cantiereId: cantiereId ? parseInt(cantiereId) : undefined,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
-    };
+    const excelBuffer = await exportService.generateExcel(attivita, filters);
 
-    const attivita = await service.getAll(filters);
-
-    const excelBuffer = await exportService.generateExcel(attivita);
-
-    const filename = `report-attivita-${periodoPerNomeFile(startDate, endDate)}.xlsx`;
+    const filename = `report-attivita-${periodoPerNomeFile(query.startDate, query.endDate)}.xlsx`;
 
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

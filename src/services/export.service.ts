@@ -1,6 +1,12 @@
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
 import { Readable } from 'stream';
+import {
+  MAX_GIORNI_SEGNAPOSTO,
+  giorniPeriodo,
+  giornoNonLavorativo,
+  isoUtc,
+} from '../utils/festivita.js';
 
 interface AttivitaExport {
   id: number;
@@ -25,11 +31,18 @@ function formatTimeSlot(start?: string | null, end?: string | null): string {
   return '-';
 }
 
-interface ReportFilters {
+export interface ReportFilters {
   startDate?: string;
   endDate?: string;
   clienteNome?: string;
   utenteNome?: string;
+  /**
+   * Il report e' filtrato su una sola persona e su nessun cliente o cantiere.
+   * E' la condizione che abilita i giorni segnaposto: con un cliente
+   * selezionato una riga vuota del 12 marzo sembrerebbe dire "non ha
+   * lavorato", mentre direbbe solo "non ha lavorato per quel cliente".
+   */
+  soloDipendente?: boolean;
 }
 
 function formatDate(date: Date): string {
@@ -87,6 +100,97 @@ function sortForReport(attivita: AttivitaExport[]): AttivitaExport[] {
 }
 
 /**
+ * Una riga della tabella del report, o un'attivita' o un giorno senza nulla
+ * registrato.
+ *
+ * `grigia` dipende solo dal giorno, non dal contenuto: la riga di un sabato
+ * lavorato resta grigia. Weekend e festivo collassano qui in un booleano solo,
+ * perche' nessuna colonna li distingue.
+ */
+interface RigaReport {
+  grigia: boolean;
+  /** Mezzanotte UTC, come la `dataRiferimento` che arriva da Prisma. */
+  data: Date;
+  /** Sulle righe vuote e' il dipendente del filtro. */
+  utenteNome: string;
+  att: AttivitaExport | null;
+}
+
+/**
+ * I giorni del periodo in cui il dipendente selezionato non ha registrato
+ * nulla, cosi' il mese si legge intero senza salti.
+ *
+ * Vuoti se manca anche solo una delle condizioni: `utenteNome` e' insieme il
+ * segnale che un dipendente e' selezionato e il dato che riempie la colonna
+ * Dipendente delle righe vuote.
+ */
+function giorniSenzaAttivita(
+  attivita: AttivitaExport[],
+  filters: ReportFilters
+): RigaReport[] {
+  const { startDate, endDate, utenteNome, soloDipendente } = filters;
+  if (!utenteNome || !soloDipendente || !startDate || !endDate) return [];
+
+  // `dataRiferimento` e' @db.Date e Prisma la rilegge a mezzanotte UTC, quindi
+  // qui `toISOString().slice(0, 10)` e' la chiave giorno esatta. Il divieto di
+  // `toISOString` della Nota 8 riguarda le date costruite da componenti
+  // *locali*, che non e' questo caso: non va "corretto".
+  const conAttivita = new Set(
+    attivita.map((att) => isoUtc(new Date(att.dataRiferimento)))
+  );
+
+  return giorniPeriodo(startDate, endDate, MAX_GIORNI_SEGNAPOSTO)
+    .filter((giorno) => !conAttivita.has(giorno))
+    .map((giorno) => ({
+      grigia: giornoNonLavorativo(giorno),
+      // Stessa specie di `Date` delle righe piene, cosi' le due passano dalla
+      // stessa formatDate e non divergono su un server con offset negativo
+      data: new Date(`${giorno}T00:00:00.000Z`),
+      utenteNome,
+      att: null,
+    }));
+}
+
+/** Le righe della tabella, attivita' e giorni vuoti, in ordine di data. */
+function righeReport(
+  attivita: AttivitaExport[],
+  filters: ReportFilters
+): RigaReport[] {
+  const piene: RigaReport[] = sortForReport(attivita).map((att) => {
+    const data = new Date(att.dataRiferimento);
+    return {
+      grigia: giornoNonLavorativo(isoUtc(data)),
+      data,
+      utenteNome: `${att.utente.nome} ${att.utente.cognome}`,
+      att,
+    };
+  });
+
+  const vuote = giorniSenzaAttivita(attivita, filters);
+  if (vuote.length === 0) return piene;
+
+  // Le due liste sono gia' ordinate per data e disgiunte per data (un giorno
+  // segnaposto e' per definizione senza attivita'), quindi si fondono in
+  // lineare: nessun riordino dopo la fusione, cosi' l'ordine interno al giorno
+  // prodotto da sortForReport resta intatto
+  const fuse: RigaReport[] = [];
+  let i = 0;
+  let j = 0;
+
+  while (i < piene.length && j < vuote.length) {
+    fuse.push(
+      (piene[i] as RigaReport).data <= (vuote[j] as RigaReport).data
+        ? (piene[i++] as RigaReport)
+        : (vuote[j++] as RigaReport)
+    );
+  }
+  while (i < piene.length) fuse.push(piene[i++] as RigaReport);
+  while (j < vuote.length) fuse.push(vuote[j++] as RigaReport);
+
+  return fuse;
+}
+
+/**
  * PDF layout. The report is printed by the customer on A3 landscape, so the
  * page is 1191x842pt and the table can use 1141pt of width.
  */
@@ -105,37 +209,49 @@ const HEADER_FONT_SIZE = 8;
 const GRID_COLOR = '#999999';
 const GRID_LINE_WIDTH = 0.5;
 
+// Weekend e festivi. Da tenere allineato all'ARGB di XLS_GRIGIO_FESTIVO: i due
+// export vanno letti uno accanto all'altro.
+// Non e' lo zebra striping di prima, che e' stato tolto: alternare il grigio
+// riga su riga renderebbe grigio un martedi' su due e il colore smetterebbe di
+// voler dire "giorno non lavorativo"
+const PDF_GRIGIO_FESTIVO = '#ededed';
+const XLS_GRIGIO_FESTIVO = 'FFEDEDED';
+
 interface PdfColumn {
   header: string;
   width: number;
-  value: (att: AttivitaExport) => string;
+  value: (riga: RigaReport) => string;
 }
 
 // The widths add up to 1141: A3 landscape width minus the two margins
 const PDF_COLUMNS: PdfColumn[] = [
-  { header: 'Data', width: 62, value: (a) => formatDate(a.dataRiferimento) },
-  { header: 'Dipendente', width: 130, value: (a) => `${a.utente.nome} ${a.utente.cognome}` },
-  { header: 'Cliente', width: 150, value: (a) => a.cliente?.nome ?? '' },
-  { header: 'Cantiere', width: 140, value: (a) => a.cantiere?.nome ?? '' },
-  { header: 'Tipo', width: 120, value: (a) => a.tipoAttivita?.nome ?? '' },
-  { header: 'Assenza', width: 100, value: (a) => a.assenza?.nome ?? '' },
+  { header: 'Data', width: 62, value: (r) => formatDate(r.data) },
+  { header: 'Dipendente', width: 130, value: (r) => r.utenteNome },
+  { header: 'Cliente', width: 150, value: (r) => r.att?.cliente?.nome ?? '' },
+  { header: 'Cantiere', width: 140, value: (r) => r.att?.cantiere?.nome ?? '' },
+  { header: 'Tipo', width: 120, value: (r) => r.att?.tipoAttivita?.nome ?? '' },
+  { header: 'Assenza', width: 100, value: (r) => r.att?.assenza?.nome ?? '' },
   // 229 e non 234: i 5pt in meno sono andati a "Durata (ore)", la cui
-  // intestazione e' piu' lunga della "Durata" di prima
-  { header: 'Note', width: 229, value: (a) => a.note || '-' },
+  // intestazione e' piu' lunga della "Durata" di prima.
+  // Il ramo esplicito sul giorno vuoto serve: il trattino significa "attivita'
+  // senza note", non "giorno senza attivita'"
+  { header: 'Note', width: 229, value: (r) => (r.att ? r.att.note || '-' : '') },
   {
     header: 'Mattino',
     width: 75,
-    value: (a) => formatTimeSlot(a.oraInizioMattino, a.oraFineMattino),
+    value: (r) =>
+      r.att ? formatTimeSlot(r.att.oraInizioMattino, r.att.oraFineMattino) : '',
   },
   {
     header: 'Pomeriggio',
     width: 75,
-    value: (a) => formatTimeSlot(a.oraInizioPomeriggio, a.oraFinePomeriggio),
+    value: (r) =>
+      r.att ? formatTimeSlot(r.att.oraInizioPomeriggio, r.att.oraFinePomeriggio) : '',
   },
   // 60 e non 55: l'intestazione misura 45pt a 8pt grassetto e nella larghezza
   // di prima le restavano meno di 4pt di margine, troppo pochi per non
   // rischiare che vada a capo e sfondi l'altezza fissa della testata
-  { header: 'Durata (ore)', width: 60, value: (a) => formatOreDecimali(a.durataMinuti) },
+  { header: 'Durata (ore)', width: 60, value: (r) => (r.att ? formatOreDecimali(r.att.durataMinuti) : '') },
 ];
 
 // La riga dei totali porta l'etichetta nella prima colonna e la somma sotto
@@ -157,9 +273,15 @@ const GRID_BORDER: Partial<ExcelJS.Borders> = {
   right: { style: 'thin', color: { argb: 'FF999999' } },
 };
 
-function applyGrid(row: ExcelJS.Row, columnCount: number): void {
+function applyGrid(row: ExcelJS.Row, columnCount: number, sfondo?: string): void {
   for (let i = 1; i <= columnCount; i++) {
-    row.getCell(i).border = GRID_BORDER;
+    const cell = row.getCell(i);
+    cell.border = GRID_BORDER;
+    // Cella per cella e non `row.fill`: il ciclo esiste gia' e non lascia
+    // dubbi su quali celle vengono colorate
+    if (sfondo) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: sfondo } };
+    }
   }
 }
 
@@ -250,8 +372,8 @@ export class ExportService {
       // Table. Same columns and same order as the Excel sheet
       let y = drawTableHeader(doc.y);
 
-      sortForReport(attivita).forEach((att, index) => {
-        const cells = PDF_COLUMNS.map((col) => ({ col, text: col.value(att) }));
+      righeReport(attivita, filters).forEach((riga) => {
+        const cells = PDF_COLUMNS.map((col) => ({ col, text: col.value(riga) }));
 
         // Text wraps inside the cell, so the row is as tall as its tallest cell
         const contentHeight = cells.reduce(
@@ -269,10 +391,16 @@ export class ExportService {
           y = drawTableHeader(PDF_MARGIN);
         }
 
-        if (index % 2 === 0) {
-          doc.rect(PDF_MARGIN, y, TABLE_WIDTH, rowHeight).fill('#f5f5f5');
+        // Dopo il controllo di salto pagina, che riassegna `y`. I feriali non
+        // si dipingono di bianco: la pagina e' gia' bianca e un rect coprirebbe
+        // meta' del bordo inferiore della riga sopra
+        if (riga.grigia) {
+          doc.rect(PDF_MARGIN, y, TABLE_WIDTH, rowHeight).fill(PDF_GRIGIO_FESTIVO);
         }
 
+        // Fuori dall'if: `fill()` sporca il fillColor corrente, quindi dentro
+        // il ramo grigio tutte le righe dopo una grigia uscirebbero col testo
+        // grigio
         doc.fillColor('#000000');
         let x = PDF_MARGIN;
         cells.forEach(({ col, text }) => {
@@ -320,7 +448,7 @@ export class ExportService {
     });
   }
 
-  async generateExcel(attivita: AttivitaExport[]): Promise<Buffer> {
+  async generateExcel(attivita: AttivitaExport[], filters: ReportFilters): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'GicaTask';
     workbook.created = new Date();
@@ -373,25 +501,28 @@ export class ExportService {
     ];
 
     // Data rows, grouped by employee and ordered by date and start time
-    sortForReport(attivita).forEach((att) => {
+    righeReport(attivita, filters).forEach((riga) => {
+      const att = riga.att;
       const row = worksheet.addRow([
-        formatDate(att.dataRiferimento),
-        `${att.utente.nome} ${att.utente.cognome}`,
-        att.cliente?.nome ?? '',
-        att.cantiere?.nome ?? '',
-        att.tipoAttivita?.nome ?? '',
-        att.assenza?.nome ?? '',
-        wrapNote(att.note),
-        formatTimeSlot(att.oraInizioMattino, att.oraFineMattino),
-        formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio),
-        oreDecimali(att.durataMinuti),
+        formatDate(riga.data),
+        riga.utenteNome,
+        att?.cliente?.nome ?? '',
+        att?.cantiere?.nome ?? '',
+        att?.tipoAttivita?.nome ?? '',
+        att?.assenza?.nome ?? '',
+        att ? wrapNote(att.note) : '',
+        att ? formatTimeSlot(att.oraInizioMattino, att.oraFineMattino) : '',
+        att ? formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio) : '',
+        // `null` e non `0`: uno zero si sommerebbe a vista con le durate vere.
+        // La cella viene creata lo stesso, quindi resta grigia e bordata
+        att ? oreDecimali(att.durataMinuti) : null,
       ]);
 
       // Without wrapText Excel shows the line breaks as a single long line
       row.getCell(7).alignment = { wrapText: true, vertical: 'top' };
       // Il valore e' un numero: senza formato Excel mostrerebbe 1,5 invece di 1,50
       row.getCell(10).numFmt = '0.00';
-      applyGrid(row, 10);
+      applyGrid(row, 10, riga.grigia ? XLS_GRIGIO_FESTIVO : undefined);
     });
 
     // Riga totali in fondo alla tabella

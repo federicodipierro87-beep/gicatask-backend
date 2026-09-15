@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { festiviTicino, isoUtc, piuGiorniUtc } from '../utils/festivita.js';
 
 /**
  * Export del calendario eventi: un foglio per anno con una colonna per giorno,
@@ -58,65 +59,6 @@ export interface EventoExport {
   cliente: { nome: string };
 }
 
-/** Domenica di Pasqua secondo l'algoritmo gregoriano anonimo. */
-export function pasqua(anno: number): Date {
-  const a = anno % 19;
-  const b = Math.floor(anno / 100);
-  const c = anno % 100;
-  const d = Math.floor(b / 4);
-  const e = b % 4;
-  const f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3);
-  const h = (19 * a + b - d - g + 15) % 30;
-  const i = Math.floor(c / 4);
-  const k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7;
-  const m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const mese = Math.floor((h + l - 7 * m + 114) / 31);
-  const giorno = ((h + l - 7 * m + 114) % 31) + 1;
-
-  return new Date(Date.UTC(anno, mese - 1, giorno));
-}
-
-function iso(data: Date): string {
-  return data.toISOString().slice(0, 10);
-}
-
-function piuGiorni(data: Date, giorni: number): Date {
-  return new Date(data.getTime() + giorni * 86_400_000);
-}
-
-/** Giorni festivi del Canton Ticino (il Venerdi' Santo non e' festivo). */
-export function festiviTicino(anno: number): Set<string> {
-  const fissi: [number, number][] = [
-    [1, 1],   // Capodanno
-    [1, 6],   // Epifania
-    [3, 19],  // San Giuseppe
-    [5, 1],   // Festa del lavoro
-    [6, 29],  // Santi Pietro e Paolo
-    [8, 1],   // Festa nazionale
-    [8, 15],  // Assunzione
-    [11, 1],  // Ognissanti
-    [12, 8],  // Immacolata
-    [12, 25], // Natale
-    [12, 26], // Santo Stefano
-  ];
-
-  const giorni = fissi.map(([mese, giorno]) =>
-    iso(new Date(Date.UTC(anno, mese - 1, giorno)))
-  );
-
-  const domenicaPasqua = pasqua(anno);
-  giorni.push(
-    iso(piuGiorni(domenicaPasqua, 1)),  // Lunedi' dell'Angelo
-    iso(piuGiorni(domenicaPasqua, 39)), // Ascensione
-    iso(piuGiorni(domenicaPasqua, 50)), // Lunedi' di Pentecoste
-    iso(piuGiorni(domenicaPasqua, 60))  // Corpus Domini
-  );
-
-  return new Set(giorni);
-}
-
 export interface GiornoAnno {
   iso: string;
   data: Date;
@@ -136,7 +78,7 @@ export function giorniAnno(anno: number): GiornoAnno[] {
   let cursore = new Date(Date.UTC(anno, 0, 1));
   while (cursore.getUTCFullYear() === anno) {
     const giornoSettimana = cursore.getUTCDay();
-    const chiave = iso(cursore);
+    const chiave = isoUtc(cursore);
 
     giorni.push({
       iso: chiave,
@@ -147,7 +89,7 @@ export function giorniAnno(anno: number): GiornoAnno[] {
       festivo: festivi.has(chiave),
     });
 
-    cursore = piuGiorni(cursore, 1);
+    cursore = piuGiorniUtc(cursore, 1);
   }
 
   return giorni;
@@ -395,7 +337,7 @@ export class CalendarioEventiExportService {
 
     const aggiungi = (data: Date, tipo: Pallino) => {
       if (data < primoGiornoAnno || data > ultimoGiornoAnno) return;
-      const chiave = iso(data);
+      const chiave = isoUtc(data);
       const esistenti = mappa.get(chiave);
       if (esistenti) esistenti.add(tipo);
       else mappa.set(chiave, new Set([tipo]));
@@ -404,7 +346,7 @@ export class CalendarioEventiExportService {
     const da = evento.dataInizio < primoGiornoAnno ? primoGiornoAnno : evento.dataInizio;
     const a = evento.dataFine > ultimoGiornoAnno ? ultimoGiornoAnno : evento.dataFine;
 
-    for (let g = da; g <= a; g = piuGiorni(g, 1)) {
+    for (let g = da; g <= a; g = piuGiorniUtc(g, 1)) {
       aggiungi(g, 'evento');
     }
 
