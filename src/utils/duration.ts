@@ -43,20 +43,27 @@ export function calculateDurationMinutes(
 
 /**
  * Format minutes to HH:mm display string
+ *
+ * I minuti possono essere negativi (le assenze di tipo "Recupero ore" valgono
+ * -492): il segno va anteposto alla stringa intera, scomporre il negativo con
+ * Math.floor darebbe "-9h -12m".
+ *
  * @param minutes Total minutes
- * @returns Formatted string like "2h 30m" or "45m"
+ * @returns Formatted string like "2h 30m", "45m" or "-8h 12m"
  */
 export function formatDuration(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
+  const segno = minutes < 0 ? '-' : '';
+  const assoluti = Math.abs(minutes);
+  const hours = Math.floor(assoluti / 60);
+  const mins = assoluti % 60;
 
   if (hours === 0) {
-    return `${mins}m`;
+    return `${segno}${mins}m`;
   }
   if (mins === 0) {
-    return `${hours}h`;
+    return `${segno}${hours}h`;
   }
-  return `${hours}h ${mins}m`;
+  return `${segno}${hours}h ${mins}m`;
 }
 
 /**
