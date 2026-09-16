@@ -303,6 +303,15 @@ model Bollettino {
   firmaCommittenteNome String @map("firma_committente_nome")
   firmaCommittenteImg  String @map("firma_committente_img") @db.Text
 
+  // Invio del PDF al committente. Tutto nullable: il bollettino esiste anche
+  // senza mail, e la mail non deve mai poterne impedire il salvataggio.
+  // Viene conservato solo l'ultimo tentativo, non lo storico.
+  emailDestinatario String?   @map("email_destinatario")
+  emailStato        String?   @map("email_stato")
+  emailInviataAt    DateTime? @map("email_inviata_at")
+  emailMessageId    String?   @map("email_message_id")
+  emailErrore       String?   @map("email_errore") @db.Text
+
   createdById Int      @map("created_by")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

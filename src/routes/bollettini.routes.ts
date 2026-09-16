@@ -1,7 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import { BollettiniService, type RigaInput } from '../services/bollettini.service.js';
-import { BollettinoPdfService, sanitizeFilenamePart } from '../services/bollettinoPdf.service.js';
+import {
+  BollettinoPdfService,
+  nomeFilePdf,
+  sanitizeFilenamePart,
+} from '../services/bollettinoPdf.service.js';
+import { BollettinoEmailService } from '../services/bollettinoEmail.service.js';
 import { assertAccessoBollettini } from '../utils/bollettiniAccess.js';
+import { normalizzaEmail } from '../utils/email.js';
 import type { JwtPayload } from '../types/index.js';
 
 // Due firme dense più il resto del corpo sfiorano il limite Fastify di 1 MB,
@@ -46,6 +52,12 @@ const createBodySchema = {
     firmaOperatoreImg: { type: 'string', minLength: 1, maxLength: 400000 },
     firmaCommittenteNome: { type: 'string', minLength: 1, maxLength: 200 },
     firmaCommittenteImg: { type: 'string', minLength: 1, maxLength: 400000 },
+    // Niente `format: 'email'`: genererebbe un 400 *prima* dell'handler, cioe'
+    // bollettino non salvato e due firme perse per un typo su un campo
+    // facoltativo. Regola: nessun vincolo semantico qui sui campi facoltativi,
+    // lo schema tutela il server (tipi e lunghezze), la semantica si valuta
+    // dopo il salvataggio.
+    email: { type: 'string', maxLength: 254 },
   },
 } as const;
 
@@ -62,11 +74,13 @@ interface CreateBody {
   firmaOperatoreImg: string;
   firmaCommittenteNome: string;
   firmaCommittenteImg: string;
+  email?: string;
 }
 
 export async function bollettiniRoutes(fastify: FastifyInstance) {
   const service = new BollettiniService(fastify.prisma);
   const pdfService = new BollettinoPdfService();
+  const emailService = new BollettinoEmailService(fastify.prisma);
 
   // Elenco bollettini (senza firme)
   fastify.get('/', {
@@ -128,8 +142,14 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     const user = request.user as JwtPayload;
     const body = request.body;
 
+    const destinatario = (body.email ?? '').trim();
+    const emailValida = normalizzaEmail(destinatario) !== null;
+
+    // Il try si chiude sulla sola create: e' l'unica parte che puo' ancora
+    // rispondere 400 senza che il bollettino esista.
+    let bollettinoId: number;
     try {
-      const bollettino = await service.create({
+      const creato = await service.create({
         utenteId: user.id,
         cantiereId: body.cantiereId,
         dataRiferimento: new Date(body.dataRiferimento),
@@ -143,14 +163,63 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
         firmaOperatoreImg: body.firmaOperatoreImg,
         firmaCommittenteNome: body.firmaCommittenteNome,
         firmaCommittenteImg: body.firmaCommittenteImg,
+        emailDestinatario: destinatario ? destinatario.slice(0, 254) : null,
+        // IN_CORSO scritto subito: se il processo muore durante l'invio il
+        // responsabile vede un invio in sospeso, non un bollettino che sembra
+        // non aver mai richiesto la mail.
+        emailStato: destinatario ? (emailValida ? 'IN_CORSO' : 'NON_VALIDA') : null,
         createdById: user.id,
       });
-
-      return reply.status(201).send({ id: bollettino.id });
+      bollettinoId = creato.id;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Errore';
       return reply.status(400).send({ error: message });
     }
+
+    // Da qui il bollettino ESISTE: nessun percorso puo' piu' rispondere con un
+    // errore, il client lo leggerebbe come "non salvato" e farebbe rifirmare.
+    if (!destinatario) {
+      return reply.status(201).send({ id: bollettinoId });
+    }
+
+    const esito = await emailService.invia(bollettinoId, destinatario); // non lancia mai
+    request.log.info({ bollettinoId, stato: esito.stato }, 'invio mail bollettino');
+
+    return reply.status(201).send({ id: bollettinoId, email: esito });
+  });
+
+  // Reinvio dall'archivio: il caso piu' frequente e' l'indirizzo digitato male
+  fastify.post<{ Params: { id: string }; Body: { email?: string } }>('/:id/invia-mail', {
+    preHandler: [fastify.requireRole('RESPONSABILE')],
+    schema: {
+      body: {
+        type: 'object',
+        properties: { email: { type: 'string', maxLength: 254 } },
+      },
+    },
+  }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
+    const id = parseInt(request.params.id, 10);
+    const bollettino = await service.getById(id);
+
+    if (!bollettino) {
+      return reply.status(404).send({ error: 'Bollettino non trovato' });
+    }
+
+    const destinatario = (request.body?.email ?? bollettino.emailDestinatario ?? '').trim();
+
+    if (!destinatario) {
+      return reply.status(400).send({ error: 'Nessun indirizzo e-mail indicato' });
+    }
+
+    // Sempre 200, anche quando l'invio fallisce: un 5xx passerebbe dall'error
+    // handler globale, che in produzione maschera i 500 con "Internal Server
+    // Error" cancellando proprio la diagnosi che serve qui.
+    const esito = await emailService.invia(id, destinatario);
+    request.log.info({ bollettinoId: id, stato: esito.stato }, 'reinvio mail bollettino');
+
+    return reply.send(esito);
   });
 
   // Eliminazione (solo responsabile, e solo se abilitato)
@@ -189,8 +258,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
 
     const pdfBuffer = await pdfService.generateSingolo(bollettino);
 
-    const data = new Date(bollettino.dataRiferimento).toISOString().split('T')[0];
-    const filename = `bollettino-${bollettino.id}-${sanitizeFilenamePart(bollettino.cantiereNome)}-${data}.pdf`;
+    const filename = nomeFilePdf(bollettino);
 
     return reply
       .header('Content-Type', 'application/pdf')

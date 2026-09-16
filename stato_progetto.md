@@ -1665,6 +1665,127 @@ ancora riservata al responsabile.
 
 ---
 
+### Invio del bollettino per e-mail (16 Settembre 2026)
+
+Campo **e-mail facoltativo** nel form del bollettino. Al salvataggio il backend genera il PDF e lo
+spedisce a quell'indirizzo con **Resend**. Indirizzo ed esito restano sul bollettino, e il
+responsabile può **reinviare** dall'archivio correggendo l'indirizzo.
+
+Il codice è completo e **degrada in modo pulito finché `RESEND_API_KEY` non è impostata**: ogni invio
+risulta `NON_CONFIGURATA`, l'operatore legge un avviso, l'archivio mostra *Non inviata*. Accendere il
+servizio non richiede di toccare una riga di codice, solo tre variabili su Railway.
+
+#### Il vincolo che guida tutto
+
+Il bollettino è **firmato e non modificabile**. Quando la POST arriva, l'operatore ha già disegnato
+entrambe le firme: **nessun fallimento dell'invio mail deve poter essere letto dal client come
+"salvataggio fallito"**, perché l'operatore rifirmerebbe tutto e nascerebbe un doppione.
+
+L'handler della POST aveva un solo `try` il cui `catch` risponde 400. Ora quel `try` si chiude sulla
+sola `create`; da lì in poi il bollettino esiste e **nessun percorso può più rispondere con un
+errore**. `BollettinoEmailService.invia()` e `inviaEmail()` hanno entrambi come contratto esplicito
+di **non lanciare mai**: l'esito è sempre nel valore di ritorno.
+
+#### Cinque colonne nullable, nessun enum
+
+`emailDestinatario`, `emailStato`, `emailInviataAt`, `emailMessageId`, `emailErrore`. Cinque
+`ADD COLUMN ... NULL` senza default, unique o FK: additive, la categoria che la **nota 9** dichiara
+sicura, quindi nessuna modifica a `preparaDb.ts`. Viene conservato solo l'ultimo tentativo, non lo
+storico.
+
+- `emailStato` è `String` e **non** un enum Prisma: un enum imporrebbe un `CREATE TYPE` e aggiungere
+  un valore costerebbe un altro push. Il tipo forte lo mette TypeScript.
+  Valori: `IN_CORSO | INVIATA | ERRORE | NON_VALIDA | NON_CONFIGURATA`.
+- `IN_CORSO` è scritto nella `create` stessa: se il processo muore durante l'invio, il responsabile
+  vede un invio in sospeso invece di un bollettino che sembra non aver mai richiesto la mail.
+- `emailErrore` non è ridondante: senza, i tre casi delle prime settimane (dominio non verificato,
+  chiave assente, indirizzo sbagliato) sarebbero indistinguibili. Troncato a 500 caratteri.
+- I quattro campi leggibili stanno in `listSelect`: sono stringhe corte, non hanno il problema di
+  peso delle firme.
+- I backup restano compatibili in entrambe le direzioni: `backup.service.ts` fa `createMany` con le
+  righe grezze del JSON, e colonne nullable non rompono i dump precedenti.
+
+#### `fetch` e non l'SDK `resend`
+
+Serve una sola chiamata, sono ~25 righe; è una dipendenza in meno nella build di Railway, che va in
+crash loop se lo start non torna. Ma la ragione vera è il **timeout**: questa chiamata sta dentro la
+POST che salva le firme e deve avere un tetto duro. Con `fetch` è `AbortSignal.timeout(10_000)`, una
+riga; l'SDK non lo espone in modo stabile fra le versioni. Node ≥18 ha `fetch` globale.
+
+L'allegato va passato come **stringa base64 senza prefisso `data:`**, cioè
+`pdfBuffer.toString('base64')`.
+
+**Difetto accettato:** se Resend risponde all'11º secondo la mail parte lo stesso e noi la segniamo
+`ERRORE`; un reinvio produrrebbe un doppione. Fastidio, non perdita di dati.
+
+#### Latenza
+
+Si passa da ~300 ms a ~1÷1,5 s (PDF in memoria più una chiamata a Resend), con tetto a 10 s.
+`apiClient` non ha un `timeout` axios, quindi il browser non tronca nulla. L'alternativa
+fire-and-forget è incompatibile con l'avviso richiesto: al momento della risposta l'esito non
+esisterebbe ancora.
+
+#### Rotta di reinvio
+
+`POST /api/bollettini/:id/invia-mail` risponde **sempre 200** con l'esito, anche quando l'invio
+fallisce. Un 5xx passerebbe dall'error handler globale, che **in produzione maschera i 500 con
+"Internal Server Error"**, cancellando proprio la diagnosi che serve. Uniche eccezioni: 404 se il
+bollettino non esiste, 400 se non c'è alcun indirizzo utilizzabile.
+
+Il body accetta un `email` facoltativo: senza, si riusa `bollettino.emailDestinatario`. Serve poter
+passare un indirizzo nuovo, perché il caso più frequente è "l'operaio ha sbagliato a digitare".
+
+| Metodo | Path | Accesso |
+|---|---|---|
+| POST | `/api/bollettini/:id/invia-mail` | RESPONSABILE + flag |
+
+#### Frontend: salvato ma con avviso
+
+`handleSubmit` non naviga più incondizionatamente. Se l'esito esiste e non è `INVIATA`, si imposta
+`salvato` e si mostra un box **ambra** (non rosso: non è un errore) con un pulsante *Torna ai
+bollettini*, senza navigare — l'avviso va letto.
+
+**Non negoziabile:** `disabled={isSaving || !puoSalvare || salvato}` sul submit. Senza `salvato`, chi
+legge l'avviso e ritocca "Firma e salva" crea un secondo bollettino identico: è il difetto classico
+di "salvato ma con avviso".
+
+`puoSalvare` **non** include la validità dell'e-mail: aggiungercela disabiliterebbe il pulsante, che
+è peggio. C'è invece un avviso inline mentre si digita, perché `type="email"` dentro un `<form>`
+attiva la validazione nativa: con un indirizzo malformato **il submit non parte** e appare solo un
+fumetto di sistema, che su un form lungo da telefono sembra un pulsante rotto.
+
+Nell'archivio, colonna **Mail** fra Ore e Azioni (`—` / *Inviata* / *In corso* / *Non inviata*), col
+`title` che mostra `emailErrore`: è lì che quella colonna ripaga. Il reinvio apre una modale
+precompilata, non un pulsante secco, perché il caso comune è **correggere** l'indirizzo.
+
+#### Ordine di deploy
+
+**Backend per primo, sempre.** Se uscisse prima il frontend il difetto sarebbe silenzioso e quindi
+peggiore: il backend vecchio ignora `email` (non c'è `additionalProperties: false`), risponde
+`{ id }`, il frontend non trova `data.email` e naviga — **l'utente crede che la mail sia partita**.
+
+#### Cosa resta da fare per accendere il servizio
+
+1. Verificare il dominio su Resend (TXT SPF, CNAME DKIM, DMARC `p=none` iniziale)
+2. Creare una API key con solo *Sending access*
+3. Su Railway: `RESEND_API_KEY`, `MAIL_FROM` (deve stare sul dominio verificato, altrimenti 403),
+   `MAIL_REPLY_TO` facoltativa
+4. Collaudo senza rischi: reinviare dall'archivio un bollettino già salvato. Se qualcosa non va, il
+   motivo esatto è nel tooltip della colonna Mail. Solo dopo, provare dal form
+
+Prima della verifica del dominio Resend consente solo `onboarding@resend.dev` verso l'indirizzo
+dell'account: mettere la chiave prima è inutile. Il piano gratuito è nell'ordine dei 100
+messaggi/giorno.
+
+#### Cosa non cambia
+
+Nessun campo e-mail su Cliente o Cantiere: l'indirizzo si digita ogni volta. Il reinvio resta al
+responsabile — consentirlo anche al dipendente sul *proprio* bollettino e *solo* verso l'indirizzo
+già salvato costerebbe quattro righe e toglierebbe il "chiama il responsabile" cinque secondi dopo la
+firma.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
@@ -1821,6 +1942,12 @@ R2_ACCOUNT_ID=<cloudflare-account-id>
 R2_ACCESS_KEY_ID=<r2-access-key>
 R2_SECRET_ACCESS_KEY=<r2-secret-key>
 R2_BUCKET_NAME=gicatask-backups
+
+# Resend (opzionali, per l'invio del bollettino via e-mail).
+# Senza queste, ogni invio risulta NON_CONFIGURATA e nulla si rompe.
+RESEND_API_KEY=<api-key-con-solo-sending-access>
+MAIL_FROM=Bollettini GicaTask <bollettini@dominio-verificato.it>
+MAIL_REPLY_TO=<indirizzo-a-cui-rispondere>
 ```
 
 ### Frontend (Netlify)
@@ -1863,7 +1990,9 @@ VITE_API_URL=https://web-production-fde54.up.railway.app
 
 10. **Nessuna rotta può essere prefisso di un'altra.** `isActive()` nei layout confronta con `startsWith`, quindi con `/responsabile/dream` e `/responsabile/dream-veicoli` si accenderebbero due tab insieme. È il motivo per cui la sezione si chiama *Dream* nell'interfaccia ma la rotta è rimasta `/responsabile/dream-noleggio`: si rinominano le etichette, non i path.
 
-11. **I pannelli a tendina stanno fuori dal `<nav>`.** La barra ha `overflow-x-auto` per scorrere su schermi stretti, e quello crea un contenitore di scorrimento che **ritaglia** i figli in posizione assoluta: una tendina messa dentro la nav verrebbe tagliata invece di uscirne. *Impostazioni* e *Bollettino* sono fratelli della nav, non figli.
+11. **Nessun vincolo semantico in `createBodySchema` sui campi facoltativi.** `format: 'email'` *è* disponibile (`@fastify/ajv-compiler` carica `ajv-formats` di default), ma usarlo sul campo e-mail del bollettino genererebbe un **400 prima dell'handler**: bollettino non salvato e due firme perse per un typo su un campo che è facoltativo. In più `ajv-formats` lì è una dipendenza *transitiva*, non dichiarata, e un bump di Fastify potrebbe togliere la validazione in silenzio. La regola generale: lo schema tutela il server (tipi e lunghezze massime), la semantica si valuta **dopo** il salvataggio, nel codice, dove il fallimento può diventare un avviso invece che un errore.
+
+12. **I pannelli a tendina stanno fuori dal `<nav>`.** La barra ha `overflow-x-auto` per scorrere su schermi stretti, e quello crea un contenitore di scorrimento che **ritaglia** i figli in posizione assoluta: una tendina messa dentro la nav verrebbe tagliata invece di uscirne. *Impostazioni* e *Bollettino* sono fratelli della nav, non figli.
 
 ---
 

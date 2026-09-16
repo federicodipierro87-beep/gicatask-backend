@@ -20,6 +20,8 @@ export interface CreateBollettinoInput {
   firmaOperatoreImg: string;
   firmaCommittenteNome: string;
   firmaCommittenteImg: string;
+  emailDestinatario?: string | null;
+  emailStato?: string | null;
   createdById: number;
 }
 
@@ -49,6 +51,11 @@ const listSelect = {
   cantiereNome: true,
   firmaOperatoreNome: true,
   firmaCommittenteNome: true,
+  // Stringhe corte: a differenza delle firme non pesano sull'elenco
+  emailDestinatario: true,
+  emailStato: true,
+  emailInviataAt: true,
+  emailErrore: true,
   createdAt: true,
   utente: { select: { id: true, nome: true, cognome: true } },
 } satisfies Prisma.BollettinoSelect;
@@ -160,6 +167,8 @@ export class BollettiniService {
         firmaOperatoreImg: input.firmaOperatoreImg,
         firmaCommittenteNome: input.firmaCommittenteNome.trim(),
         firmaCommittenteImg: input.firmaCommittenteImg,
+        emailDestinatario: input.emailDestinatario ?? null,
+        emailStato: input.emailStato ?? null,
         createdById: input.createdById,
         righe: { create: righe },
       },

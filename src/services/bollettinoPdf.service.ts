@@ -63,6 +63,20 @@ export function sanitizeFilenamePart(value: string): string {
   return pulito || 'bollettino';
 }
 
+/**
+ * Nome del file PDF, condiviso fra il download e l'allegato della mail: se
+ * divergessero, lo stesso documento arriverebbe al committente con un nome e
+ * al responsabile con un altro.
+ */
+export function nomeFilePdf(bollettino: {
+  id: number;
+  dataRiferimento: Date;
+  cantiereNome: string;
+}): string {
+  const data = new Date(bollettino.dataRiferimento).toISOString().split('T')[0];
+  return `bollettino-${bollettino.id}-${sanitizeFilenamePart(bollettino.cantiereNome)}-${data}.pdf`;
+}
+
 function labelCoppia(doc: PDFKit.PDFDocument, label: string, valore: string, x: number, y: number, width: number): void {
   doc.fontSize(8).fillColor('#666').text(label, x, y, { width });
   doc.fontSize(10).fillColor('#000').text(valore || '-', x, y + 11, { width });

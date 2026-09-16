@@ -24,6 +24,14 @@ export const config = {
     endpoint: process.env['R2_ENDPOINT'] ?? '',
   },
 
+  email: {
+    resendApiKey: process.env['RESEND_API_KEY'] ?? '',
+    // Deve stare su un dominio verificato su Resend, altrimenti 403.
+    // Formato: 'Bollettini GicaTask <bollettini@dominio.it>'
+    from: process.env['MAIL_FROM'] ?? '',
+    replyTo: process.env['MAIL_REPLY_TO'] ?? '',
+  },
+
   isDev: process.env['NODE_ENV'] === 'development',
   isProd: process.env['NODE_ENV'] === 'production',
 } as const;
