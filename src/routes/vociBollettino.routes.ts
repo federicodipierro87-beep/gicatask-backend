@@ -56,18 +56,23 @@ export async function vociBollettinoRoutes(fastify: FastifyInstance) {
     return reply.send(voci);
   });
 
-  // Crea voce (responsabile)
+  // Crea voce: chi puo' compilare un bollettino puo' aggiungere una voce dal form.
+  // Rinominare e disattivare restano al responsabile.
   fastify.post<{ Params: { tipo: TipoSlug }; Body: { nome: string } }>('/:tipo', {
-    preHandler: [fastify.requireRole('RESPONSABILE')],
+    preHandler: [fastify.authenticate],
     schema: { params: tipoParamsSchema, body: nomeBodySchema },
   }, async (request, reply) => {
     if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
 
+    // minLength: 1 e' verificato prima del trim: senza questo controllo
+    // un nome fatto di soli spazi creerebbe una voce vuota in anagrafica.
+    const nome = request.body.nome.trim();
+    if (!nome) {
+      return reply.status(400).send({ error: 'Il nome non può essere vuoto' });
+    }
+
     try {
-      const voce = await service.create(
-        SLUG_TO_TIPO[request.params.tipo],
-        request.body.nome.trim()
-      );
+      const voce = await service.create(SLUG_TO_TIPO[request.params.tipo], nome);
       return reply.status(201).send(voce);
     } catch (error) {
       if (isDuplicato(error)) {

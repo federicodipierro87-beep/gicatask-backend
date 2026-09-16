@@ -996,7 +996,7 @@ accontenti del solo `requireRole('RESPONSABILE')`.
 | Metodo | Path | Accesso |
 |---|---|---|
 | GET | `/api/voci-bollettino/:tipo` | autenticato + flag |
-| POST | `/api/voci-bollettino/:tipo` | RESPONSABILE + flag |
+| POST | `/api/voci-bollettino/:tipo` | autenticato + flag (dal 16/09/2026, vedi sezione dedicata) |
 | PUT/DELETE | `/api/voci-bollettino/:id` | RESPONSABILE + flag |
 | POST | `/api/voci-bollettino/:id/activate` | RESPONSABILE + flag |
 | GET | `/api/bollettini` | autenticato + flag (il dipendente vede solo i propri) |
@@ -1578,6 +1578,90 @@ versionato, vivo su una sola macchina e perso al primo cambio di computer. Il ba
 comodo, non di competenza: **il file racconta entrambi i lati**, e una modifica al solo frontend va
 comunque annotata qui, cioè in un commit dell'altro repository. `CLAUDE.md` resta nella radice e non
 versionato, ma ora punta alla posizione nuova.
+
+---
+
+### Bollettino: voci a testo libero nel form (16 Settembre 2026)
+
+Nelle sezioni **Mezzi / Materiali / Trasporti** del form bollettino si può scrivere una voce a mano,
+senza passare dall'anagrafica. Una spunta **"salva anche in anagrafica"** decide se la voce resta
+solo in quel bollettino o entra nell'elenco condiviso. La tendina esistente resta invariata: il
+campo libero le si affianca sotto, con la sua spunta e il suo pulsante *Aggiungi*.
+
+#### Il backend era già pronto per metà
+
+Le righe a testo libero **funzionavano già** contro la produzione, e non è stato toccato lo schema:
+
+- `RigaBollettino.voceId` è già `Int?` con `onDelete: SetNull`
+- lo schema della POST bollettino accettava già `voceId: ['number','null']` e `descrizione`
+- `buildRighe` usa `riga.descrizione` quando manca il `voceId`, ed errore solo se mancano entrambi
+- il PDF stampa `riga.descrizione`, non la relazione
+
+**Nessuna modifica a `schema.prisma`**, quindi il `prisma db push` all'avvio non aveva niente da
+applicare: il rischio di crash loop della nota 9 non si è presentato.
+
+L'unica cosa che mancava lato server era il **permesso**: `POST /api/voci-bollettino/:tipo` era
+riservata al `RESPONSABILE`. Ora chiede solo `fastify.authenticate`, mentre
+`assertAccessoBollettini` resta e continua a valere — il permesso si allarga ai dipendenti
+**abilitati ai bollettini**, non a tutti. PUT / DELETE / activate restano al responsabile: creare
+una voce è un gesto di compilazione, rinominarne o disattivarne una tocca i bollettini altrui.
+
+Chiuso anche il buco del **nome fatto di soli spazi**: `minLength: 1` di ajv è verificato *prima*
+del `.trim()`, quindi `"   "` creava una voce vuota in anagrafica. Prima lo poteva fare solo il
+responsabile dalla sua modale, ora la rotta è aperta a chiunque compili un bollettino.
+
+#### Frontend: l'identità delle righe cambia
+
+`VoceSelezionata` era `{ voceId: number, quantita }` e il `voceId` faceva da chiave React, da
+selettore negli handler e da insieme delle voci già scelte. Le righe libere non hanno un `voceId`,
+quindi è stato aggiunto un `uid` **solo client** (contatore di modulo), tolto prima della POST con
+un mapper in `handleSubmit`. Gli handler lavorano ora sull'**indice**, e il nome si legge da
+`riga.descrizione` invece che da un lookup in `vociById`.
+
+L'`uid` non è derivato dal testo: cambierebbe a ogni battuta se un domani la riga diventasse
+editabile, e React smonterebbe l'input a ogni carattere.
+
+**Il blocco di aggiunta è sempre visibile.** Prima l'intero `<div>` stava dentro il ramo
+`disponibili.length > 0`: in una sezione senza voci in anagrafica sarebbe sparito anche il campo
+libero, cioè proprio nel caso in cui serve di più. Tendina condizionata come prima, campo libero
+sempre presente.
+
+**Il testo che coincide con una voce dell'elenco non crea un duplicato**: si riusa quella, col suo
+`voceId`, senza nessuna POST. Il confronto normalizza maiuscole e spazi interni
+(`trim().toLocaleLowerCase('it').replace(/\s+/g, ' ')`), perché `@@unique([tipo, nome])` su Postgres
+è **case-sensitive** e senza normalizzazione "Ruspa" e "ruspa" convivrebbero in anagrafica.
+
+#### La trappola della voce disattivata
+
+La tendina contiene solo le voci **attive**. Un nome che collide con una voce **disattivata**
+prende un 400 `Voce già presente` riferito a qualcosa che nell'elenco non c'è: un messaggio
+incomprensibile. Il testo mostrato lo dice apertamente e offre la via d'uscita:
+
+> Esiste già una voce con questo nome, probabilmente disattivata. Togli la spunta per usarla solo
+> in questo bollettino, oppure chiedi al responsabile di riattivarla.
+
+La discriminazione è sullo **status**, non sul corpo: `err.response?.data?.error` su un 401 scaduto
+vale `"Unauthorized"` e verrebbe mostrato all'operatore così com'è.
+
+#### Guardie contro gli errori illeggibili
+
+Superare i limiti dello schema non passa dal `try/catch` della rotta ma dall'**error handler
+globale**, che risponde `{ error: 'Error' }`. Nel form del bollettino quell'errore arriverebbe
+**dopo** che l'operatore ha disegnato entrambe le firme.
+
+- `maxLength={100}` sull'input. Il limite del backend è 200, ma il PDF stampa la descrizione con
+  `lineBreak: false` e `ellipsis: true` su 420pt: oltre ~90 caratteri il testo **esce troncato dal
+  bollettino firmato**, che non si può correggere
+- pulsanti *Aggiungi* disabilitati a 50 righe (`maxItems: 50` per sezione) con la ragione scritta
+- `.trim()` alla creazione della riga, non solo all'invio: il `maxLength: 200` di ajv è controllato
+  prima del trim lato server
+- `isSalvandoVoce` disabilita il pulsante durante la POST: due click darebbero un 201 e un 400, cioè
+  un errore fantasma su una riga che invece è stata creata
+
+#### Ordine di deploy
+
+**Prima il backend, poi il frontend.** Invertendoli, chi spunta la casella prende un 403 dalla rotta
+ancora riservata al responsabile.
 
 ---
 
