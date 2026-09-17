@@ -90,9 +90,15 @@ export class BollettinoEmailService {
       const pdfBuffer = await this.pdf.generateSingolo(bollettino);
       const data = new Date(bollettino.dataRiferimento).toLocaleDateString('it-IT');
 
+      // Senza cantiere l'oggetto lo salta del tutto: un trattino con niente in
+      // mezzo sembrerebbe un campo non compilato
+      const riferimento = bollettino.cantiereNome
+        ? `${bollettino.clienteNome} — ${bollettino.cantiereNome}`
+        : bollettino.clienteNome;
+
       const risultato = await inviaEmail({
         to: destinatario,
-        subject: `Bollettino ${bollettino.clienteNome} — ${bollettino.cantiereNome} — ${data}`,
+        subject: `Bollettino ${riferimento} — ${data}`,
         // Niente immagini remote ne' link: peggiorerebbero il punteggio antispam
         html: this.corpoHtml(bollettino.clienteNome, bollettino.cantiereNome, data),
         text: this.corpoTesto(bollettino.clienteNome, bollettino.cantiereNome, data),
@@ -154,21 +160,29 @@ export class BollettinoEmailService {
     }
   }
 
-  private corpoHtml(cliente: string, cantiere: string, data: string): string {
+  private corpoHtml(cliente: string, cantiere: string | null, data: string): string {
+    const riferimento = cantiere
+      ? ` per il cantiere <strong>${escapeHtml(cantiere)}</strong> (${escapeHtml(cliente)})`
+      : ` per il cliente <strong>${escapeHtml(cliente)}</strong>`;
+
     return [
       '<p>Buongiorno,</p>',
       `<p>in allegato il bollettino dei lavori del <strong>${escapeHtml(data)}</strong>`,
-      ` per il cantiere <strong>${escapeHtml(cantiere)}</strong> (${escapeHtml(cliente)}).</p>`,
+      `${riferimento}.</p>`,
       '<p>Il documento è firmato dall\'operatore e dal committente.</p>',
       '<p>Cordiali saluti.</p>',
     ].join('');
   }
 
-  private corpoTesto(cliente: string, cantiere: string, data: string): string {
+  private corpoTesto(cliente: string, cantiere: string | null, data: string): string {
+    const riferimento = cantiere
+      ? `per il cantiere ${cantiere} (${cliente})`
+      : `per il cliente ${cliente}`;
+
     return [
       'Buongiorno,',
       '',
-      `in allegato il bollettino dei lavori del ${data} per il cantiere ${cantiere} (${cliente}).`,
+      `in allegato il bollettino dei lavori del ${data} ${riferimento}.`,
       'Il documento è firmato dall\'operatore e dal committente.',
       '',
       'Cordiali saluti.',

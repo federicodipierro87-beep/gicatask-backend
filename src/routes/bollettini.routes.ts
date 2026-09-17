@@ -30,8 +30,11 @@ const righeSchema = {
 
 const createBodySchema = {
   type: 'object',
+  // Ne' `clienteId` ne' `cantiereId` sono `required`: la regola e' "almeno uno
+  // dei due", e un 400 dello schema scatterebbe *prima* dell'handler, cioe'
+  // bollettino non salvato e due firme perse. La coppia la verifica il service,
+  // dentro il try che gia' risponde 400.
   required: [
-    'cantiereId',
     'dataRiferimento',
     'attivita',
     'firmaOperatoreNome',
@@ -40,6 +43,7 @@ const createBodySchema = {
     'firmaCommittenteImg',
   ],
   properties: {
+    clienteId: { type: 'number' },
     cantiereId: { type: 'number' },
     dataRiferimento: { type: 'string' },
     attivita: { type: 'string', minLength: 1, maxLength: 5000 },
@@ -62,7 +66,8 @@ const createBodySchema = {
 } as const;
 
 interface CreateBody {
-  cantiereId: number;
+  clienteId?: number;
+  cantiereId?: number;
   dataRiferimento: string;
   attivita: string;
   numeroOperai?: number;
@@ -151,7 +156,8 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     try {
       const creato = await service.create({
         utenteId: user.id,
-        cantiereId: body.cantiereId,
+        clienteId: body.clienteId ?? null,
+        cantiereId: body.cantiereId ?? null,
         dataRiferimento: new Date(body.dataRiferimento),
         attivita: body.attivita,
         numeroOperai: body.numeroOperai ?? 0,
@@ -301,6 +307,45 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     );
 
     const filename = `bollettini-${sanitizeFilenamePart(cantiere.nome)}.pdf`;
+
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(pdfBuffer);
+  });
+
+  // PDF cumulativo di cliente, cantieri compresi: e' l'unico disponibile per i
+  // clienti che di cantieri non ne hanno
+  fastify.get<{ Params: { clienteId: string } }>('/cliente/:clienteId/pdf', {
+    preHandler: [fastify.requireRole('RESPONSABILE')],
+  }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
+    const clienteId = parseInt(request.params.clienteId, 10);
+    const { startDate, endDate } = request.query as { startDate?: string; endDate?: string };
+
+    const cliente = await fastify.prisma.cliente.findUnique({
+      where: { id: clienteId },
+      select: { nome: true },
+    });
+
+    if (!cliente) {
+      return reply.status(404).send({ error: 'Cliente non trovato' });
+    }
+
+    const bollettini = await service.getByCliente(
+      clienteId,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined
+    );
+
+    if (bollettini.length === 0) {
+      return reply.status(404).send({ error: 'Nessun bollettino per questo cliente' });
+    }
+
+    const pdfBuffer = await pdfService.generateCumulativo(null, cliente.nome, bollettini);
+
+    const filename = `bollettini-cliente-${sanitizeFilenamePart(cliente.nome)}.pdf`;
 
     return reply
       .header('Content-Type', 'application/pdf')

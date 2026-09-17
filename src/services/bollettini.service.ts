@@ -8,7 +8,8 @@ export interface RigaInput {
 
 export interface CreateBollettinoInput {
   utenteId: number;
-  cantiereId: number;
+  clienteId?: number | null;
+  cantiereId?: number | null;
   dataRiferimento: Date;
   attivita: string;
   numeroOperai: number;
@@ -42,6 +43,7 @@ export interface BollettinoFilters {
 const listSelect = {
   id: true,
   utenteId: true,
+  clienteId: true,
   cantiereId: true,
   dataRiferimento: true,
   attivita: true,
@@ -93,7 +95,17 @@ export class BollettiniService {
     return {
       ...(filters.utenteId ? { utenteId: filters.utenteId } : {}),
       ...(filters.cantiereId ? { cantiereId: filters.cantiereId } : {}),
-      ...(filters.clienteId ? { cantiere: { clienteId: filters.clienteId } } : {}),
+      // I bollettini nuovi hanno `clienteId` valorizzato, quelli precedenti
+      // alla colonna lo hanno NULL e sono raggiungibili solo via cantiere:
+      // l'OR li tiene insieme senza dover riscrivere una riga di storico.
+      ...(filters.clienteId
+        ? {
+            OR: [
+              { clienteId: filters.clienteId },
+              { cantiere: { clienteId: filters.clienteId } },
+            ],
+          }
+        : {}),
       ...(filters.startDate || filters.endDate
         ? {
             dataRiferimento: {
@@ -141,28 +153,98 @@ export class BollettiniService {
     });
   }
 
-  async create(input: CreateBollettinoInput): Promise<{ id: number }> {
-    const cantiere = await this.prisma.cantiere.findUnique({
-      where: { id: input.cantiereId },
-      select: { id: true, nome: true, cliente: { select: { nome: true } } },
+  /**
+   * Bollettini di un cliente, cantieri compresi: base del cumulativo di
+   * cliente, l'unico disponibile per i clienti che non hanno cantieri.
+   */
+  async getByCliente(
+    clienteId: number,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<BollettinoFull[]> {
+    return this.prisma.bollettino.findMany({
+      where: this.buildWhere({ clienteId, startDate, endDate }),
+      select: fullSelect,
+      orderBy: [{ dataRiferimento: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  /**
+   * Cliente e cantiere del bollettino. Il cantiere, quando c'e', resta la
+   * fonte piu' precisa: da li' si ricava anche il cliente, cosi' un client che
+   * manda il solo `cantiereId` continua a funzionare senza modifiche.
+   */
+  private async risolviDestinazione(input: CreateBollettinoInput): Promise<{
+    clienteId: number;
+    clienteNome: string;
+    cantiereId: number | null;
+    cantiereNome: string | null;
+  }> {
+    if (input.cantiereId) {
+      const cantiere = await this.prisma.cantiere.findUnique({
+        where: { id: input.cantiereId },
+        select: { id: true, nome: true, clienteId: true, cliente: { select: { nome: true } } },
+      });
+
+      if (!cantiere) {
+        throw new Error('Cantiere non trovato');
+      }
+
+      return {
+        clienteId: cantiere.clienteId,
+        clienteNome: cantiere.cliente.nome,
+        cantiereId: cantiere.id,
+        cantiereNome: cantiere.nome,
+      };
+    }
+
+    if (!input.clienteId) {
+      throw new Error('Cliente obbligatorio');
+    }
+
+    const cliente = await this.prisma.cliente.findUnique({
+      where: { id: input.clienteId },
+      select: { id: true, nome: true },
     });
 
-    if (!cantiere) {
-      throw new Error('Cantiere non trovato');
+    if (!cliente) {
+      throw new Error('Cliente non trovato');
     }
+
+    // Stessa regola delle attivita': il cantiere e' obbligatorio solo se il
+    // cliente ne ha almeno uno attivo
+    const cantieriAttivi = await this.prisma.cantiere.count({
+      where: { clienteId: cliente.id, attivo: true },
+    });
+
+    if (cantieriAttivi > 0) {
+      throw new Error('Il cantiere è obbligatorio per questo cliente');
+    }
+
+    return {
+      clienteId: cliente.id,
+      clienteNome: cliente.nome,
+      cantiereId: null,
+      cantiereNome: null,
+    };
+  }
+
+  async create(input: CreateBollettinoInput): Promise<{ id: number }> {
+    const destinazione = await this.risolviDestinazione(input);
 
     const righe = await this.buildRighe(input);
 
     const bollettino = await this.prisma.bollettino.create({
       data: {
         utenteId: input.utenteId,
-        cantiereId: cantiere.id,
+        clienteId: destinazione.clienteId,
+        cantiereId: destinazione.cantiereId,
         dataRiferimento: input.dataRiferimento,
         attivita: input.attivita.trim(),
         numeroOperai: input.numeroOperai,
         ore: input.ore,
-        clienteNome: cantiere.cliente.nome,
-        cantiereNome: cantiere.nome,
+        clienteNome: destinazione.clienteNome,
+        cantiereNome: destinazione.cantiereNome,
         firmaOperatoreNome: input.firmaOperatoreNome.trim(),
         firmaOperatoreImg: input.firmaOperatoreImg,
         firmaCommittenteNome: input.firmaCommittenteNome.trim(),

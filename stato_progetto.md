@@ -1005,6 +1005,7 @@ accontenti del solo `requireRole('RESPONSABILE')`.
 | DELETE | `/api/bollettini/:id` | RESPONSABILE + flag |
 | GET | `/api/bollettini/:id/pdf` | autenticato + flag |
 | GET | `/api/bollettini/cantiere/:id/pdf` | RESPONSABILE + flag (cumulativo) |
+| GET | `/api/bollettini/cliente/:id/pdf` | RESPONSABILE + flag (cumulativo, dal 17/09/2026) |
 
 Pagine: `/dipendente/bollettini`, `/dipendente/bollettini/nuovo`, `/responsabile/bollettini`,
 `/responsabile/mezzi|materiali|trasporti`.
@@ -1799,6 +1800,112 @@ firma.
 
 ---
 
+### Cantiere facoltativo nel bollettino (17 Settembre 2026)
+
+Il cantiere non è più obbligatorio nel bollettino. Vale la **stessa regola già in uso per le
+attività**: *il cantiere è obbligatorio solo se il cliente ne ha almeno uno attivo*
+(`attivita.service.ts:126`).
+
+**Il motivo:** **50 clienti attivi su 57 non hanno alcun cantiere**, quindi fino a ieri per loro un
+bollettino non era compilabile.
+
+#### Il legame col cliente andava ricostruito prima
+
+`cantiereId` non era solo un campo obbligatorio, era **l'unico legame col cliente**: `clienteNome` si
+ricavava da `cantiere.cliente.nome` e il filtro d'archivio passava da `{ cantiere: { clienteId } }`.
+Toglierne l'obbligo senza altro avrebbe reciso quel legame. Da qui la colonna `cliente_id` sul
+bollettino, che il cantiere non sostituisce ma affianca.
+
+`clienteNome` resta **NOT NULL**: è sempre valorizzato, dal cantiere o dal cliente diretto, e
+continua a essere lo snapshot mostrato ovunque.
+
+#### Schema: tutto allargamento, niente di distruttivo
+
+`ADD COLUMN cliente_id INT NULL`, due `DROP NOT NULL` (`cantiere_id`, `cantiere_nome`), una FK su
+colonna interamente NULL e un `CREATE INDEX`. Tutte operazioni additive o di allargamento, che la
+**nota 9** dichiara sicure per il `db push` senza `--accept-data-loss`.
+
+> **Il rollback dello schema no.** Un `db push` all'indietro riproverebbe a rimettere `NOT NULL` su
+> colonne che nel frattempo hanno dei NULL e si fermerebbe, cioè backend in crash loop. Vale la
+> stessa nota già scritta per i cantieri generici: in caso di problemi si reverta il **codice**, non
+> lo schema.
+
+`isGenerico` non si tocca, per la ragione già documentata: un `DROP COLUMN` fermerebbe il push.
+
+#### Un `OR` invece di un backfill
+
+Il filtro per cliente deve pescare sia le righe nuove (`clienteId` valorizzato) sia quelle storiche
+(`clienteId` NULL, raggiungibili solo via cantiere):
+
+```ts
+{ OR: [{ clienteId }, { cantiere: { clienteId } }] }
+```
+
+Un backfill una tantum avrebbe voluto uno script d'avvio, e **su Railway un avvio che non torna manda
+il container in crash loop**. L'`OR` non richiede di riscrivere una sola riga di storico ed è corretto
+da subito su ogni bollettino, vecchio o nuovo. **Nessun backfill è stato eseguito.**
+
+#### Il cantiere resta la fonte più precisa
+
+Nella `create`, se arriva `cantiereId` si parte da lì e da lì si ricava anche il cliente: è quel che
+permette al **frontend vecchio, che manda il solo `cantiereId`, di continuare a funzionare senza
+modifiche**. Solo in assenza di cantiere si legge `clienteId`, e lì scatta il conteggio dei cantieri
+attivi del cliente.
+
+#### `cantiereId` fuori da `required`, e nemmeno `clienteId` ci entra
+
+Nello schema della POST **nessuno dei due è `required`**. La verifica "almeno uno dei due" la fa il
+service, dentro il `try` che già risponde 400. Mettere `clienteId` in `required` produrrebbe un **400
+dallo schema ajv prima dell'handler** con un frontend vecchio: bollettino non salvato e due firme
+perse. È la **nota 11** applicata alla lettera.
+
+#### PDF, nome file e mail senza cantiere
+
+- PDF del singolo: alla voce Cantiere compare `—`
+- Nome del file: col cantiere invariato, senza cantiere ripiega sul **nome del cliente** — un file
+  con solo id e data sarebbe irriconoscibile in una cartella di download
+- Copertina del cumulativo: senza cantiere il cliente prende da solo la riga in evidenza
+- Oggetto della mail: `Bollettino {cliente} — {data}`, senza il trattino a vuoto; il corpo dice *per
+  il cliente Y* invece di *per il cantiere X (cliente)*
+
+#### Cumulativo anche per cliente
+
+| Metodo | Path | Accesso |
+|---|---|---|
+| GET | `/api/bollettini/cliente/:clienteId/pdf` | RESPONSABILE + flag |
+
+Gemella di `/cantiere/:cantiereId/pdf`, stessi `preHandler`. Comprende tutti i bollettini del
+cliente, quelli dei suoi cantieri inclusi: è l'unico cumulativo disponibile per i 50 clienti che
+cantieri non ne hanno. Nell'archivio il pulsante cambia etichetta da sé — *cumulativo cantiere* con
+un cantiere selezionato, *cumulativo cliente* col solo cliente.
+
+#### Frontend: il box Cantiere compare solo se serve
+
+Come in `AttivitaFormPage`, il box è avvolto in `{cantieri.length > 0 && (…)}`. `loadCantieri` fa già
+`setCantieri([])` in testa, quindi non c'è lo sfarfallio che aveva colpito le attività. `puoSalvare`
+chiede il cliente e il cantiere **solo se il cliente ne ha**.
+
+Il passaggio di `cantiereNome` a `string | null` nei tipi è voluto: fa emergere in compilazione tutti
+i punti da sistemare (archivio → `—`, lista dipendente → ripiego sul cliente).
+
+#### Ordine di deploy: **backend per primo**, al contrario dei cantieri generici
+
+Il frontend vecchio manda solo `cantiereId`, il service ne ricava il cliente e tutto continua come
+prima: nessuna finestra di rottura.
+
+**L'ordine inverso romperebbe il salvataggio:** il frontend nuovo può non mandare `cantiereId`, e il
+backend vecchio lo ha in `required` → 400 dallo schema ajv, prima dell'handler, con le due firme già
+disegnate e perse. È l'opposto di quanto accadde con i cantieri generici, dove andò prima il
+frontend.
+
+#### Cosa non cambia
+
+Le firme e il flusso di salvataggio (nessuna modifica ai `SignaturePad` né al `bodyLimit`), l'invio
+e-mail salvo oggetto e corpo, `clienteNome` NOT NULL, `isGenerico`, e i bollettini storici — nessuna
+riga riscritta.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
@@ -1996,7 +2103,7 @@ VITE_API_URL=https://web-production-fde54.up.railway.app
 
 6. **Sistema Backup:** I backup vengono salvati su Cloudflare R2 in formato JSON. Ogni notte alle 2:00 viene creato un backup automatico e vengono eliminati quelli più vecchi di 7 giorni. Il ripristino sovrascrive tutti i dati esistenti in una transazione atomica.
 
-7. **Bollettini:** i PDF non sono archiviati ma rigenerati dalle righe a ogni download, quindi il cumulativo per cantiere è aggiornato per costruzione. Le firme sono PNG base64 in Postgres, escluse dai `select` degli elenchi. L'accesso dipende dal flag `abilitatoBollettini` letto dal database a ogni richiesta e non dal token.
+7. **Bollettini:** i PDF non sono archiviati ma rigenerati dalle righe a ogni download, quindi i cumulativi — **per cantiere e per cliente** — sono aggiornati per costruzione. Il cantiere è **facoltativo**, con la stessa regola delle attività: obbligatorio solo se il cliente ne ha almeno uno attivo. Il cliente invece c'è sempre, e nei bollettini precedenti alla colonna `cliente_id` si raggiunge attraverso il cantiere: per questo il filtro d'archivio per cliente è un `OR` fra i due percorsi. Le firme sono PNG base64 in Postgres, escluse dai `select` degli elenchi. L'accesso dipende dal flag `abilitatoBollettini` letto dal database a ogni richiesta e non dal token.
 
 8. **Date senza orario:** le colonne `@db.Date` (attività, bollettini, calendario eventi) valgono come **giorni**, non come istanti. Lato server vanno costruite con `Date.UTC()` e mai con la mezzanotte locale: ExcelJS converte le date con `getTime()`, quindi in Europe/Rome uno slittamento al giorno precedente sarebbe visibile in ogni export. Lato client restano stringhe `YYYY-MM-DD` e si formattano con `slice(0, 10)`, mai passando da `new Date(iso).toLocaleDateString()`.
 

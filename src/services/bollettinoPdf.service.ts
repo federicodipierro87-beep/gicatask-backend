@@ -14,7 +14,7 @@ export interface BollettinoPdf {
   numeroOperai: number;
   ore: number;
   clienteNome: string;
-  cantiereNome: string;
+  cantiereNome: string | null;
   firmaOperatoreNome: string;
   firmaOperatoreImg: string;
   firmaCommittenteNome: string;
@@ -71,10 +71,14 @@ export function sanitizeFilenamePart(value: string): string {
 export function nomeFilePdf(bollettino: {
   id: number;
   dataRiferimento: Date;
-  cantiereNome: string;
+  clienteNome: string;
+  cantiereNome: string | null;
 }): string {
   const data = new Date(bollettino.dataRiferimento).toISOString().split('T')[0];
-  return `bollettino-${bollettino.id}-${sanitizeFilenamePart(bollettino.cantiereNome)}-${data}.pdf`;
+  // Senza cantiere il nome ripiega sul cliente: un file che porta solo id e
+  // data sarebbe irriconoscibile in una cartella di download
+  const riferimento = sanitizeFilenamePart(bollettino.cantiereNome ?? bollettino.clienteNome);
+  return `bollettino-${bollettino.id}-${riferimento}-${data}.pdf`;
 }
 
 function labelCoppia(doc: PDFKit.PDFDocument, label: string, valore: string, x: number, y: number, width: number): void {
@@ -181,7 +185,7 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
   const colWidth = CONTENT_WIDTH / 3;
   labelCoppia(doc, 'Data', formatDate(b.dataRiferimento), MARGIN, y, colWidth - 10);
   labelCoppia(doc, 'Cliente', b.clienteNome, MARGIN + colWidth, y, colWidth - 10);
-  labelCoppia(doc, 'Cantiere', b.cantiereNome, MARGIN + colWidth * 2, y, colWidth - 10);
+  labelCoppia(doc, 'Cantiere', b.cantiereNome ?? '—', MARGIN + colWidth * 2, y, colWidth - 10);
   y += 34;
 
   labelCoppia(doc, 'Operatore', `${b.utente.nome} ${b.utente.cognome}`, MARGIN, y, colWidth - 10);
@@ -229,7 +233,7 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
 
 function renderCopertina(
   doc: PDFKit.PDFDocument,
-  cantiereNome: string,
+  cantiereNome: string | null,
   clienteNome: string,
   bollettini: BollettinoPdf[]
 ): void {
@@ -246,14 +250,19 @@ function renderCopertina(
     align: 'center',
   });
 
-  doc.fontSize(14).fillColor('#333').text(cantiereNome, MARGIN, 200, {
+  // Senza cantiere e' il cumulativo di cliente: il cliente prende da solo la
+  // riga in evidenza, altrimenti resterebbe uno spazio vuoto sopra di lui
+  doc.fontSize(14).fillColor('#333').text(cantiereNome ?? clienteNome, MARGIN, 200, {
     width: CONTENT_WIDTH,
     align: 'center',
   });
-  doc.fontSize(11).fillColor('#666').text(clienteNome, MARGIN, 222, {
-    width: CONTENT_WIDTH,
-    align: 'center',
-  });
+
+  if (cantiereNome) {
+    doc.fontSize(11).fillColor('#666').text(clienteNome, MARGIN, 222, {
+      width: CONTENT_WIDTH,
+      align: 'center',
+    });
+  }
 
   let y = 280;
   const voci: [string, string][] = [
@@ -303,7 +312,7 @@ export class BollettinoPdfService {
    * inserito e non resta mai disallineato dopo una cancellazione.
    */
   async generateCumulativo(
-    cantiereNome: string,
+    cantiereNome: string | null,
     clienteNome: string,
     bollettini: BollettinoPdf[]
   ): Promise<Buffer> {
