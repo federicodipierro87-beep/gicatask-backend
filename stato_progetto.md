@@ -984,9 +984,14 @@ ordine di inserimento con il reset delle sequenze.
 
 #### Debito annotato
 
-Ogni bollettino aggiunge ~40 KB di base64 al backup JSON notturno. A 2000 bollettini il file è
-~80 MB e il ripristino inserisce 2000 stringhe grandi in un'unica transazione: quando succederà,
-spezzare le `createMany` in blocchi da 200. Non è un ostacolo oggi.
+Ogni bollettino aggiunge ~40 KB di **firme** base64 al backup JSON notturno — `findMany()` senza
+`select` porta via ogni colonna. A 2000 bollettini il file è ~80 MB e il ripristino inserisce 2000
+stringhe grandi in un'unica transazione: quando succederà, spezzare le `createMany` in blocchi da 200.
+Non è un ostacolo oggi.
+
+Gli **allegati non peggiorano questo conto**: dal 17/09/2026 foto e PDF stanno su R2 e nel backup
+finiscono i soli metadati (~150 byte per allegato). È stata proprio questa riga a far scartare
+l'ipotesi base64 per gli allegati (vedi *Allegati al bollettino*).
 
 #### Rotte aggiunte
 
@@ -1906,6 +1911,123 @@ riga riscritta.
 
 ---
 
+### Allegati al bollettino — foto e PDF (17 Settembre 2026)
+
+Sotto il campo **E-mail** del form bollettino c'è un box **Allegati**: si scelgono immagini o PDF dal
+telefono, oppure si scatta una foto sul momento. I file partono insieme al PDF nella mail al
+committente — è il motivo per cui il box sta proprio lì e non nel blocco delle firme.
+
+#### Perché R2 e non base64 in Postgres
+
+Le firme sono base64 in colonna `@db.Text`, 5-30 KB l'una. Una foto da telefono è 2-8 MB: **due ordini
+di grandezza**. E `backup.service.ts` fa `bollettini: await this.prisma.bollettino.findMany()`
+**senza `select`**, quindi ogni colonna del bollettino finisce nel JSON notturno. Il debito già
+annotato più sopra (*~40 KB per bollettino, a 2000 bollettini il file è ~80 MB*) sarebbe diventato
+ingestibile: con tre foto per bollettino il backup notturno da solo avrebbe superato il gigabyte.
+
+R2 c'era già: `@aws-sdk/client-s3` è una dipendenza e il client condizionale sulle env
+(`R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`) vive in `BackupService`. Si riusa **lo
+stesso bucket** con prefisso `allegati/`: nessuna env nuova da impostare su Railway.
+
+**Verificato prima di condividere il bucket:** `cleanupOldBackups` non spazza il bucket con una
+`ListObjectsV2`, itera le righe di `backup_log` e cancella **per nome file esatto**. Gli oggetti sotto
+`allegati/` non vengono mai toccati dalla pulizia dei backup.
+
+In DB resta la sola riga di metadati (~150 byte), che quindi **può** entrare nel backup.
+
+#### Perché l'upload precede la firma
+
+La POST del bollettino trasporta solo `allegatiIds: number[]`. Tre ragioni, tutte vincolanti:
+
+- il `BODY_LIMIT` di 2 MB resta intatto: dieci foto non ci sarebbero mai entrate;
+- **un upload che fallisce deve fallire quando fallire è ancora innocuo**, cioè mentre l'operatore
+  compila, non dopo che ha firmato. Dopo la `create` nessun percorso può più rispondere errore, o il
+  client lo legge come "non salvato" e fa rifirmare tutto;
+- nota tecnica 11: niente vincoli semantici nello schema ajv, o è un 400 *prima* dell'handler.
+
+Nella `create`, gli id ammissibili si filtrano **prima** della `prisma.bollettino.create` e si passano
+come `connect` annidato: l'operazione resta atomica e non serve una `update` dopo la create, che è
+esattamente il momento in cui nessun errore è più ammesso. Un id non ammissibile — di un altro utente,
+o già appeso a un bollettino — viene **scartato in silenzio**: perdere un allegato è sempre meglio che
+rifiutare un bollettino già firmato.
+
+#### Il backup contiene i metadati, non i byte
+
+`allegatiBollettino` è una sezione **opzionale** di `BackupData.tables`, come le altre aggiunte in
+seguito, così i backup precedenti restano ripristinabili. Nel restore la `deleteMany` sta **prima** di
+quella dei bollettini e la `createMany` **dopo**, altrimenti il vincolo di chiave esterna.
+
+Gli oggetti su R2 vivono di vita propria e non vengono mai cancellati per i bollettini salvati:
+un ripristino li ritrova al loro posto, perché le chiavi sono nei metadati ripristinati.
+
+#### Pulizia degli orfani: secondo cron alle 2:30
+
+Un allegato nasce con `bollettino_id` NULL e lo resta finché il bollettino non viene salvato. Chi
+carica una foto e poi **abbandona il form** lascia su R2 un oggetto che nessuno collegherà mai: il
+cron delle 2:30 (dopo quello del backup, stessa timezone `Europe/Rome`) cancella gli orfani più vecchi
+di 24 ore, prima l'oggetto e poi la riga. Un errore su R2 non ferma il giro: la riga resta e il giro
+successivo riprova.
+
+#### Il PDF elenca i nomi, non impagina i file
+
+Dopo le tre sezioni voci compare una riga sola: `Allegati: foto-1.jpg, muro.pdf`. Il documento firmato
+registra così **cosa** era allegato. I file non vengono impaginati perché servirebbe una lettura da R2
+per ogni immagine, e nel cumulativo di cliente (50 bollettini) sarebbero centinaia di GET dentro una
+sola richiesta.
+
+Nella mail gli allegati si fermano a un totale di **15 MB** e stanno in un `try/catch` proprio: se R2
+non risponde la mail parte comunque col solo PDF. Il contratto *"`invia()` non lancia mai"* non si
+tocca.
+
+#### Frontend: ridimensionamento prima dell'upload
+
+`AllegatiUploader` ridimensiona le immagini lato client — canvas, lato lungo max 1600 px,
+`toBlob('image/jpeg', 0.8)`, lo stesso mestiere che `SignaturePad` fa con `toDataURL`. Una foto da
+4 MB scende a ~300 KB, che **in cantiere è la differenza fra funzionare e no**. I PDF passano intatti.
+Se la decodifica fallisce (HEIC su un browser che non lo decodifica) si carica l'originale: il MIME è
+comunque nell'allowlist del server.
+
+Due pulsanti, entrambi `<input type="file">` nascosti: *Scegli file* (`multiple`) e *Scatta foto*
+(`capture="environment"`, che da desktop viene ignorato — innocuo). Ogni file parte appena scelto, con
+la sua riga: spinner, poi ✓ oppure l'errore e una ✕ che chiama la DELETE. Massimo 10 file.
+
+**Trappola dell'upload:** `apiClient` ha `Content-Type: application/json` fra i default dell'istanza, e
+axios v1 con quell'header in testa **serializza la FormData in JSON** invece di spedirla come
+multipart (`transformRequest`: `return hasJSONContentType ? JSON.stringify(formDataToJSON(data)) : data`).
+Il server non avrebbe trovato nessun file. La `uploadAllegato` passa quindi
+`headers: { 'Content-Type': undefined }`: azzerato, il browser mette da solo il boundary.
+
+`puoSalvare` **non cambia**: gli allegati sono facoltativi, come l'e-mail.
+
+#### Rotte aggiunte
+
+Tutte dietro `fastify.authenticate` + `assertAccessoBollettini`, e dichiarate **prima** di `/:id`: il
+radix tree di Fastify dà comunque la precedenza alle rotte statiche, ma l'ordine esplicito toglie il
+dubbio a chi legge.
+
+| Metodo | Path | Accesso |
+|---|---|---|
+| POST | `/api/bollettini/allegati` | autenticato + flag (multipart, un file, max 10 MB; **503** se R2 non è configurato, 400 su MIME fuori allowlist) |
+| DELETE | `/api/bollettini/allegati/:id` | autenticato + flag, solo su un **orfano proprio**; 404 altrimenti |
+| GET | `/api/bollettini/allegati/:id/file` | autenticato + flag; il DIPENDENTE accede solo ai propri (orfani suoi, o allegati a un suo bollettino) |
+
+`@fastify/multipart` (già installato, v8.3.1) è registrato in testa al plugin dei bollettini, come fa
+`import.routes.ts`. Intercetta solo `multipart/form-data`, quindi la POST JSON del bollettino non è
+toccata; i due plugin sono scope fratelli, quindi la doppia registrazione non entra in conflitto.
+
+#### Se R2 non è configurato
+
+La `POST /allegati` risponde **503** e il box mostra *"Gli allegati non sono disponibili"*. Il
+bollettino si salva lo stesso, senza file, e nient'altro nell'applicazione ne risente.
+
+#### Cosa non cambia
+
+Le firme e il flusso di salvataggio, il `BODY_LIMIT`, `puoSalvare`, i cumulativi (nessuna lettura da
+R2, solo la riga dei nomi), le env (stesso bucket dei backup) e i bollettini storici — nessun
+backfill, nessuna riga riscritta.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
@@ -1946,6 +2068,7 @@ backend/
 │   │   ├── dreamVeicoli.routes.ts # Anagrafica veicoli Dream
 │   │   └── dreamClienti.routes.ts # Anagrafica clienti Dream (separata)
 │   ├── services/
+│   │   ├── allegatiBollettino.service.ts # Foto e PDF su R2, prefisso allegati/
 │   │   ├── attivita.service.ts  # CRUD attività
 │   │   ├── auth.service.ts      # Login e utente corrente
 │   │   ├── backup.service.ts    # Backup R2
@@ -1961,7 +2084,7 @@ backend/
 │   │   ├── dreamVeicoli.service.ts  # CRUD veicoli Dream
 │   │   ├── export.service.ts    # Generazione PDF/Excel
 │   │   ├── import.service.ts    # Import massivo da Excel
-│   │   ├── scheduler.service.ts # Cron jobs (backup automatico)
+│   │   ├── scheduler.service.ts # Cron: backup 2:00, allegati orfani 2:30
 │   │   ├── seed.service.ts      # Tipi assenza di default + pulizia generici
 │   │   ├── tipiAssenza.service.ts  # CRUD tipi assenza
 │   │   ├── tipiAttivita.service.ts # CRUD tipi attività
@@ -2003,6 +2126,7 @@ frontend/
 │   │   ├── ProtectedRoute.tsx
 │   │   ├── DipendenteLayout.tsx
 │   │   ├── ResponsabileLayout.tsx
+│   │   ├── AllegatiUploader.tsx   # Foto/PDF, ridimensiona e carica su R2
 │   │   ├── CalendarioEventiGrid.tsx # Griglia annuale scorrevole
 │   │   ├── CampoData.tsx          # Input data, condiviso Calendario/Dream
 │   │   ├── DateTimeInput.tsx      # Input data/ora con picker e default
@@ -2057,7 +2181,9 @@ JWT_SECRET=<stringa-segreta>
 NODE_ENV=production
 FRONTEND_URL=https://gicatask.netlify.app
 
-# Cloudflare R2 (opzionali, per backup)
+# Cloudflare R2 (opzionali). Stesso bucket per i backup e per gli allegati dei
+# bollettini, che stanno sotto il prefisso allegati/. Senza queste, la POST
+# /api/bollettini/allegati risponde 503 e il bollettino si salva senza file.
 R2_ACCOUNT_ID=<cloudflare-account-id>
 R2_ACCESS_KEY_ID=<r2-access-key>
 R2_SECRET_ACCESS_KEY=<r2-secret-key>
@@ -2103,7 +2229,7 @@ VITE_API_URL=https://web-production-fde54.up.railway.app
 
 6. **Sistema Backup:** I backup vengono salvati su Cloudflare R2 in formato JSON. Ogni notte alle 2:00 viene creato un backup automatico e vengono eliminati quelli più vecchi di 7 giorni. Il ripristino sovrascrive tutti i dati esistenti in una transazione atomica.
 
-7. **Bollettini:** i PDF non sono archiviati ma rigenerati dalle righe a ogni download, quindi i cumulativi — **per cantiere e per cliente** — sono aggiornati per costruzione. Il cantiere è **facoltativo**, con la stessa regola delle attività: obbligatorio solo se il cliente ne ha almeno uno attivo. Il cliente invece c'è sempre, e nei bollettini precedenti alla colonna `cliente_id` si raggiunge attraverso il cantiere: per questo il filtro d'archivio per cliente è un `OR` fra i due percorsi. Le firme sono PNG base64 in Postgres, escluse dai `select` degli elenchi. L'accesso dipende dal flag `abilitatoBollettini` letto dal database a ogni richiesta e non dal token.
+7. **Bollettini:** i PDF non sono archiviati ma rigenerati dalle righe a ogni download, quindi i cumulativi — **per cantiere e per cliente** — sono aggiornati per costruzione. Il cantiere è **facoltativo**, con la stessa regola delle attività: obbligatorio solo se il cliente ne ha almeno uno attivo. Il cliente invece c'è sempre, e nei bollettini precedenti alla colonna `cliente_id` si raggiunge attraverso il cantiere: per questo il filtro d'archivio per cliente è un `OR` fra i due percorsi. Le firme sono PNG base64 in Postgres, escluse dai `select` degli elenchi. Gli **allegati** (foto e PDF) seguono invece la regola opposta: i byte stanno su **R2** sotto il prefisso `allegati/`, in Postgres c'è la sola riga di metadati, e l'upload avviene **prima** della firma perché dopo la `create` nessun errore è più ammissibile. L'accesso dipende dal flag `abilitatoBollettini` letto dal database a ogni richiesta e non dal token.
 
 8. **Date senza orario:** le colonne `@db.Date` (attività, bollettini, calendario eventi) valgono come **giorni**, non come istanti. Lato server vanno costruite con `Date.UTC()` e mai con la mezzanotte locale: ExcelJS converte le date con `getTime()`, quindi in Europe/Rome uno slittamento al giorno precedente sarebbe visibile in ogni export. Lato client restano stringhe `YYYY-MM-DD` e si formattano con `slice(0, 10)`, mai passando da `new Date(iso).toLocaleDateString()`.
 

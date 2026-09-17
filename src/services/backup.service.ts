@@ -19,6 +19,9 @@ interface BackupData {
     vociBollettino?: any[];
     bollettini?: any[];
     righeBollettino?: any[];
+    // Solo i metadati: i byte degli allegati stanno su R2 e non vengono mai
+    // cancellati per i bollettini salvati, quindi un ripristino li ritrova
+    allegatiBollettino?: any[];
     calendarioEventi?: any[];
     dreamVeicoli?: any[];
     dreamClienti?: any[];
@@ -82,6 +85,7 @@ export class BackupService {
           vociBollettino: await this.prisma.voceBollettino.findMany(),
           bollettini: await this.prisma.bollettino.findMany(),
           righeBollettino: await this.prisma.rigaBollettino.findMany(),
+          allegatiBollettino: await this.prisma.allegatoBollettino.findMany(),
           calendarioEventi: await this.prisma.calendarioEvento.findMany(),
           dreamVeicoli: await this.prisma.dreamVeicolo.findMany(),
           dreamClienti: await this.prisma.dreamCliente.findMany(),
@@ -206,6 +210,7 @@ export class BackupService {
       // I bollettini referenziano utenti e cantieri: se restassero in piedi,
       // le deleteMany qui sotto fallirebbero sul vincolo di chiave esterna
       await tx.rigaBollettino.deleteMany();
+      await tx.allegatoBollettino.deleteMany();
       await tx.bollettino.deleteMany();
       await tx.voceBollettino.deleteMany();
       await tx.attivita.deleteMany();
@@ -287,6 +292,13 @@ export class BackupService {
         stats.righeBollettino = righeBollettino.length;
       }
 
+      // Dopo i bollettini: referenziano sia questi sia gli utenti
+      const allegatiBollettino = backupData.tables.allegatiBollettino ?? [];
+      if (allegatiBollettino.length > 0) {
+        await tx.allegatoBollettino.createMany({ data: allegatiBollettino });
+        stats.allegatiBollettino = allegatiBollettino.length;
+      }
+
       // I backup creati prima di Dream non hanno queste sezioni
       const dreamVeicoli = backupData.tables.dreamVeicoli ?? [];
       if (dreamVeicoli.length > 0) {
@@ -324,6 +336,7 @@ export class BackupService {
         'voci_bollettino',
         'bollettini',
         'righe_bollettino',
+        'allegati_bollettino',
         'calendario_eventi',
         'dream_veicoli',
         'dream_clienti',

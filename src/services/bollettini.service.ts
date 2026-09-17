@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma, TipoVoce } from '@prisma/client';
+import { AllegatiBollettinoService } from './allegatiBollettino.service.js';
 
 export interface RigaInput {
   voceId?: number | null;
@@ -23,6 +24,7 @@ export interface CreateBollettinoInput {
   firmaCommittenteImg: string;
   emailDestinatario?: string | null;
   emailStato?: string | null;
+  allegatiIds?: number[];
   createdById: number;
 }
 
@@ -60,6 +62,12 @@ const listSelect = {
   emailErrore: true,
   createdAt: true,
   utente: { select: { id: true, nome: true, cognome: true } },
+  // Metadati corti: al contrario delle firme non pesano sull'elenco, e cosi'
+  // lista e archivio mostrano il conteggio senza una seconda chiamata
+  allegati: {
+    select: { id: true, nomeFile: true, mimeType: true, dimensione: true },
+    orderBy: { id: 'asc' },
+  },
 } satisfies Prisma.BollettinoSelect;
 
 export type BollettinoListItem = Prisma.BollettinoGetPayload<{ select: typeof listSelect }>;
@@ -234,6 +242,22 @@ export class BollettiniService {
 
     const righe = await this.buildRighe(input);
 
+    // Si filtra prima e si usa un `connect` annidato: l'operazione resta
+    // atomica e non serve una update dopo la create, che e' il momento in cui
+    // nessun errore e' piu' ammesso. Un id non ammissibile viene scartato in
+    // silenzio: perdere un allegato e' sempre meglio che rifiutare un
+    // bollettino gia' firmato.
+    const allegati = input.allegatiIds?.length
+      ? await this.prisma.allegatoBollettino.findMany({
+          where: {
+            id: { in: input.allegatiIds.slice(0, 10) },
+            bollettinoId: null,
+            caricatoDaId: input.utenteId,
+          },
+          select: { id: true },
+        })
+      : [];
+
     const bollettino = await this.prisma.bollettino.create({
       data: {
         utenteId: input.utenteId,
@@ -253,6 +277,7 @@ export class BollettiniService {
         emailStato: input.emailStato ?? null,
         createdById: input.createdById,
         righe: { create: righe },
+        allegati: { connect: allegati.map((a) => ({ id: a.id })) },
       },
       select: { id: true },
     });
@@ -318,7 +343,18 @@ export class BollettiniService {
   }
 
   async delete(id: number): Promise<void> {
-    // Le righe hanno onDelete: Cascade, quindi spariscono con il bollettino
+    // Prima i byte su R2: le righe hanno onDelete Cascade, quindi dopo la
+    // delete le chiavi non sarebbero piu' recuperabili. L'errore si logga e
+    // basta: un oggetto orfano su R2 non costa nulla, un bollettino che non si
+    // riesce a cancellare si'.
+    const allegati = new AllegatiBollettinoService(this.prisma);
+    try {
+      await allegati.rimuoviChiavi(await allegati.chiaviDiBollettino(id));
+    } catch (error) {
+      console.error(`[Bollettini] Rimozione allegati del bollettino ${id} fallita:`, error);
+    }
+
+    // Righe e allegati hanno onDelete: Cascade, spariscono con il bollettino
     await this.prisma.bollettino.delete({ where: { id } });
   }
 }

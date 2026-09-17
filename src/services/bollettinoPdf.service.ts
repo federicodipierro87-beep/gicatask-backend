@@ -21,6 +21,10 @@ export interface BollettinoPdf {
   firmaCommittenteImg: string;
   utente: { nome: string; cognome: string };
   righe: RigaPdf[];
+  // Solo i nomi: i file non vengono impaginati, servirebbe una lettura da R2
+  // per ogni immagine e nel cumulativo di cliente sarebbero centinaia di GET
+  // dentro una sola richiesta
+  allegati: { nomeFile: string }[];
 }
 
 const MARGIN = 40;
@@ -216,6 +220,18 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
   for (const sezione of SEZIONI) {
     const righe = b.righe.filter((r) => r.tipo === sezione.tipo);
     y = renderSezioneVoci(doc, sezione.titolo, sezione.labelQuantita, righe, y) + 6;
+  }
+
+  // I file stanno su R2, ma il documento firmato deve registrare cosa era
+  // allegato al momento della firma
+  if (b.allegati.length > 0) {
+    y = ensureSpace(doc, y, 14);
+    doc.fontSize(8).fillColor('#666').text(
+      `Allegati: ${b.allegati.map((a) => a.nomeFile).join(', ')}`,
+      MARGIN,
+      y,
+      { width: CONTENT_WIDTH, ellipsis: true, lineBreak: false }
+    );
   }
 
   const firmaWidth = (CONTENT_WIDTH - 30) / 2;

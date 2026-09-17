@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { BollettiniService } from './bollettini.service.js';
 import { BollettinoPdfService, nomeFilePdf } from './bollettinoPdf.service.js';
+import { AllegatiBollettinoService } from './allegatiBollettino.service.js';
 import { inviaEmail, isEmailConfigurata } from './email.service.js';
 import { normalizzaEmail } from '../utils/email.js';
 
@@ -14,6 +15,9 @@ export interface EsitoEmail {
 
 /** La colonna e' Text, ma un errore di 8 KB non aiuta nessuno. */
 const MAX_ERRORE = 500;
+
+/** Oltre questo totale gli allegati vengono lasciati fuori: la mail rimbalza. */
+const MAX_ALLEGATI_BYTES = 15 * 1024 * 1024;
 
 function tronca(valore: string, max: number): string {
   return valore.length > max ? valore.slice(0, max) : valore;
@@ -37,10 +41,12 @@ function escapeHtml(valore: string): string {
 export class BollettinoEmailService {
   private bollettini: BollettiniService;
   private pdf: BollettinoPdfService;
+  private allegati: AllegatiBollettinoService;
 
   constructor(private prisma: PrismaClient) {
     this.bollettini = new BollettiniService(prisma);
     this.pdf = new BollettinoPdfService();
+    this.allegati = new AllegatiBollettinoService(prisma);
   }
 
   async invia(bollettinoId: number, destinatarioGrezzo: string | null): Promise<EsitoEmail> {
@@ -90,6 +96,15 @@ export class BollettinoEmailService {
       const pdfBuffer = await this.pdf.generateSingolo(bollettino);
       const data = new Date(bollettino.dataRiferimento).toLocaleDateString('it-IT');
 
+      // try/catch proprio: se R2 non risponde la mail parte comunque col solo
+      // PDF, che e' il documento che conta
+      let fileAllegati: { nomeFile: string; buffer: Buffer }[] = [];
+      try {
+        fileAllegati = await this.allegati.fileDiBollettino(bollettinoId, MAX_ALLEGATI_BYTES);
+      } catch (error) {
+        console.error(`[BollettinoEmail] Lettura allegati ${bollettinoId} fallita:`, error);
+      }
+
       // Senza cantiere l'oggetto lo salta del tutto: un trattino con niente in
       // mezzo sembrerebbe un campo non compilato
       const riferimento = bollettino.cantiereNome
@@ -100,10 +115,14 @@ export class BollettinoEmailService {
         to: destinatario,
         subject: `Bollettino ${riferimento} — ${data}`,
         // Niente immagini remote ne' link: peggiorerebbero il punteggio antispam
-        html: this.corpoHtml(bollettino.clienteNome, bollettino.cantiereNome, data),
-        text: this.corpoTesto(bollettino.clienteNome, bollettino.cantiereNome, data),
+        html: this.corpoHtml(bollettino.clienteNome, bollettino.cantiereNome, data, fileAllegati.length),
+        text: this.corpoTesto(bollettino.clienteNome, bollettino.cantiereNome, data, fileAllegati.length),
         attachments: [
           { filename: nomeFilePdf(bollettino), content: pdfBuffer.toString('base64') },
+          ...fileAllegati.map((a) => ({
+            filename: a.nomeFile,
+            content: a.buffer.toString('base64'),
+          })),
         ],
       });
 
@@ -160,7 +179,12 @@ export class BollettinoEmailService {
     }
   }
 
-  private corpoHtml(cliente: string, cantiere: string | null, data: string): string {
+  private corpoHtml(
+    cliente: string,
+    cantiere: string | null,
+    data: string,
+    numeroAllegati: number
+  ): string {
     const riferimento = cantiere
       ? ` per il cantiere <strong>${escapeHtml(cantiere)}</strong> (${escapeHtml(cliente)})`
       : ` per il cliente <strong>${escapeHtml(cliente)}</strong>`;
@@ -170,11 +194,19 @@ export class BollettinoEmailService {
       `<p>in allegato il bollettino dei lavori del <strong>${escapeHtml(data)}</strong>`,
       `${riferimento}.</p>`,
       '<p>Il documento è firmato dall\'operatore e dal committente.</p>',
+      ...(numeroAllegati > 0
+        ? [`<p>In allegato anche ${numeroAllegati} file.</p>`]
+        : []),
       '<p>Cordiali saluti.</p>',
     ].join('');
   }
 
-  private corpoTesto(cliente: string, cantiere: string | null, data: string): string {
+  private corpoTesto(
+    cliente: string,
+    cantiere: string | null,
+    data: string,
+    numeroAllegati: number
+  ): string {
     const riferimento = cantiere
       ? `per il cantiere ${cantiere} (${cliente})`
       : `per il cliente ${cliente}`;
@@ -184,6 +216,7 @@ export class BollettinoEmailService {
       '',
       `in allegato il bollettino dei lavori del ${data} ${riferimento}.`,
       'Il documento è firmato dall\'operatore e dal committente.',
+      ...(numeroAllegati > 0 ? [`In allegato anche ${numeroAllegati} file.`] : []),
       '',
       'Cordiali saluti.',
     ].join('\n');

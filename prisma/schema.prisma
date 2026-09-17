@@ -18,9 +18,10 @@ model Utente {
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
-  attivita       Attivita[] @relation("UtenteAttivita")
-  attivitaCreate Attivita[] @relation("CreatoDa")
-  bollettini     Bollettino[] @relation("UtenteBollettini")
+  attivita           Attivita[]           @relation("UtenteAttivita")
+  attivitaCreate     Attivita[]           @relation("CreatoDa")
+  bollettini         Bollettino[]         @relation("UtenteBollettini")
+  allegatiBollettino AllegatoBollettino[] @relation("UtenteAllegatiBollettino")
 
   @@map("utenti")
 }
@@ -326,6 +327,7 @@ model Bollettino {
   cliente  Cliente?  @relation(fields: [clienteId], references: [id])
   cantiere Cantiere? @relation(fields: [cantiereId], references: [id])
   righe    RigaBollettino[]
+  allegati AllegatoBollettino[]
 
   @@index([clienteId, dataRiferimento])
   @@index([cantiereId, dataRiferimento])
@@ -348,4 +350,31 @@ model RigaBollettino {
 
   @@index([bollettinoId, tipo])
   @@map("righe_bollettino")
+}
+
+// Foto e PDF allegati al bollettino. In tabella stanno i soli metadati: i byte
+// vivono su R2, nello stesso bucket dei backup sotto il prefisso `allegati/`.
+// Una foto da telefono pesa due ordini di grandezza piu' di una firma base64, e
+// il dump notturno del backup legge i bollettini senza `select`.
+model AllegatoBollettino {
+  id           Int      @id @default(autoincrement())
+  // NULL fra l'upload e il salvataggio: il file si carica prima delle firme,
+  // e finche' il bollettino non esiste l'allegato non ha padre.
+  bollettinoId Int?     @map("bollettino_id")
+  // Serve a sapere di chi e' un allegato ancora orfano: solo chi l'ha caricato
+  // puo' collegarlo o cancellarlo.
+  caricatoDaId Int      @map("caricato_da")
+  chiave       String   @unique
+  nomeFile     String   @map("nome_file")
+  mimeType     String   @map("mime_type")
+  dimensione   Int
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  bollettino Bollettino? @relation(fields: [bollettinoId], references: [id], onDelete: Cascade)
+  caricatoDa Utente      @relation("UtenteAllegatiBollettino", fields: [caricatoDaId], references: [id])
+
+  @@index([bollettinoId])
+  // Usato dalla pulizia notturna degli orfani
+  @@index([createdAt])
+  @@map("allegati_bollettino")
 }

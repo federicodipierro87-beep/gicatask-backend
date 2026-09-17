@@ -1,5 +1,7 @@
 import { FastifyInstance } from 'fastify';
+import multipart from '@fastify/multipart';
 import { BollettiniService, type RigaInput } from '../services/bollettini.service.js';
+import { AllegatiBollettinoService } from '../services/allegatiBollettino.service.js';
 import {
   BollettinoPdfService,
   nomeFilePdf,
@@ -62,6 +64,9 @@ const createBodySchema = {
     // lo schema tutela il server (tipi e lunghezze), la semantica si valuta
     // dopo il salvataggio.
     email: { type: 'string', maxLength: 254 },
+    // Non in `required` e senza vincoli semantici, stessa regola: gli id non
+    // ammissibili li scarta il service, che a quel punto ha gia' salvato.
+    allegatiIds: { type: 'array', maxItems: 10, items: { type: 'number' } },
   },
 } as const;
 
@@ -80,12 +85,148 @@ interface CreateBody {
   firmaCommittenteNome: string;
   firmaCommittenteImg: string;
   email?: string;
+  allegatiIds?: number[];
 }
 
 export async function bollettiniRoutes(fastify: FastifyInstance) {
   const service = new BollettiniService(fastify.prisma);
   const pdfService = new BollettinoPdfService();
   const emailService = new BollettinoEmailService(fastify.prisma);
+  const allegatiService = new AllegatiBollettinoService(fastify.prisma);
+
+  // Intercetta solo multipart/form-data: la POST JSON del bollettino, col suo
+  // bodyLimit dedicato, non viene toccata
+  await fastify.register(multipart, {
+    limits: { fileSize: allegatiService.maxBytes, files: 1 },
+  });
+
+  // Le rotte /allegati* stanno prima di /:id. Il radix tree di Fastify da'
+  // comunque la precedenza alle rotte statiche, ma l'ordine toglie il dubbio.
+
+  // Upload di un allegato. Avviene *prima* della firma: un upload che
+  // fallisce deve fallire mentre l'operatore compila, non dopo che ha firmato.
+  fastify.post('/allegati', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
+    if (!allegatiService.isConfigured()) {
+      return reply.status(503).send({ error: 'Gli allegati non sono disponibili' });
+    }
+
+    const user = request.user as JwtPayload;
+
+    let file;
+    try {
+      file = await request.file();
+    } catch {
+      return reply.status(400).send({ error: 'File non leggibile' });
+    }
+
+    if (!file) {
+      return reply.status(400).send({ error: 'Nessun file caricato' });
+    }
+
+    if (!allegatiService.mimeAmmesso(file.mimetype)) {
+      return reply.status(400).send({ error: 'Sono ammesse solo immagini e PDF' });
+    }
+
+    // Oltre `limits.fileSize` la toBuffer lancia: un 500 qui direbbe
+    // all'operatore che e' rotto qualcosa, quando invece deve solo scegliere
+    // un file piu' piccolo
+    let buffer: Buffer;
+    try {
+      buffer = await file.toBuffer();
+    } catch {
+      return reply.status(400).send({ error: 'Il file supera i 10 MB' });
+    }
+
+    if (file.file.truncated || buffer.length > allegatiService.maxBytes) {
+      return reply.status(400).send({ error: 'Il file supera i 10 MB' });
+    }
+
+    try {
+      const allegato = await allegatiService.carica(
+        user.id,
+        file.filename || 'allegato',
+        file.mimetype,
+        buffer
+      );
+      return reply.status(201).send(allegato);
+    } catch (error) {
+      request.log.error({ err: error }, 'upload allegato bollettino');
+      return reply.status(500).send({ error: 'Caricamento non riuscito' });
+    }
+  });
+
+  // Solo su un allegato ancora orfano e proprio: dopo il salvataggio il
+  // bollettino e' firmato e non si tocca piu'
+  fastify.delete<{ Params: { id: string } }>('/allegati/:id', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
+    const user = request.user as JwtPayload;
+    const rimosso = await allegatiService.rimuoviOrfano(parseInt(request.params.id, 10), user.id);
+
+    if (!rimosso) {
+      return reply.status(404).send({ error: 'Allegato non trovato' });
+    }
+
+    return reply.send({ success: true });
+  });
+
+  fastify.get<{ Params: { id: string } }>('/allegati/:id/file', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
+    if (!allegatiService.isConfigured()) {
+      return reply.status(503).send({ error: 'Gli allegati non sono disponibili' });
+    }
+
+    const user = request.user as JwtPayload;
+    const allegato = await allegatiService.getById(parseInt(request.params.id, 10));
+
+    if (!allegato) {
+      return reply.status(404).send({ error: 'Allegato non trovato' });
+    }
+
+    // Il dipendente accede ai propri: gli orfani che ha caricato lui, o quelli
+    // appesi a un suo bollettino
+    if (user.ruolo === 'DIPENDENTE') {
+      const bollettino = allegato.bollettinoId
+        ? await service.getById(allegato.bollettinoId)
+        : null;
+      const proprio = bollettino
+        ? bollettino.utenteId === user.id
+        : allegato.caricatoDaId === user.id;
+
+      if (!proprio) {
+        return reply.status(403).send({ error: 'Non autorizzato' });
+      }
+    }
+
+    let file;
+    try {
+      file = await allegatiService.leggi(allegato.id);
+    } catch (error) {
+      request.log.error({ err: error }, 'lettura allegato bollettino');
+      return reply.status(502).send({ error: 'File non recuperabile' });
+    }
+
+    if (!file) {
+      return reply.status(404).send({ error: 'Allegato non trovato' });
+    }
+
+    return reply
+      .header('Content-Type', file.mimeType)
+      .header(
+        'Content-Disposition',
+        `inline; filename="${sanitizeFilenamePart(file.nomeFile)}"`
+      )
+      .send(file.buffer);
+  });
 
   // Elenco bollettini (senza firme)
   fastify.get('/', {
@@ -174,6 +315,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
         // responsabile vede un invio in sospeso, non un bollettino che sembra
         // non aver mai richiesto la mail.
         emailStato: destinatario ? (emailValida ? 'IN_CORSO' : 'NON_VALIDA') : null,
+        allegatiIds: body.allegatiIds ?? [],
         createdById: user.id,
       });
       bollettinoId = creato.id;
