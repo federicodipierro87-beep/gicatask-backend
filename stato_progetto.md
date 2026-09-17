@@ -1675,6 +1675,11 @@ Il codice è completo e **degrada in modo pulito finché `RESEND_API_KEY` non è
 risulta `NON_CONFIGURATA`, l'operatore legge un avviso, l'archivio mostra *Non inviata*. Accendere il
 servizio non richiede di toccare una riga di codice, solo tre variabili su Railway.
 
+> **Servizio attivo dal 17 Settembre 2026.** Dominio `gica.ch` verificato su Resend, mittente
+> `Bollettini GicaTask <noreply@gica.ch>`, reply-to `info@gica.ch`. Le tre variabili sono impostate
+> sul servizio `web` del progetto Railway `sweet-truth`. Nessuna riga di codice è stata modificata
+> per accenderlo, come previsto.
+
 #### Il vincolo che guida tutto
 
 Il bollettino è **firmato e non modificabile**. Quando la POST arriva, l'operatore ha già disegnato
@@ -1764,18 +1769,26 @@ precompilata, non un pulsante secco, perché il caso comune è **correggere** l'
 peggiore: il backend vecchio ignora `email` (non c'è `additionalProperties: false`), risponde
 `{ id }`, il frontend non trova `data.email` e naviga — **l'utente crede che la mail sia partita**.
 
-#### Cosa resta da fare per accendere il servizio
+#### Accensione del servizio (17 Settembre 2026)
 
-1. Verificare il dominio su Resend (TXT SPF, CNAME DKIM, DMARC `p=none` iniziale)
-2. Creare una API key con solo *Sending access*
-3. Su Railway: `RESEND_API_KEY`, `MAIL_FROM` (deve stare sul dominio verificato, altrimenti 403),
-   `MAIL_REPLY_TO` facoltativa
-4. Collaudo senza rischi: reinviare dall'archivio un bollettino già salvato. Se qualcosa non va, il
-   motivo esatto è nel tooltip della colonna Mail. Solo dopo, provare dal form
+1. Dominio `gica.ch` verificato su Resend (SPF, DKIM, DMARC)
+2. API key con **solo *Sending access***: `GET /domains` risponde infatti
+   `401 restricted_api_key — "This API key is restricted to only send emails"`. È la conferma che la
+   chiave non può fare altro che spedire, ed è il comportamento voluto
+3. Su Railway (progetto `sweet-truth`, servizio `web`): `RESEND_API_KEY`, `MAIL_FROM`,
+   `MAIL_REPLY_TO`, impostate in un solo comando per avere un solo redeploy
+4. Prova di trasporto diretta all'API Resend, **senza passare dall'app**: `HTTP 200` con message id.
+   Serve a separare i due possibili colpevoli — un 403 *domain is not verified* è un problema di DNS,
+   non del nostro codice, e dall'interfaccia sarebbe apparso solo come un generico *Non inviata*
 
-Prima della verifica del dominio Resend consente solo `onboarding@resend.dev` verso l'indirizzo
-dell'account: mettere la chiave prima è inutile. Il piano gratuito è nell'ordine dei 100
-messaggi/giorno.
+Nota per il futuro: `MAIL_FROM` **deve** restare su `gica.ch`. Il valore viene passato tal quale a
+Resend, e un mittente fuori dal dominio verificato prende 403 su ogni invio. Il piano gratuito è
+nell'ordine dei 100 messaggi/giorno, da confrontare col volume dei bollettini.
+
+**La chiave non è in nessun file del repo**, solo nelle variabili Railway. Va ruotata dalla dashboard
+Resend se finisce in una chat, in un log o in una cronologia shell: una chiave con *Sending access*
+permette di spedire **a nome di `gica.ch`**, e il danno è alla reputazione del dominio, che si ripara
+lentamente. La sostituzione è una variabile e un riavvio.
 
 #### Cosa non cambia
 
@@ -1943,11 +1956,12 @@ R2_ACCESS_KEY_ID=<r2-access-key>
 R2_SECRET_ACCESS_KEY=<r2-secret-key>
 R2_BUCKET_NAME=gicatask-backups
 
-# Resend (opzionali, per l'invio del bollettino via e-mail).
+# Resend (impostate in produzione dal 17/09/2026).
 # Senza queste, ogni invio risulta NON_CONFIGURATA e nulla si rompe.
+# MAIL_FROM deve stare sul dominio verificato su Resend, altrimenti 403.
 RESEND_API_KEY=<api-key-con-solo-sending-access>
-MAIL_FROM=Bollettini GicaTask <bollettini@dominio-verificato.it>
-MAIL_REPLY_TO=<indirizzo-a-cui-rispondere>
+MAIL_FROM=Bollettini GicaTask <noreply@gica.ch>
+MAIL_REPLY_TO=info@gica.ch
 ```
 
 ### Frontend (Netlify)
