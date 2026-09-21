@@ -36,7 +36,10 @@ export async function utentiRoutes(fastify: FastifyInstance) {
         type: 'object',
         required: ['nome', 'cognome', 'ruolo'],
         properties: {
-          nome: { type: 'string', minLength: 1 },
+          // L'account amministratore non e' una persona e il nome di
+          // battesimo non gli serve: il cognome resta obbligatorio perche' e'
+          // il campo che porta sempre l'identita'
+          nome: { type: 'string', minLength: 0 },
           cognome: { type: 'string', minLength: 1 },
           ruolo: { type: 'string', enum: ['DIPENDENTE', 'RESPONSABILE'] },
           password: { type: 'string' },
@@ -58,7 +61,8 @@ export async function utentiRoutes(fastify: FastifyInstance) {
       body: {
         type: 'object',
         properties: {
-          nome: { type: 'string', minLength: 1 },
+          // Vedi la POST: il nome puo' restare vuoto, il cognome no
+          nome: { type: 'string', minLength: 0 },
           cognome: { type: 'string', minLength: 1 },
           ruolo: { type: 'string', enum: ['DIPENDENTE', 'RESPONSABILE'] },
           abilitatoBollettini: { type: 'boolean' },

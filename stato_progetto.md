@@ -2028,6 +2028,143 @@ backfill, nessuna riga riscritta.
 
 ---
 
+### Report per collaboratore e selezione multipla (21 Settembre 2026)
+
+Nel Report, cliente e dipendente non sono più due tendine a scelta singola ma due **elenchi a
+spunta** (`MultiSelect`). E con **due o più dipendenti selezionati** il PDF non è più un elenco
+unico: contiene **una sezione per ciascuno**, ognuna da pagina nuova, e l'Excel un foglio per
+ciascuno.
+
+#### Perché "due o più" e non "sempre spezzato"
+
+Zero dipendenti selezionati continua a voler dire *"tutti, in un elenco solo"*: è il comportamento
+di sempre, ed è quello che le due tabelle di riepilogo della pagina mostrano a schermo. Spezzare
+anche quel caso avrebbe cambiato il significato del pulsante Esporta senza che nessuno lo avesse
+chiesto, e chi vuole il mensile di tutti separato li seleziona tutti — la riga *Seleziona tutti*
+del componente lo fa in un click.
+
+Con **un** dipendente il documento è identico a prima: una sezione, un foglio `Attività`. La soglia
+sta a due perché è lì che "sezione" comincia a significare qualcosa.
+
+#### I clienti filtrano, non spezzano
+
+Non si può spezzare lo stesso documento su due dimensioni: un PDF per dipendente *e* per cliente
+sarebbe un prodotto cartesiano di sezioni, e non è quello che serve a chi stampa il mensile di una
+squadra. I clienti selezionati restringono quindi le attività e basta, e finiscono nella riga dei
+filtri come elenco separato da virgole.
+
+Il **cantiere resta a scelta singola** ed è abilitato solo con **esattamente un** cliente
+selezionato: l'elenco dei cantieri si carica per cliente (`cantieriApi.getByCliente`) e non esiste
+una lista trasversale da cui pescare. Con zero o due clienti il campo si svuota e si disabilita.
+
+#### `soloDipendente` si allarga, ma non sul cliente
+
+I giorni segnaposto — il mese intero, sabati e festivi in grigio, le righe vuote dove non c'è
+registrazione — erano riservati al caso *un solo dipendente e nessun cliente*. Ogni sezione è ora
+per costruzione di **una persona sola**, quindi la condizione diventa:
+
+```ts
+soloDipendente: utentiIds.length > 0 && clientiIds.length === 0 && cantiereId === undefined,
+```
+
+Il vincolo su cliente e cantiere **resta intatto**, e per la ragione già scritta in
+`export.service.ts`: con un cliente selezionato una riga vuota non direbbe *"quel giorno non ha
+lavorato"* ma *"quel giorno non ha lavorato **per quel cliente**"*, che è un'affermazione diversa e
+leggibile al contrario. Allentare lì avrebbe prodotto un documento che mente.
+
+Il guadagno è che il report mensile di ciascuno adesso **esiste davvero**: tre dipendenti
+selezionati danno tre mesi completi, giorni vuoti compresi. E **un dipendente senza attività nel
+periodo mantiene la sua sezione**, fatta dei soli segnaposto: è precisamente l'informazione che si
+voleva vedere.
+
+#### Un documento, una `addPage` per sezione, una `end`
+
+Il corpo di `generatePDF` è diventato `renderSezione(doc, gruppo, filters)`, che disegna titolo,
+riga dei filtri, riepilogo, tabella e riga TOTALE **senza creare né chiudere il documento**.
+`generatePDF(gruppi, filters)` apre il `PDFDocument`, chiama `renderSezione` per ogni gruppo con un
+`doc.addPage()` fra uno e l'altro (la prima sezione sta sulla pagina che pdfkit apre da solo) e fa
+**una sola** `doc.end()`.
+
+È lo **stesso schema di `bollettinoPdf.service.ts`** (`generateCumulativo`), che impagina 50
+bollettini in un documento con la stessa sequenza. Non è una coincidenza da imitare per simmetria:
+è l'unico modo in cui pdfkit produce un file solo, perché lo stream si chiude una volta e non si
+riapre.
+
+Il titolo `Report Attività` resta, e la riga dei filtri sotto porta già `Dipendente: …` — col
+gruppo diventa il nome della sezione, che quindi **si identifica da sé** senza intestazioni nuove.
+
+I **gruppi si costruiscono con una query sola** e una partizione in memoria: N query sarebbero N
+volte lo stesso piano con un id diverso, e i totali del riepilogo si calcolano comunque
+sull'insieme intero. Gli utenti si rileggono con lo stesso `orderBy` delle tendine, così l'ordine
+delle sezioni è quello che il responsabile vede a schermo.
+
+Sull'Excel: **un foglio per gruppo**, e il foglio **`Riepilogo` resta uno**, calcolato sull'unione —
+è il quadro d'insieme, e serve proprio a confrontare le persone fra loro. Excel vieta `: \ / ? * [ ]`
+nel nome di un foglio, lo tronca a 31 caratteri e non ammette duplicati: un nome non ripulito fa
+aprire il file come *danneggiato*, quindi `nomeFoglio` ripulisce, tronca e disambigua con un
+progressivo.
+
+#### Compatibilità: le liste non sostituiscono gli id singoli
+
+`GET /api/attivita` accetta `utenteIds`/`clienteIds` **e** i vecchi `utenteId`/`clienteId`, perché
+Dashboard e *Assegna attività* filtrano ancora su una persona sola. È ciò che permette il
+**backend per primo**: il frontend vecchio continua a funzionare identico mentre il nuovo non è
+ancora in linea. Il vincolo del DIPENDENTE resta assoluto — se `user.ruolo === 'DIPENDENTE'` si
+impone `utentiIds: [user.id]` ignorando qualunque cosa la query chieda.
+
+`idsNumerici` spezza sulla virgola e scarta i non interi con lo stesso criterio di `idNumerico`: un
+`NaN` in un `where` fa esplodere Prisma con un 500.
+
+Il nome del file guadagna il suffisso `-per-dipendente` quando è spezzato, così due esportazioni
+consecutive non si sovrascrivono nella cartella Download. E sotto i pulsanti compare una riga di
+stato — *"Il PDF conterrà una sezione per ciascuno dei N dipendenti selezionati"* — perché
+altrimenti chi stampa non sa cosa sta per ottenere finché non apre il file.
+
+#### I responsabili in fondo alle tendine
+
+`orderBy: [{ ruolo: 'asc' }, { cognome: 'asc' }, { nome: 'asc' }]` in `auth.service.ts` e
+`utenti.service.ts`. Postgres ordina gli enum secondo l'**ordine di dichiarazione**, e in
+`enum Ruolo { DIPENDENTE RESPONSABILE }` i dipendenti vengono per primi: i responsabili finiscono in
+fondo **senza nessun `CASE`** e senza toccare lo schema. Non è un caso speciale sull'account
+amministratore, è la regola generale.
+
+Tutte le tendine leggono da questi due metodi, quindi l'ordine è corretto ovunque senza ordinamenti
+lato client.
+
+#### Il `nome` è facoltativo: l'amministratore non è una persona
+
+Lo schema ajv imponeva `minLength: 1` sul `nome`, e l'account amministratore si trovava così
+costretto a chiamarsi "Sistema Amministratore". Il difetto vero è la pretesa: **un account di
+servizio non ha un nome di battesimo**. Il vincolo sul solo `nome` scende quindi a `minLength: 0`
+nella POST e nella PUT; il **`cognome` resta obbligatorio**, è il campo che porta sempre l'identità.
+
+La rinomina è **un dato, non codice**: da *Impostazioni → Utenti* si salva l'utente col Nome vuoto e
+il Cognome "Amministratore". Nessuno script, nessuna migrazione.
+
+Un helper condiviso — `nomeUtente(u)` in `backend/src/utils/` e `frontend/src/utils/`, identici —
+compone `` `${u.cognome} ${u.nome}`.trim() ``. Il `trim` **non è difensivo**: è ciò che assorbe il
+nome vuoto, che senza uscirebbe come `"Amministratore "` con lo spazio in coda.
+
+#### Cognome Nome negli elenchi, Nome Cognome nelle frasi
+
+L'helper sostituisce la composizione a mano solo dove il nome è **una voce di elenco o una colonna**
+— le tendine di Report, Assegna attività e Archivio bollettini, le tabelle della Dashboard e del
+Report, la lista utenti, la tendina del login, le colonne di PDF ed Excel.
+
+**Restano `Nome Cognome`** il saluto in barra dei due layout ("Rossi Mario" a chi ha appena fatto
+login suonerebbe come un richiamo), il nome precompilato della **firma dell'operatore** sul
+bollettino e nel suo PDF, e il messaggio *"Attività assegnata a Mario Rossi"*: sono frasi e firme,
+non elenchi.
+
+#### Cosa non cambia
+
+Lo **schema del database** — nessuna tabella, nessuna colonna, nessun `ALTER`. Il **layout del PDF**
+(A3 orizzontale, stesse colonne, stesse larghezze, stessi grigi). Il **foglio `Riepilogo`**, unico e
+sull'insieme. Il **vincolo dei segnaposto** rispetto a cliente e cantiere. I **bollettini** e tutto
+il resto dell'applicazione.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
@@ -2095,6 +2232,7 @@ backend/
 │   │   ├── duration.ts        # Calcolo durate e settimane
 │   │   ├── assenze.ts         # Durata e segno delle assenze (punto unico)
 │   │   ├── festivita.ts       # Festivi Ticino e giorni non lavorativi
+│   │   ├── nomeUtente.ts      # Cognome Nome, col trim sul nome vuoto
 │   │   └── bollettiniAccess.ts # Guardia flag bollettini (condivisa)
 │   └── types/index.ts         # Tipi TypeScript
 ├── stato_progetto.md          # Questo file: storia di ENTRAMBI i repo
@@ -2132,6 +2270,7 @@ frontend/
 │   │   ├── DateTimeInput.tsx      # Input data/ora con picker e default
 │   │   ├── InactivityWarning.tsx  # Modal avviso timeout sessione
 │   │   ├── MonthNavigator.tsx     # Navigazione mese + utility su "YYYY-MM"
+│   │   ├── MultiSelect.tsx        # Elenco a spunta, chiusura al click fuori
 │   │   ├── SignaturePad.tsx       # Firma su canvas (pointer events, no librerie)
 │   │   ├── VociSelector.tsx       # Selezione voci con quantità
 │   │   └── Modal.tsx
@@ -2164,6 +2303,7 @@ frontend/
 │   │       └── DreamClientiPage.tsx       # Anagrafica clienti Dream
 │   ├── utils/
 │   │   ├── festivita.ts       # Pasqua e festivi Ticino (copia del backend)
+│   │   ├── nomeUtente.ts      # Cognome Nome (copia del backend)
 │   │   └── durata.ts          # formatDuration con segno + assenze negative
 │   └── types/index.ts
 ├── netlify.toml

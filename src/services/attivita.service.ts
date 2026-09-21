@@ -77,8 +77,8 @@ export class AttivitaService {
 
   async getAll(
     filters: {
-      utenteId?: number;
-      clienteId?: number;
+      utentiIds?: number[];
+      clientiIds?: number[];
       cantiereId?: number;
       startDate?: Date;
       endDate?: Date;
@@ -86,8 +86,8 @@ export class AttivitaService {
   ): Promise<AttivitaWithRelations[]> {
     return this.prisma.attivita.findMany({
       where: {
-        ...(filters.utenteId ? { utenteId: filters.utenteId } : {}),
-        ...(filters.clienteId ? { clienteId: filters.clienteId } : {}),
+        ...(filters.utentiIds?.length ? { utenteId: { in: filters.utentiIds } } : {}),
+        ...(filters.clientiIds?.length ? { clienteId: { in: filters.clientiIds } } : {}),
         ...(filters.cantiereId ? { cantiereId: filters.cantiereId } : {}),
         ...(filters.startDate && filters.endDate
           ? {

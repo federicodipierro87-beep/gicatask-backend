@@ -1,14 +1,17 @@
 import { FastifyInstance } from 'fastify';
 import { AttivitaService } from '../services/attivita.service.js';
 import { ExportService } from '../services/export.service.js';
-import type { ReportFilters } from '../services/export.service.js';
+import type { GruppoReport, ReportFilters } from '../services/export.service.js';
+import { nomeUtente } from '../utils/nomeUtente.js';
 import type { JwtPayload } from '../types/index.js';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface ExportQuery {
   utenteId?: string;
+  utenteIds?: string;
   clienteId?: string;
+  clienteIds?: string;
   cantiereId?: string;
   startDate?: string;
   endDate?: string;
@@ -24,6 +27,26 @@ function idNumerico(valore?: string): number | undefined {
   if (!valore) return undefined;
   const numero = Number(valore);
   return Number.isInteger(numero) ? numero : undefined;
+}
+
+/** Gli id di una lista `3,7,12`, scartando i non interi come `idNumerico`. */
+function idsNumerici(valore?: string): number[] {
+  if (!valore) return [];
+
+  return valore
+    .split(',')
+    .map((parte) => idNumerico(parte.trim()))
+    .filter((id): id is number => id !== undefined);
+}
+
+/**
+ * Gli id di un filtro multiplo: la lista nuova piu' l'id singolo di prima,
+ * che Dashboard e Assegna attivita' continuano a mandare.
+ */
+function idsFiltro(lista?: string, singolo?: string): number[] {
+  const ids = idsNumerici(lista);
+  const uno = idNumerico(singolo);
+  return uno !== undefined && !ids.includes(uno) ? [...ids, uno] : ids;
 }
 
 /**
@@ -51,23 +74,18 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     const user = request.user as JwtPayload;
-    const { utenteId, clienteId, cantiereId, startDate, endDate } = request.query as {
-      utenteId?: string;
-      clienteId?: string;
-      cantiereId?: string;
-      startDate?: string;
-      endDate?: string;
-    };
+    const query = request.query as ExportQuery;
 
     const filters = {
-      // Dipendente can only see their own activities
-      utenteId: user.ruolo === 'RESPONSABILE' && utenteId
-        ? parseInt(utenteId)
-        : user.ruolo === 'DIPENDENTE' ? user.id : undefined,
-      clienteId: clienteId ? parseInt(clienteId) : undefined,
-      cantiereId: cantiereId ? parseInt(cantiereId) : undefined,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
+      // Dipendente can only see their own activities: la query non puo'
+      // allargare il filtro, qualunque cosa chieda
+      utentiIds: user.ruolo === 'DIPENDENTE'
+        ? [user.id]
+        : idsFiltro(query.utenteIds, query.utenteId),
+      clientiIds: idsFiltro(query.clienteIds, query.clienteId),
+      cantiereId: idNumerico(query.cantiereId),
+      startDate: query.startDate ? new Date(query.startDate) : undefined,
+      endDate: query.endDate ? new Date(query.endDate) : undefined,
     };
 
     const attivita = await service.getAll(filters);
@@ -251,35 +269,52 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
   // Le due route di export leggono gli stessi filtri e hanno bisogno degli
   // stessi nomi: l'unica differenza e' il formato del file prodotto
   const datiExport = async (query: ExportQuery) => {
-    const utenteId = idNumerico(query.utenteId);
-    const clienteId = idNumerico(query.clienteId);
+    const utentiIds = idsFiltro(query.utenteIds, query.utenteId);
+    const clientiIds = idsFiltro(query.clienteIds, query.clienteId);
     const cantiereId = idNumerico(query.cantiereId);
 
     const attivita = await service.getAll({
-      utenteId,
-      clienteId,
+      utentiIds,
+      clientiIds,
       cantiereId,
       startDate: query.startDate ? new Date(query.startDate) : undefined,
       endDate: query.endDate ? new Date(query.endDate) : undefined,
     });
 
-    const cliente = clienteId !== undefined
-      ? await fastify.prisma.cliente.findUnique({ where: { id: clienteId } })
-      : null;
+    const clienti = clientiIds.length
+      ? await fastify.prisma.cliente.findMany({ where: { id: { in: clientiIds } } })
+      : [];
 
-    const utente = utenteId !== undefined
-      ? await fastify.prisma.utente.findUnique({ where: { id: utenteId } })
-      : null;
+    // Stesso ordinamento delle tendine, cosi' l'ordine delle sezioni e' quello
+    // che il responsabile vede a schermo
+    const utenti = utentiIds.length
+      ? await fastify.prisma.utente.findMany({
+          where: { id: { in: utentiIds } },
+          orderBy: [{ ruolo: 'asc' }, { cognome: 'asc' }, { nome: 'asc' }],
+        })
+      : [];
 
     const filters: ReportFilters = {
       startDate: query.startDate,
       endDate: query.endDate,
-      clienteNome: cliente?.nome,
-      utenteNome: utente ? `${utente.nome} ${utente.cognome}` : undefined,
-      soloDipendente: utenteId !== undefined && clienteId === undefined && cantiereId === undefined,
+      clienteNome: clienti.map((c) => c.nome).join(', ') || undefined,
+      // Ogni sezione e' per costruzione di un dipendente solo, quindi basta
+      // che ce ne sia almeno uno: il vincolo su cliente e cantiere resta
+      soloDipendente: utentiIds.length > 0 && clientiIds.length === 0 && cantiereId === undefined,
     };
 
-    return { attivita, filters };
+    // Un solo giro sul DB e poi la partizione in memoria: N query sarebbero N
+    // volte lo stesso piano con un id diverso, e i totali del riepilogo si
+    // calcolano comunque sull'insieme intero. Un dipendente senza attivita'
+    // nel periodo mantiene la sua sezione, coi soli giorni segnaposto
+    const gruppi: GruppoReport[] = utentiIds.length > 1
+      ? utenti.map((u) => ({
+          utenteNome: nomeUtente(u),
+          attivita: attivita.filter((a) => a.utenteId === u.id),
+        }))
+      : [{ utenteNome: utenti[0] ? nomeUtente(utenti[0]) : undefined, attivita }];
+
+    return { gruppi, filters, perUtente: utentiIds.length > 1 };
   };
 
   // Export PDF (responsabile only)
@@ -293,11 +328,13 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     }
 
     const query = request.query as ExportQuery;
-    const { attivita, filters } = await datiExport(query);
+    const { gruppi, filters, perUtente } = await datiExport(query);
 
-    const pdfBuffer = await exportService.generatePDF(attivita, filters);
+    const pdfBuffer = await exportService.generatePDF(gruppi, filters);
 
-    const filename = `report-attivita-${periodoPerNomeFile(query.startDate, query.endDate)}.pdf`;
+    const filename = `report-attivita-${periodoPerNomeFile(query.startDate, query.endDate)}${
+      perUtente ? '-per-dipendente' : ''
+    }.pdf`;
 
     return reply
       .header('Content-Type', 'application/pdf')
@@ -316,11 +353,13 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     }
 
     const query = request.query as ExportQuery;
-    const { attivita, filters } = await datiExport(query);
+    const { gruppi, filters, perUtente } = await datiExport(query);
 
-    const excelBuffer = await exportService.generateExcel(attivita, filters);
+    const excelBuffer = await exportService.generateExcel(gruppi, filters);
 
-    const filename = `report-attivita-${periodoPerNomeFile(query.startDate, query.endDate)}.xlsx`;
+    const filename = `report-attivita-${periodoPerNomeFile(query.startDate, query.endDate)}${
+      perUtente ? '-per-dipendente' : ''
+    }.xlsx`;
 
     return reply
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -393,9 +432,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       select: { id: true, nome: true, cognome: true },
     });
 
-    const utentiMap = new Map(
-      utenti.map((u) => [u.id, `${u.nome} ${u.cognome}`])
-    );
+    const utentiMap = new Map(utenti.map((u) => [u.id, nomeUtente(u)]));
 
     return reply.send({
       totale: {

@@ -7,6 +7,7 @@ import {
   giornoNonLavorativo,
   isoUtc,
 } from '../utils/festivita.js';
+import { nomeUtente } from '../utils/nomeUtente.js';
 
 interface AttivitaExport {
   id: number;
@@ -35,14 +36,26 @@ export interface ReportFilters {
   startDate?: string;
   endDate?: string;
   clienteNome?: string;
-  utenteNome?: string;
   /**
-   * Il report e' filtrato su una sola persona e su nessun cliente o cantiere.
-   * E' la condizione che abilita i giorni segnaposto: con un cliente
+   * Il report e' filtrato su almeno una persona e su nessun cliente o
+   * cantiere. E' la condizione che abilita i giorni segnaposto: con un cliente
    * selezionato una riga vuota del 12 marzo sembrerebbe dire "non ha
    * lavorato", mentre direbbe solo "non ha lavorato per quel cliente".
+   *
+   * Basta "almeno una" perche' ogni gruppo e' per costruzione di un dipendente
+   * solo: il vincolo su cliente e cantiere resta intatto.
    */
   soloDipendente?: boolean;
+}
+
+/**
+ * Una sezione del report: il PDF ne stampa una per pagina e l'Excel una per
+ * foglio. Con un gruppo solo il documento e' identico a quello di prima.
+ */
+export interface GruppoReport {
+  /** `undefined` sul report unico non filtrato su una persona. */
+  utenteNome?: string;
+  attivita: AttivitaExport[];
 }
 
 function formatDate(date: Date): string {
@@ -81,7 +94,7 @@ function orarioInizio(att: AttivitaExport): string {
  * Order the rows for the Excel report: day by day (oldest first) and, inside
  * each day, grouped by employee and ordered by start time.
  *
- * The employee is sorted on "Nome Cognome", the same string shown in the
+ * The employee is sorted on "Cognome Nome", the same string shown in the
  * column, so the order is evident to whoever reads the sheet.
  */
 function sortForReport(attivita: AttivitaExport[]): AttivitaExport[] {
@@ -90,9 +103,7 @@ function sortForReport(attivita: AttivitaExport[]): AttivitaExport[] {
     const dataB = new Date(b.dataRiferimento).getTime();
     if (dataA !== dataB) return dataA - dataB;
 
-    const utenteA = `${a.utente.nome} ${a.utente.cognome}`;
-    const utenteB = `${b.utente.nome} ${b.utente.cognome}`;
-    const byUtente = utenteA.localeCompare(utenteB, 'it');
+    const byUtente = nomeUtente(a.utente).localeCompare(nomeUtente(b.utente), 'it');
     if (byUtente !== 0) return byUtente;
 
     return orarioInizio(a).localeCompare(orarioInizio(b));
@@ -117,18 +128,19 @@ interface RigaReport {
 }
 
 /**
- * I giorni del periodo in cui il dipendente selezionato non ha registrato
+ * I giorni del periodo in cui il dipendente della sezione non ha registrato
  * nulla, cosi' il mese si legge intero senza salti.
  *
- * Vuoti se manca anche solo una delle condizioni: `utenteNome` e' insieme il
- * segnale che un dipendente e' selezionato e il dato che riempie la colonna
- * Dipendente delle righe vuote.
+ * Vuoti se manca anche solo una delle condizioni: `utenteNome` del gruppo e'
+ * insieme il segnale che un dipendente e' selezionato e il dato che riempie la
+ * colonna Dipendente delle righe vuote.
  */
 function giorniSenzaAttivita(
-  attivita: AttivitaExport[],
+  gruppo: GruppoReport,
   filters: ReportFilters
 ): RigaReport[] {
-  const { startDate, endDate, utenteNome, soloDipendente } = filters;
+  const { startDate, endDate, soloDipendente } = filters;
+  const { utenteNome, attivita } = gruppo;
   if (!utenteNome || !soloDipendente || !startDate || !endDate) return [];
 
   // `dataRiferimento` e' @db.Date e Prisma la rilegge a mezzanotte UTC, quindi
@@ -153,20 +165,20 @@ function giorniSenzaAttivita(
 
 /** Le righe della tabella, attivita' e giorni vuoti, in ordine di data. */
 function righeReport(
-  attivita: AttivitaExport[],
+  gruppo: GruppoReport,
   filters: ReportFilters
 ): RigaReport[] {
-  const piene: RigaReport[] = sortForReport(attivita).map((att) => {
+  const piene: RigaReport[] = sortForReport(gruppo.attivita).map((att) => {
     const data = new Date(att.dataRiferimento);
     return {
       grigia: giornoNonLavorativo(isoUtc(data)),
       data,
-      utenteNome: `${att.utente.nome} ${att.utente.cognome}`,
+      utenteNome: nomeUtente(att.utente),
       att,
     };
   });
 
-  const vuote = giorniSenzaAttivita(attivita, filters);
+  const vuote = giorniSenzaAttivita(gruppo, filters);
   if (vuote.length === 0) return piene;
 
   // Le due liste sono gia' ordinate per data e disgiunte per data (un giorno
@@ -301,8 +313,260 @@ function wrapNote(note?: string | null): string {
   return righe.join('\n');
 }
 
+/**
+ * Titolo, riga dei filtri, riepilogo e tabella di un gruppo, a partire dalla
+ * pagina corrente. Non crea ne' chiude il documento: e' il chiamante a
+ * decidere dove comincia la sezione, come in `bollettinoPdf.service.ts`.
+ */
+function renderSezione(
+  doc: PDFKit.PDFDocument,
+  gruppo: GruppoReport,
+  filters: ReportFilters
+): void {
+  // One rectangle per cell: the vertical separators stay visible even on
+  // the rows where a cell is empty
+  const drawGrid = (y: number, height: number): void => {
+    doc.lineWidth(GRID_LINE_WIDTH).strokeColor(GRID_COLOR);
+
+    let x = PDF_MARGIN;
+    PDF_COLUMNS.forEach((col) => {
+      doc.rect(x, y, col.width, height).stroke();
+      x += col.width;
+    });
+  };
+
+  // Leaves the body style active, so the caller can go straight back to
+  // measuring and drawing rows
+  const drawTableHeader = (y: number): number => {
+    doc.rect(PDF_MARGIN, y, TABLE_WIDTH, HEADER_HEIGHT).fill('#333333');
+    doc.font('Helvetica-Bold').fontSize(HEADER_FONT_SIZE).fillColor('#ffffff');
+
+    let x = PDF_MARGIN;
+    PDF_COLUMNS.forEach((col) => {
+      doc.text(col.header, x + CELL_PAD_X, y + CELL_PAD_Y + 1, {
+        width: col.width - CELL_PAD_X * 2,
+        height: HEADER_HEIGHT - CELL_PAD_Y,
+      });
+      x += col.width;
+    });
+
+    drawGrid(y, HEADER_HEIGHT);
+    doc.font('Helvetica').fontSize(BODY_FONT_SIZE).fillColor('#000000');
+
+    return y + HEADER_HEIGHT;
+  };
+
+  // Title
+  doc.font('Helvetica-Bold').fontSize(16).fillColor('#000000');
+  doc.text('Report Attività', PDF_MARGIN, PDF_MARGIN, { width: TABLE_WIDTH, align: 'center' });
+
+  // Filters info. Il dipendente e' quello del gruppo, quindi ogni sezione si
+  // identifica da sola senza un'intestazione in piu'
+  doc.font('Helvetica').fontSize(9).fillColor('#666666');
+  const filterParts: string[] = [];
+  if (filters.startDate) filterParts.push(`Dal: ${filters.startDate}`);
+  if (filters.endDate) filterParts.push(`Al: ${filters.endDate}`);
+  if (filters.clienteNome) filterParts.push(`Cliente: ${filters.clienteNome}`);
+  if (gruppo.utenteNome) filterParts.push(`Dipendente: ${gruppo.utenteNome}`);
+  if (filterParts.length > 0) {
+    doc.text(filterParts.join(' | '), { width: TABLE_WIDTH, align: 'center' });
+  }
+
+  // Summary
+  const totalMinutes = gruppo.attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
+  const totalHours = formatOreDecimali(totalMinutes);
+  doc.fontSize(10).fillColor('#000000');
+  doc.text(`Totale: ${gruppo.attivita.length} attività - ${totalHours} ore`, {
+    width: TABLE_WIDTH,
+    align: 'center',
+  });
+  doc.moveDown(0.5);
+
+  // Table. Same columns and same order as the Excel sheet
+  let y = drawTableHeader(doc.y);
+
+  righeReport(gruppo, filters).forEach((riga) => {
+    const cells = PDF_COLUMNS.map((col) => ({ col, text: col.value(riga) }));
+
+    // Text wraps inside the cell, so the row is as tall as its tallest cell
+    const contentHeight = cells.reduce(
+      (max, { col, text }) =>
+        Math.max(max, doc.heightOfString(text, { width: col.width - CELL_PAD_X * 2 })),
+      0
+    );
+    const rowHeight = Math.min(
+      Math.max(contentHeight + CELL_PAD_Y * 2, MIN_ROW_HEIGHT),
+      MAX_ROW_HEIGHT
+    );
+
+    if (y + rowHeight > PDF_BOTTOM) {
+      doc.addPage();
+      y = drawTableHeader(PDF_MARGIN);
+    }
+
+    // Dopo il controllo di salto pagina, che riassegna `y`. I feriali non
+    // si dipingono di bianco: la pagina e' gia' bianca e un rect coprirebbe
+    // meta' del bordo inferiore della riga sopra
+    if (riga.grigia) {
+      doc.rect(PDF_MARGIN, y, TABLE_WIDTH, rowHeight).fill(PDF_GRIGIO_FESTIVO);
+    }
+
+    // Fuori dall'if: `fill()` sporca il fillColor corrente, quindi dentro
+    // il ramo grigio tutte le righe dopo una grigia uscirebbero col testo
+    // grigio
+    doc.fillColor('#000000');
+    let x = PDF_MARGIN;
+    cells.forEach(({ col, text }) => {
+      // height keeps the cell inside its own row: a row clamped to
+      // MAX_ROW_HEIGHT would otherwise spill over the ones below.
+      // No `ellipsis`: pdfkit appends it whenever the *next* line would not
+      // fit, so with a height set every cell would end in "…"
+      doc.text(text, x + CELL_PAD_X, y + CELL_PAD_Y, {
+        width: col.width - CELL_PAD_X * 2,
+        height: rowHeight - CELL_PAD_Y,
+      });
+      x += col.width;
+    });
+
+    drawGrid(y, rowHeight);
+    y += rowHeight;
+  });
+
+  // Riga totali. Se non entra nella pagina corrente ne apre una nuova con
+  // l'intestazione ripetuta, come per le righe normali
+  if (y + MIN_ROW_HEIGHT > PDF_BOTTOM) {
+    doc.addPage();
+    y = drawTableHeader(PDF_MARGIN);
+  }
+
+  doc.font('Helvetica-Bold').fillColor('#000000');
+  let xTotali = PDF_MARGIN;
+  PDF_COLUMNS.forEach((col, index) => {
+    const testo =
+      index === 0 ? 'TOTALE' : index === PDF_COLONNA_TOTALE ? totalHours : '';
+
+    if (testo) {
+      doc.text(testo, xTotali + CELL_PAD_X, y + CELL_PAD_Y, {
+        width: col.width - CELL_PAD_X * 2,
+        height: MIN_ROW_HEIGHT - CELL_PAD_Y,
+      });
+    }
+    xTotali += col.width;
+  });
+
+  drawGrid(y, MIN_ROW_HEIGHT);
+  doc.font('Helvetica');
+}
+
+// Excel vieta `: \ / ? * [ ]` nel nome di un foglio, lo tronca a 31 caratteri
+// e non ammette duplicati: un nome non ripulito fa aprire il file come
+// danneggiato
+const XLS_MAX_NOME_FOGLIO = 31;
+
+function nomeFoglio(testo: string, usati: Set<string>): string {
+  const pulito =
+    testo.replace(/[:\\/?*[\]]/g, ' ').trim().slice(0, XLS_MAX_NOME_FOGLIO) || 'Attività';
+
+  let nome = pulito;
+  let progressivo = 2;
+  while (usati.has(nome)) {
+    const suffisso = ` (${progressivo++})`;
+    nome = pulito.slice(0, XLS_MAX_NOME_FOGLIO - suffisso.length) + suffisso;
+  }
+
+  usati.add(nome);
+  return nome;
+}
+
+/** Intestazione, righe e riga TOTALE del foglio di un gruppo. */
+function scriviFoglioAttivita(
+  worksheet: ExcelJS.Worksheet,
+  gruppo: GruppoReport,
+  filters: ReportFilters
+): void {
+  // Title. The period is carried by the file name, not by a row here
+  worksheet.mergeCells('A1:J1');
+  worksheet.getCell('A1').value = "REPORT ATTIVITA'";
+  worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: 'FFFF0000' } };
+  worksheet.getCell('A1').alignment = { horizontal: 'center' };
+
+  // Column headers
+  const headerRow = worksheet.addRow([
+    'Data',
+    'Dipendente',
+    'Cliente',
+    'Cantiere',
+    'Tipo Attività',
+    'Assenza',
+    'Note',
+    'Mattino',
+    'Pomeriggio',
+    'Durata (ore)',
+  ]);
+
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF333333' },
+  };
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  applyGrid(headerRow, 10);
+
+  // Set column widths
+  worksheet.columns = [
+    { width: 12 },  // Data
+    { width: 20 },  // Dipendente
+    { width: 20 },  // Cliente
+    { width: 20 },  // Cantiere
+    { width: 20 },  // Tipo Attività
+    { width: 18 },  // Assenza
+    // Wide enough to hold the eight words per line of wrapNote(): with a
+    // narrower column Excel would wrap on the width and ignore the breaks
+    { width: 60 },  // Note
+    { width: 12 },  // Mattino
+    { width: 12 },  // Pomeriggio
+    { width: 12 },  // Durata (ore)
+  ];
+
+  // Data rows, grouped by employee and ordered by date and start time
+  righeReport(gruppo, filters).forEach((riga) => {
+    const att = riga.att;
+    const row = worksheet.addRow([
+      formatDate(riga.data),
+      riga.utenteNome,
+      att?.cliente?.nome ?? '',
+      att?.cantiere?.nome ?? '',
+      att?.tipoAttivita?.nome ?? '',
+      att?.assenza?.nome ?? '',
+      att ? wrapNote(att.note) : '',
+      att ? formatTimeSlot(att.oraInizioMattino, att.oraFineMattino) : '',
+      att ? formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio) : '',
+      // `null` e non `0`: uno zero si sommerebbe a vista con le durate vere.
+      // La cella viene creata lo stesso, quindi resta grigia e bordata
+      att ? oreDecimali(att.durataMinuti) : null,
+    ]);
+
+    // Without wrapText Excel shows the line breaks as a single long line
+    row.getCell(7).alignment = { wrapText: true, vertical: 'top' };
+    // Il valore e' un numero: senza formato Excel mostrerebbe 1,5 invece di 1,50
+    row.getCell(10).numFmt = '0.00';
+    applyGrid(row, 10, riga.grigia ? XLS_GRIGIO_FESTIVO : undefined);
+  });
+
+  // Riga totali in fondo alla tabella
+  const totaleMinuti = gruppo.attivita.reduce((sum, att) => sum + att.durataMinuti, 0);
+  const totaliRow = worksheet.addRow(['TOTALE', '', '', '', '', '', '', '', '', oreDecimali(totaleMinuti)]);
+  totaliRow.font = { bold: true };
+  totaliRow.getCell(10).numFmt = '0.00';
+  applyGrid(totaliRow, 10);
+}
+
 export class ExportService {
-  async generatePDF(attivita: AttivitaExport[], filters: ReportFilters): Promise<Buffer> {
+  /**
+   * Un documento, una pagina nuova per gruppo, una sola `end`: e' lo schema di
+   * `BollettinoPdfService.generateCumulativo`.
+   */
+  async generatePDF(gruppi: GruppoReport[], filters: ReportFilters): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: PDF_MARGIN, size: 'A3', layout: 'landscape' });
       const chunks: Buffer[] = [];
@@ -311,226 +575,35 @@ export class ExportService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      // One rectangle per cell: the vertical separators stay visible even on
-      // the rows where a cell is empty
-      const drawGrid = (y: number, height: number): void => {
-        doc.lineWidth(GRID_LINE_WIDTH).strokeColor(GRID_COLOR);
-
-        let x = PDF_MARGIN;
-        PDF_COLUMNS.forEach((col) => {
-          doc.rect(x, y, col.width, height).stroke();
-          x += col.width;
-        });
-      };
-
-      // Leaves the body style active, so the caller can go straight back to
-      // measuring and drawing rows
-      const drawTableHeader = (y: number): number => {
-        doc.rect(PDF_MARGIN, y, TABLE_WIDTH, HEADER_HEIGHT).fill('#333333');
-        doc.font('Helvetica-Bold').fontSize(HEADER_FONT_SIZE).fillColor('#ffffff');
-
-        let x = PDF_MARGIN;
-        PDF_COLUMNS.forEach((col) => {
-          doc.text(col.header, x + CELL_PAD_X, y + CELL_PAD_Y + 1, {
-            width: col.width - CELL_PAD_X * 2,
-            height: HEADER_HEIGHT - CELL_PAD_Y,
-          });
-          x += col.width;
-        });
-
-        drawGrid(y, HEADER_HEIGHT);
-        doc.font('Helvetica').fontSize(BODY_FONT_SIZE).fillColor('#000000');
-
-        return y + HEADER_HEIGHT;
-      };
-
-      // Title
-      doc.font('Helvetica-Bold').fontSize(16).fillColor('#000000');
-      doc.text('Report Attività', PDF_MARGIN, PDF_MARGIN, { width: TABLE_WIDTH, align: 'center' });
-
-      // Filters info
-      doc.font('Helvetica').fontSize(9).fillColor('#666666');
-      const filterParts: string[] = [];
-      if (filters.startDate) filterParts.push(`Dal: ${filters.startDate}`);
-      if (filters.endDate) filterParts.push(`Al: ${filters.endDate}`);
-      if (filters.clienteNome) filterParts.push(`Cliente: ${filters.clienteNome}`);
-      if (filters.utenteNome) filterParts.push(`Dipendente: ${filters.utenteNome}`);
-      if (filterParts.length > 0) {
-        doc.text(filterParts.join(' | '), { width: TABLE_WIDTH, align: 'center' });
-      }
-
-      // Summary
-      const totalMinutes = attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
-      const totalHours = formatOreDecimali(totalMinutes);
-      doc.fontSize(10).fillColor('#000000');
-      doc.text(`Totale: ${attivita.length} attività - ${totalHours} ore`, {
-        width: TABLE_WIDTH,
-        align: 'center',
+      gruppi.forEach((gruppo, index) => {
+        // La prima sezione sta sulla pagina che PDFDocument apre da solo
+        if (index > 0) doc.addPage();
+        renderSezione(doc, gruppo, filters);
       });
-      doc.moveDown(0.5);
-
-      // Table. Same columns and same order as the Excel sheet
-      let y = drawTableHeader(doc.y);
-
-      righeReport(attivita, filters).forEach((riga) => {
-        const cells = PDF_COLUMNS.map((col) => ({ col, text: col.value(riga) }));
-
-        // Text wraps inside the cell, so the row is as tall as its tallest cell
-        const contentHeight = cells.reduce(
-          (max, { col, text }) =>
-            Math.max(max, doc.heightOfString(text, { width: col.width - CELL_PAD_X * 2 })),
-          0
-        );
-        const rowHeight = Math.min(
-          Math.max(contentHeight + CELL_PAD_Y * 2, MIN_ROW_HEIGHT),
-          MAX_ROW_HEIGHT
-        );
-
-        if (y + rowHeight > PDF_BOTTOM) {
-          doc.addPage();
-          y = drawTableHeader(PDF_MARGIN);
-        }
-
-        // Dopo il controllo di salto pagina, che riassegna `y`. I feriali non
-        // si dipingono di bianco: la pagina e' gia' bianca e un rect coprirebbe
-        // meta' del bordo inferiore della riga sopra
-        if (riga.grigia) {
-          doc.rect(PDF_MARGIN, y, TABLE_WIDTH, rowHeight).fill(PDF_GRIGIO_FESTIVO);
-        }
-
-        // Fuori dall'if: `fill()` sporca il fillColor corrente, quindi dentro
-        // il ramo grigio tutte le righe dopo una grigia uscirebbero col testo
-        // grigio
-        doc.fillColor('#000000');
-        let x = PDF_MARGIN;
-        cells.forEach(({ col, text }) => {
-          // height keeps the cell inside its own row: a row clamped to
-          // MAX_ROW_HEIGHT would otherwise spill over the ones below.
-          // No `ellipsis`: pdfkit appends it whenever the *next* line would not
-          // fit, so with a height set every cell would end in "…"
-          doc.text(text, x + CELL_PAD_X, y + CELL_PAD_Y, {
-            width: col.width - CELL_PAD_X * 2,
-            height: rowHeight - CELL_PAD_Y,
-          });
-          x += col.width;
-        });
-
-        drawGrid(y, rowHeight);
-        y += rowHeight;
-      });
-
-      // Riga totali. Se non entra nella pagina corrente ne apre una nuova con
-      // l'intestazione ripetuta, come per le righe normali
-      if (y + MIN_ROW_HEIGHT > PDF_BOTTOM) {
-        doc.addPage();
-        y = drawTableHeader(PDF_MARGIN);
-      }
-
-      doc.font('Helvetica-Bold').fillColor('#000000');
-      let xTotali = PDF_MARGIN;
-      PDF_COLUMNS.forEach((col, index) => {
-        const testo =
-          index === 0 ? 'TOTALE' : index === PDF_COLONNA_TOTALE ? totalHours : '';
-
-        if (testo) {
-          doc.text(testo, xTotali + CELL_PAD_X, y + CELL_PAD_Y, {
-            width: col.width - CELL_PAD_X * 2,
-            height: MIN_ROW_HEIGHT - CELL_PAD_Y,
-          });
-        }
-        xTotali += col.width;
-      });
-
-      drawGrid(y, MIN_ROW_HEIGHT);
-      doc.font('Helvetica');
 
       doc.end();
     });
   }
 
-  async generateExcel(attivita: AttivitaExport[], filters: ReportFilters): Promise<Buffer> {
+  /**
+   * Un foglio per gruppo quando sono piu' d'uno, col nome del dipendente; con
+   * un gruppo solo il foglio resta `Attività`, come prima.
+   */
+  async generateExcel(gruppi: GruppoReport[], filters: ReportFilters): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'GicaTask';
     workbook.created = new Date();
 
-    const worksheet = workbook.addWorksheet('Attività');
-
-    // Title. The period is carried by the file name, not by a row here
-    worksheet.mergeCells('A1:J1');
-    worksheet.getCell('A1').value = "REPORT ATTIVITA'";
-    worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: 'FFFF0000' } };
-    worksheet.getCell('A1').alignment = { horizontal: 'center' };
-
-    // Column headers
-    const headerRow = worksheet.addRow([
-      'Data',
-      'Dipendente',
-      'Cliente',
-      'Cantiere',
-      'Tipo Attività',
-      'Assenza',
-      'Note',
-      'Mattino',
-      'Pomeriggio',
-      'Durata (ore)',
-    ]);
-
-    headerRow.font = { bold: true };
-    headerRow.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF333333' },
-    };
-    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    applyGrid(headerRow, 10);
-
-    // Set column widths
-    worksheet.columns = [
-      { width: 12 },  // Data
-      { width: 20 },  // Dipendente
-      { width: 20 },  // Cliente
-      { width: 20 },  // Cantiere
-      { width: 20 },  // Tipo Attività
-      { width: 18 },  // Assenza
-      // Wide enough to hold the eight words per line of wrapNote(): with a
-      // narrower column Excel would wrap on the width and ignore the breaks
-      { width: 60 },  // Note
-      { width: 12 },  // Mattino
-      { width: 12 },  // Pomeriggio
-      { width: 12 },  // Durata (ore)
-    ];
-
-    // Data rows, grouped by employee and ordered by date and start time
-    righeReport(attivita, filters).forEach((riga) => {
-      const att = riga.att;
-      const row = worksheet.addRow([
-        formatDate(riga.data),
-        riga.utenteNome,
-        att?.cliente?.nome ?? '',
-        att?.cantiere?.nome ?? '',
-        att?.tipoAttivita?.nome ?? '',
-        att?.assenza?.nome ?? '',
-        att ? wrapNote(att.note) : '',
-        att ? formatTimeSlot(att.oraInizioMattino, att.oraFineMattino) : '',
-        att ? formatTimeSlot(att.oraInizioPomeriggio, att.oraFinePomeriggio) : '',
-        // `null` e non `0`: uno zero si sommerebbe a vista con le durate vere.
-        // La cella viene creata lo stesso, quindi resta grigia e bordata
-        att ? oreDecimali(att.durataMinuti) : null,
-      ]);
-
-      // Without wrapText Excel shows the line breaks as a single long line
-      row.getCell(7).alignment = { wrapText: true, vertical: 'top' };
-      // Il valore e' un numero: senza formato Excel mostrerebbe 1,5 invece di 1,50
-      row.getCell(10).numFmt = '0.00';
-      applyGrid(row, 10, riga.grigia ? XLS_GRIGIO_FESTIVO : undefined);
+    const usati = new Set<string>();
+    gruppi.forEach((gruppo) => {
+      const titolo =
+        gruppi.length > 1 ? nomeFoglio(gruppo.utenteNome ?? 'Attività', usati) : 'Attività';
+      scriviFoglioAttivita(workbook.addWorksheet(titolo), gruppo, filters);
     });
 
-    // Riga totali in fondo alla tabella
-    const totaleMinuti = attivita.reduce((sum, att) => sum + att.durataMinuti, 0);
-    const totaliRow = worksheet.addRow(['TOTALE', '', '', '', '', '', '', '', '', oreDecimali(totaleMinuti)]);
-    totaliRow.font = { bold: true };
-    totaliRow.getCell(10).numFmt = '0.00';
-    applyGrid(totaliRow, 10);
+    // Il riepilogo resta uno e sull'unione: e' il quadro d'insieme, e serve
+    // proprio a confrontare le persone fra loro
+    const attivita = gruppi.flatMap((gruppo) => gruppo.attivita);
 
     // Aggregation by client
     const summarySheet = workbook.addWorksheet('Riepilogo');
@@ -585,7 +658,7 @@ export class ExportService {
 
     const empStats = new Map<string, { count: number; minutes: number }>();
     attivita.forEach((att) => {
-      const key = `${att.utente.nome} ${att.utente.cognome}`;
+      const key = nomeUtente(att.utente);
       const existing = empStats.get(key) || { count: 0, minutes: 0 };
       empStats.set(key, {
         count: existing.count + 1,

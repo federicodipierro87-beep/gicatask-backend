@@ -7,7 +7,9 @@ export class UtentiService {
   async getAll(includeInactive = false): Promise<Omit<Utente, 'passwordHash'>[]> {
     const utenti = await this.prisma.utente.findMany({
       where: includeInactive ? {} : { attivo: true },
-      orderBy: [{ cognome: 'asc' }, { nome: 'asc' }],
+      // Stesso ordinamento di AuthService.getActiveUsers: i responsabili dopo
+      // i dipendenti, perche' l'enum Ruolo li dichiara in quest'ordine
+      orderBy: [{ ruolo: 'asc' }, { cognome: 'asc' }, { nome: 'asc' }],
     });
 
     return utenti.map(({ passwordHash, ...rest }) => rest);

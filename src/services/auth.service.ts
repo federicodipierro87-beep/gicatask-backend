@@ -12,7 +12,10 @@ export class AuthService {
         nome: true,
         cognome: true,
       },
-      orderBy: [{ cognome: 'asc' }, { nome: 'asc' }],
+      // Postgres ordina gli enum secondo l'ordine di dichiarazione, e in
+      // `Ruolo` DIPENDENTE viene prima di RESPONSABILE: i responsabili
+      // finiscono cosi' in fondo alla tendina senza nessun CASE
+      orderBy: [{ ruolo: 'asc' }, { cognome: 'asc' }, { nome: 'asc' }],
     });
   }
 
