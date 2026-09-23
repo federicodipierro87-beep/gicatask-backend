@@ -2165,6 +2165,62 @@ il resto dell'applicazione.
 
 ---
 
+### Bollettino: cantieri, collaboratori e mezzi dalle anagrafiche, a scelta multipla (23 Settembre 2026)
+
+Nel form del bollettino cantieri, collaboratori e mezzi si scelgono ora dalle anagrafiche esistenti
+con un **elenco a spunta** (`MultiSelect`), anche più di uno per campo. Il **cliente resta
+singolo**: i cantieri scelti devono appartenere tutti a lui.
+
+| Campo | Prima | Ora |
+|---|---|---|
+| Cantiere | tendina singola | più cantieri del cliente scelto (`cantieriIds`) |
+| Numero operai | numero scritto a mano | **Collaboratori**: utenti dell'app (`collaboratoriIds`); `numeroOperai` è il loro conteggio, calcolato dal server |
+| Mezzi | voci bollettino `MEZZO`, testo libero ammesso | veicoli dell'anagrafica **Gica Noleggi** (`dream_veicoli`), ore per ciascun mezzo, niente testo libero |
+
+Materiali e trasporti non cambiano (`VociSelector`, testo libero compreso).
+
+#### Schema (solo aggiunte, `db push` sicuro)
+
+- `bollettini_cantieri` (`bollettino_id` cascade, `cantiere_id` nullable SetNull, `nome` copiato
+  alla firma).
+- `bollettini_collaboratori` (`bollettino_id` cascade, `utente_id` nullable SetNull, `nome`
+  copiato alla firma come "Nome Cognome").
+- `righe_bollettino.veicolo_id` nullable → `dream_veicoli`, SetNull. Le righe mezzo storiche hanno
+  `voce_id` e restano come sono.
+
+`bollettini.cantiere_id` e `cantiere_nome` **restano valorizzati**: il primo cantiere scelto e i
+nomi di tutti uniti da virgola. Così elenco, archivio, mail, nome del PDF e cumulativi continuano a
+leggere quelle due colonne, e i bollettini precedenti (senza righe nelle tabelle nuove) non vanno
+toccati. Il filtro per cantiere (`buildWhere`) cerca in OR su `cantiere_id` e sulla tabella di
+collegamento, quindi il cumulativo di cantiere include anche i bollettini in cui quel cantiere non è
+il primo. Cantiere e cliente sono ora due OR distinti, messi in `AND`.
+
+#### Backend
+
+- `POST /api/bollettini` accetta `cantieriIds[]`, `collaboratoriIds[]` e righe mezzo con
+  `veicoloId`. `cantiereId` singolo e `numeroOperai` restano accettati per compatibilità: se
+  `collaboratoriIds` manca vale ancora il numero inviato.
+- `GET /api/bollettini/veicoli`: veicoli attivi (`id`, `nome`) per chi è abilitato ai bollettini.
+  `/api/dream-veicoli` resta riservata al responsabile.
+- PDF: il valore dei campi d'intestazione è limitato a due righe (più cantieri andrebbero a capo
+  sopra la riga successiva) e compare una riga **Collaboratori** quando ce ne sono.
+- Backup: esporta e ripristina le due tabelle nuove; i veicoli Dream si ripristinano **prima** delle
+  righe bollettino, che ora li referenziano.
+
+#### Frontend
+
+- `MultiSelect` ha una casella di ricerca oltre le 8 voci.
+- Nuovo `MezziSelector`: scelta multipla dei veicoli e ore per ciascuno.
+- `BollettinoFormPage`: cantieri e collaboratori a spunta; l'utente loggato parte già selezionato
+  tra i collaboratori; con un solo cantiere questo è preselezionato come prima.
+- Elenco dipendente: nomi dei collaboratori sotto la riga operai. Archivio: i nomi nel tooltip
+  della colonna Operai.
+
+La pagina **Anagrafica → Mezzi** (voci `MEZZO`) non alimenta più il form: i mezzi nuovi vanno
+aggiunti nell'anagrafica veicoli di Gica/Dream.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.

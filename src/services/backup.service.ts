@@ -19,6 +19,8 @@ interface BackupData {
     vociBollettino?: any[];
     bollettini?: any[];
     righeBollettino?: any[];
+    bollettiniCantieri?: any[];
+    bollettiniCollaboratori?: any[];
     // Solo i metadati: i byte degli allegati stanno su R2 e non vengono mai
     // cancellati per i bollettini salvati, quindi un ripristino li ritrova
     allegatiBollettino?: any[];
@@ -85,6 +87,8 @@ export class BackupService {
           vociBollettino: await this.prisma.voceBollettino.findMany(),
           bollettini: await this.prisma.bollettino.findMany(),
           righeBollettino: await this.prisma.rigaBollettino.findMany(),
+          bollettiniCantieri: await this.prisma.bollettinoCantiere.findMany(),
+          bollettiniCollaboratori: await this.prisma.bollettinoCollaboratore.findMany(),
           allegatiBollettino: await this.prisma.allegatoBollettino.findMany(),
           calendarioEventi: await this.prisma.calendarioEvento.findMany(),
           dreamVeicoli: await this.prisma.dreamVeicolo.findMany(),
@@ -210,6 +214,8 @@ export class BackupService {
       // I bollettini referenziano utenti e cantieri: se restassero in piedi,
       // le deleteMany qui sotto fallirebbero sul vincolo di chiave esterna
       await tx.rigaBollettino.deleteMany();
+      await tx.bollettinoCantiere.deleteMany();
+      await tx.bollettinoCollaboratore.deleteMany();
       await tx.allegatoBollettino.deleteMany();
       await tx.bollettino.deleteMany();
       await tx.voceBollettino.deleteMany();
@@ -286,10 +292,30 @@ export class BackupService {
         stats.bollettini = bollettini.length;
       }
 
+      // Prima delle righe: quelle dei mezzi referenziano i veicoli. I backup
+      // creati prima di Dream non hanno queste sezioni
+      const dreamVeicoli = backupData.tables.dreamVeicoli ?? [];
+      if (dreamVeicoli.length > 0) {
+        await tx.dreamVeicolo.createMany({ data: dreamVeicoli });
+        stats.dreamVeicoli = dreamVeicoli.length;
+      }
+
       const righeBollettino = backupData.tables.righeBollettino ?? [];
       if (righeBollettino.length > 0) {
         await tx.rigaBollettino.createMany({ data: righeBollettino });
         stats.righeBollettino = righeBollettino.length;
+      }
+
+      const bollettiniCantieri = backupData.tables.bollettiniCantieri ?? [];
+      if (bollettiniCantieri.length > 0) {
+        await tx.bollettinoCantiere.createMany({ data: bollettiniCantieri });
+        stats.bollettiniCantieri = bollettiniCantieri.length;
+      }
+
+      const bollettiniCollaboratori = backupData.tables.bollettiniCollaboratori ?? [];
+      if (bollettiniCollaboratori.length > 0) {
+        await tx.bollettinoCollaboratore.createMany({ data: bollettiniCollaboratori });
+        stats.bollettiniCollaboratori = bollettiniCollaboratori.length;
       }
 
       // Dopo i bollettini: referenziano sia questi sia gli utenti
@@ -297,13 +323,6 @@ export class BackupService {
       if (allegatiBollettino.length > 0) {
         await tx.allegatoBollettino.createMany({ data: allegatiBollettino });
         stats.allegatiBollettino = allegatiBollettino.length;
-      }
-
-      // I backup creati prima di Dream non hanno queste sezioni
-      const dreamVeicoli = backupData.tables.dreamVeicoli ?? [];
-      if (dreamVeicoli.length > 0) {
-        await tx.dreamVeicolo.createMany({ data: dreamVeicoli });
-        stats.dreamVeicoli = dreamVeicoli.length;
       }
 
       const dreamClienti = backupData.tables.dreamClienti ?? [];
@@ -336,6 +355,8 @@ export class BackupService {
         'voci_bollettino',
         'bollettini',
         'righe_bollettino',
+        'bollettini_cantieri',
+        'bollettini_collaboratori',
         'allegati_bollettino',
         'calendario_eventi',
         'dream_veicoli',

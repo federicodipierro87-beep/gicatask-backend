@@ -20,6 +20,8 @@ export interface BollettinoPdf {
   firmaCommittenteNome: string;
   firmaCommittenteImg: string;
   utente: { nome: string; cognome: string };
+  // Vuoto per i bollettini precedenti alla selezione dei collaboratori
+  collaboratori: { nome: string }[];
   righe: RigaPdf[];
   // Solo i nomi: i file non vengono impaginati, servirebbe una lettura da R2
   // per ogni immagine e nel cumulativo di cliente sarebbero centinaia di GET
@@ -85,9 +87,11 @@ export function nomeFilePdf(bollettino: {
   return `bollettino-${bollettino.id}-${riferimento}-${data}.pdf`;
 }
 
+// Al massimo due righe: con piu' cantieri il valore andrebbe a capo sopra la
+// riga successiva dell'intestazione
 function labelCoppia(doc: PDFKit.PDFDocument, label: string, valore: string, x: number, y: number, width: number): void {
   doc.fontSize(8).fillColor('#666').text(label, x, y, { width });
-  doc.fontSize(10).fillColor('#000').text(valore || '-', x, y + 11, { width });
+  doc.fontSize(10).fillColor('#000').text(valore || '-', x, y + 11, { width, height: 24, ellipsis: true });
 }
 
 /**
@@ -190,12 +194,24 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
   labelCoppia(doc, 'Data', formatDate(b.dataRiferimento), MARGIN, y, colWidth - 10);
   labelCoppia(doc, 'Cliente', b.clienteNome, MARGIN + colWidth, y, colWidth - 10);
   labelCoppia(doc, 'Cantiere', b.cantiereNome ?? '—', MARGIN + colWidth * 2, y, colWidth - 10);
-  y += 34;
+  y += 40;
 
   labelCoppia(doc, 'Operatore', `${b.utente.nome} ${b.utente.cognome}`, MARGIN, y, colWidth - 10);
   labelCoppia(doc, 'N. Operai', String(b.numeroOperai), MARGIN + colWidth, y, colWidth - 10);
   labelCoppia(doc, 'Ore (per operaio)', formatNumero(b.ore), MARGIN + colWidth * 2, y, colWidth - 10);
   y += 36;
+
+  if (b.collaboratori.length > 0) {
+    labelCoppia(
+      doc,
+      'Collaboratori',
+      b.collaboratori.map((c) => c.nome).join(', '),
+      MARGIN,
+      y,
+      CONTENT_WIDTH
+    );
+    y += 40;
+  }
 
   // Attività: riquadro dimensionato sul testo effettivo
   doc.fontSize(8).fillColor('#666').text('Attività svolte', MARGIN, y, { width: CONTENT_WIDTH });

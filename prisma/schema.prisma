@@ -18,10 +18,11 @@ model Utente {
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
-  attivita           Attivita[]           @relation("UtenteAttivita")
-  attivitaCreate     Attivita[]           @relation("CreatoDa")
-  bollettini         Bollettino[]         @relation("UtenteBollettini")
-  allegatiBollettino AllegatoBollettino[] @relation("UtenteAllegatiBollettino")
+  attivita           Attivita[]                @relation("UtenteAttivita")
+  attivitaCreate     Attivita[]                @relation("CreatoDa")
+  bollettini         Bollettino[]              @relation("UtenteBollettini")
+  allegatiBollettino AllegatoBollettino[]      @relation("UtenteAllegatiBollettino")
+  collaborazioni     BollettinoCollaboratore[]
 
   @@map("utenti")
 }
@@ -55,9 +56,10 @@ model Cantiere {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  cliente      Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  attivita     Attivita[]
-  bollettini   Bollettino[]
+  cliente         Cliente              @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  attivita        Attivita[]
+  bollettini      Bollettino[]
+  bollettiniMulti BollettinoCantiere[]
 
   @@map("cantieri")
 }
@@ -87,29 +89,29 @@ model TipoAssenza {
 }
 
 model Attivita {
-  id                   Int      @id @default(autoincrement())
-  utenteId             Int      @map("utente_id")
-  dataRiferimento      DateTime @map("data_riferimento") @db.Date
-  oraInizioMattino     String?  @map("ora_inizio_mattino")
-  oraFineMattino       String?  @map("ora_fine_mattino")
-  oraInizioPomeriggio  String?  @map("ora_inizio_pomeriggio")
-  oraFinePomeriggio    String?  @map("ora_fine_pomeriggio")
-  durataMinuti         Int      @map("durata_minuti")
-  clienteId            Int?     @map("cliente_id")
-  cantiereId           Int?     @map("cantiere_id")
-  tipoAttivitaId       Int?     @map("tipo_attivita_id")
-  assenzaId            Int?     @map("assenza_id")
-  note                 String?
-  createdById          Int      @map("created_by")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  id                  Int      @id @default(autoincrement())
+  utenteId            Int      @map("utente_id")
+  dataRiferimento     DateTime @map("data_riferimento") @db.Date
+  oraInizioMattino    String?  @map("ora_inizio_mattino")
+  oraFineMattino      String?  @map("ora_fine_mattino")
+  oraInizioPomeriggio String?  @map("ora_inizio_pomeriggio")
+  oraFinePomeriggio   String?  @map("ora_fine_pomeriggio")
+  durataMinuti        Int      @map("durata_minuti")
+  clienteId           Int?     @map("cliente_id")
+  cantiereId          Int?     @map("cantiere_id")
+  tipoAttivitaId      Int?     @map("tipo_attivita_id")
+  assenzaId           Int?     @map("assenza_id")
+  note                String?
+  createdById         Int      @map("created_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
-  utente       Utente       @relation("UtenteAttivita", fields: [utenteId], references: [id])
-  cliente      Cliente?     @relation(fields: [clienteId], references: [id])
-  cantiere     Cantiere?    @relation(fields: [cantiereId], references: [id])
+  utente       Utente        @relation("UtenteAttivita", fields: [utenteId], references: [id])
+  cliente      Cliente?      @relation(fields: [clienteId], references: [id])
+  cantiere     Cantiere?     @relation(fields: [cantiereId], references: [id])
   tipoAttivita TipoAttivita? @relation(fields: [tipoAttivitaId], references: [id])
-  assenza      TipoAssenza? @relation(fields: [assenzaId], references: [id])
-  createdBy    Utente       @relation("CreatoDa", fields: [createdById], references: [id])
+  assenza      TipoAssenza?  @relation(fields: [assenzaId], references: [id])
+  createdBy    Utente        @relation("CreatoDa", fields: [createdById], references: [id])
 
   @@map("attivita")
 }
@@ -121,13 +123,13 @@ model CalendarioEvento {
   id             Int       @id @default(autoincrement())
   clienteId      Int       @map("cliente_id")
   nome           String?
-  dataInizio     DateTime  @map("data_inizio")     @db.Date
-  dataFine       DateTime  @map("data_fine")       @db.Date
-  dataConsegna   DateTime? @map("data_consegna")   @db.Date
+  dataInizio     DateTime  @map("data_inizio") @db.Date
+  dataFine       DateTime  @map("data_fine") @db.Date
+  dataConsegna   DateTime? @map("data_consegna") @db.Date
   dataSmontaggio DateTime? @map("data_smontaggio") @db.Date
   importo        Float?
   createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt      @map("updated_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   cliente Cliente @relation(fields: [clienteId], references: [id])
 
@@ -148,8 +150,9 @@ model DreamVeicolo {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  noleggi     DreamNoleggio[]
-  noleggiGica GicaNoleggio[]
+  noleggi         DreamNoleggio[]
+  noleggiGica     GicaNoleggio[]
+  righeBollettino RigaBollettino[]
 
   @@map("dream_veicoli")
 }
@@ -183,7 +186,7 @@ model DreamNoleggio {
   quota            QuotaNoleggio
   importoCalcolato Float         @map("importo_calcolato")
   createdAt        DateTime      @default(now()) @map("created_at")
-  updatedAt        DateTime      @updatedAt      @map("updated_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
 
   veicolo DreamVeicolo  @relation(fields: [veicoloId], references: [id])
   cliente DreamCliente? @relation(fields: [clienteId], references: [id])
@@ -202,7 +205,7 @@ model GicaNoleggio {
   osservazioni String?  @db.Text
   importo      Float
   createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt      @map("updated_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   veicolo DreamVeicolo  @relation(fields: [veicoloId], references: [id])
   cliente DreamCliente? @relation(fields: [clienteId], references: [id])
@@ -306,7 +309,7 @@ model Bollettino {
   cantiereNome String? @map("cantiere_nome")
 
   firmaOperatoreNome   String @map("firma_operatore_nome")
-  firmaOperatoreImg    String @map("firma_operatore_img")   @db.Text
+  firmaOperatoreImg    String @map("firma_operatore_img") @db.Text
   firmaCommittenteNome String @map("firma_committente_nome")
   firmaCommittenteImg  String @map("firma_committente_img") @db.Text
 
@@ -323,11 +326,16 @@ model Bollettino {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  utente   Utente    @relation("UtenteBollettini", fields: [utenteId], references: [id])
-  cliente  Cliente?  @relation(fields: [clienteId], references: [id])
-  cantiere Cantiere? @relation(fields: [cantiereId], references: [id])
-  righe    RigaBollettino[]
-  allegati AllegatoBollettino[]
+  utente        Utente                    @relation("UtenteBollettini", fields: [utenteId], references: [id])
+  cliente       Cliente?                  @relation(fields: [clienteId], references: [id])
+  cantiere      Cantiere?                 @relation(fields: [cantiereId], references: [id])
+  righe         RigaBollettino[]
+  allegati      AllegatoBollettino[]
+  // Selezione multipla. `cantiereId` e `cantiereNome` restano valorizzati
+  // (primo cantiere e nomi uniti da virgola): elenco, mail, nome del PDF e i
+  // bollettini precedenti alla selezione multipla continuano a leggere quelli
+  cantieri      BollettinoCantiere[]
+  collaboratori BollettinoCollaboratore[]
 
   @@index([clienteId, dataRiferimento])
   @@index([cantiereId, dataRiferimento])
@@ -340,6 +348,9 @@ model RigaBollettino {
   bollettinoId Int      @map("bollettino_id")
   tipo         TipoVoce
   voceId       Int?     @map("voce_id")
+  // Solo per i mezzi: veicolo dell'anagrafica Gica Noleggi (dream_veicoli).
+  // Le righe mezzo precedenti hanno invece `voceId`.
+  veicoloId    Int?     @map("veicolo_id")
   // Copia del nome della voce al momento della firma
   descrizione  String
   // Ore per i mezzi, quantita' per i materiali, viaggi per i trasporti
@@ -347,9 +358,42 @@ model RigaBollettino {
 
   bollettino Bollettino      @relation(fields: [bollettinoId], references: [id], onDelete: Cascade)
   voce       VoceBollettino? @relation(fields: [voceId], references: [id], onDelete: SetNull)
+  veicolo    DreamVeicolo?   @relation(fields: [veicoloId], references: [id], onDelete: SetNull)
 
   @@index([bollettinoId, tipo])
   @@map("righe_bollettino")
+}
+
+/// Cantieri del bollettino, tutti dello stesso cliente. Il nome e' copiato
+/// alla firma, come per le righe.
+model BollettinoCantiere {
+  id           Int    @id @default(autoincrement())
+  bollettinoId Int    @map("bollettino_id")
+  cantiereId   Int?   @map("cantiere_id")
+  nome         String
+
+  bollettino Bollettino @relation(fields: [bollettinoId], references: [id], onDelete: Cascade)
+  cantiere   Cantiere?  @relation(fields: [cantiereId], references: [id], onDelete: SetNull)
+
+  @@index([bollettinoId])
+  @@index([cantiereId])
+  @@map("bollettini_cantieri")
+}
+
+/// Operai presenti sul lavoro, scelti fra gli utenti. `numeroOperai` del
+/// bollettino e' il loro conteggio. Nome copiato alla firma.
+model BollettinoCollaboratore {
+  id           Int    @id @default(autoincrement())
+  bollettinoId Int    @map("bollettino_id")
+  utenteId     Int?   @map("utente_id")
+  nome         String
+
+  bollettino Bollettino @relation(fields: [bollettinoId], references: [id], onDelete: Cascade)
+  utente     Utente?    @relation(fields: [utenteId], references: [id], onDelete: SetNull)
+
+  @@index([bollettinoId])
+  @@index([utenteId])
+  @@map("bollettini_collaboratori")
 }
 
 // Foto e PDF allegati al bollettino. In tabella stanno i soli metadati: i byte

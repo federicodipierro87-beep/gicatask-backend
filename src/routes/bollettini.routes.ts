@@ -24,6 +24,7 @@ const righeSchema = {
     required: ['quantita'],
     properties: {
       voceId: { type: ['number', 'null'] },
+      veicoloId: { type: ['number', 'null'] },
       descrizione: { type: 'string', maxLength: 200 },
       quantita: { type: 'number', minimum: 0, maximum: 100000 },
     },
@@ -47,6 +48,8 @@ const createBodySchema = {
   properties: {
     clienteId: { type: 'number' },
     cantiereId: { type: 'number' },
+    cantieriIds: { type: 'array', maxItems: 50, items: { type: 'number' } },
+    collaboratoriIds: { type: 'array', maxItems: 200, items: { type: 'number' } },
     dataRiferimento: { type: 'string' },
     attivita: { type: 'string', minLength: 1, maxLength: 5000 },
     numeroOperai: { type: 'number', minimum: 0, maximum: 999 },
@@ -73,6 +76,8 @@ const createBodySchema = {
 interface CreateBody {
   clienteId?: number;
   cantiereId?: number;
+  cantieriIds?: number[];
+  collaboratoriIds?: number[];
   dataRiferimento: string;
   attivita: string;
   numeroOperai?: number;
@@ -228,6 +233,23 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
       .send(file.buffer);
   });
 
+  // Mezzi selezionabili: anagrafica veicoli di Gica Noleggi. La rotta
+  // /api/dream-veicoli e' riservata ai responsabili, questa espone i soli
+  // veicoli attivi a chi e' abilitato ai bollettini.
+  fastify.get('/veicoli', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
+    const veicoli = await fastify.prisma.dreamVeicolo.findMany({
+      where: { attivo: true },
+      select: { id: true, nome: true },
+      orderBy: { nome: 'asc' },
+    });
+
+    return reply.send(veicoli);
+  });
+
   // Elenco bollettini (senza firme)
   fastify.get('/', {
     preHandler: [fastify.authenticate],
@@ -299,6 +321,8 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
         utenteId: user.id,
         clienteId: body.clienteId ?? null,
         cantiereId: body.cantiereId ?? null,
+        cantieriIds: body.cantieriIds ?? [],
+        collaboratoriIds: body.collaboratoriIds,
         dataRiferimento: new Date(body.dataRiferimento),
         attivita: body.attivita,
         numeroOperai: body.numeroOperai ?? 0,

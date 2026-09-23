@@ -3,6 +3,8 @@ import { AllegatiBollettinoService } from './allegatiBollettino.service.js';
 
 export interface RigaInput {
   voceId?: number | null;
+  // Solo per i mezzi: veicolo dell'anagrafica Gica Noleggi
+  veicoloId?: number | null;
   descrizione?: string;
   quantita: number;
 }
@@ -11,6 +13,10 @@ export interface CreateBollettinoInput {
   utenteId: number;
   clienteId?: number | null;
   cantiereId?: number | null;
+  // Selezione multipla; `cantiereId` resta per i client che mandano il singolo
+  cantieriIds?: number[];
+  // Utenti presenti sul lavoro. Se c'e', `numeroOperai` e' il suo conteggio
+  collaboratoriIds?: number[];
   dataRiferimento: Date;
   attivita: string;
   numeroOperai: number;
@@ -62,6 +68,14 @@ const listSelect = {
   emailErrore: true,
   createdAt: true,
   utente: { select: { id: true, nome: true, cognome: true } },
+  cantieri: {
+    select: { cantiereId: true, nome: true },
+    orderBy: { id: 'asc' },
+  },
+  collaboratori: {
+    select: { utenteId: true, nome: true },
+    orderBy: { id: 'asc' },
+  },
   // Metadati corti: al contrario delle firme non pesano sull'elenco, e cosi'
   // lista e archivio mostrano il conteggio senza una seconda chiamata
   allegati: {
@@ -79,6 +93,7 @@ const detailSelect = {
       id: true,
       tipo: true,
       voceId: true,
+      veicoloId: true,
       descrizione: true,
       quantita: true,
     },
@@ -100,20 +115,36 @@ export class BollettiniService {
   constructor(private prisma: PrismaClient) {}
 
   private buildWhere(filters: BollettinoFilters): Prisma.BollettinoWhereInput {
+    // Due OR distinti (cantiere e cliente) non possono stare nella stessa
+    // chiave: vanno in AND
+    const and: Prisma.BollettinoWhereInput[] = [];
+
+    // `cantiereId` e' il primo dei cantieri selezionati: gli altri si trovano
+    // solo nella tabella di collegamento
+    if (filters.cantiereId) {
+      and.push({
+        OR: [
+          { cantiereId: filters.cantiereId },
+          { cantieri: { some: { cantiereId: filters.cantiereId } } },
+        ],
+      });
+    }
+
+    // I bollettini nuovi hanno `clienteId` valorizzato, quelli precedenti
+    // alla colonna lo hanno NULL e sono raggiungibili solo via cantiere:
+    // l'OR li tiene insieme senza dover riscrivere una riga di storico.
+    if (filters.clienteId) {
+      and.push({
+        OR: [
+          { clienteId: filters.clienteId },
+          { cantiere: { clienteId: filters.clienteId } },
+        ],
+      });
+    }
+
     return {
       ...(filters.utenteId ? { utenteId: filters.utenteId } : {}),
-      ...(filters.cantiereId ? { cantiereId: filters.cantiereId } : {}),
-      // I bollettini nuovi hanno `clienteId` valorizzato, quelli precedenti
-      // alla colonna lo hanno NULL e sono raggiungibili solo via cantiere:
-      // l'OR li tiene insieme senza dover riscrivere una riga di storico.
-      ...(filters.clienteId
-        ? {
-            OR: [
-              { clienteId: filters.clienteId },
-              { cantiere: { clienteId: filters.clienteId } },
-            ],
-          }
-        : {}),
+      ...(and.length ? { AND: and } : {}),
       ...(filters.startDate || filters.endDate
         ? {
             dataRiferimento: {
@@ -178,31 +209,51 @@ export class BollettiniService {
   }
 
   /**
-   * Cliente e cantiere del bollettino. Il cantiere, quando c'e', resta la
+   * Cliente e cantieri del bollettino. I cantieri, quando ci sono, restano la
    * fonte piu' precisa: da li' si ricava anche il cliente, cosi' un client che
-   * manda il solo `cantiereId` continua a funzionare senza modifiche.
+   * manda i soli id dei cantieri continua a funzionare. Devono appartenere
+   * tutti allo stesso cliente.
    */
   private async risolviDestinazione(input: CreateBollettinoInput): Promise<{
     clienteId: number;
     clienteNome: string;
-    cantiereId: number | null;
-    cantiereNome: string | null;
+    cantieri: { id: number; nome: string }[];
   }> {
-    if (input.cantiereId) {
-      const cantiere = await this.prisma.cantiere.findUnique({
-        where: { id: input.cantiereId },
+    const cantieriIds = [
+      ...new Set([
+        ...(input.cantieriIds ?? []),
+        ...(input.cantiereId ? [input.cantiereId] : []),
+      ]),
+    ];
+
+    if (cantieriIds.length > 0) {
+      const trovati = await this.prisma.cantiere.findMany({
+        where: { id: { in: cantieriIds } },
         select: { id: true, nome: true, clienteId: true, cliente: { select: { nome: true } } },
       });
 
-      if (!cantiere) {
+      const primo = trovati[0];
+      if (!primo || trovati.length !== cantieriIds.length) {
         throw new Error('Cantiere non trovato');
       }
 
+      const clienteId = primo.clienteId;
+
+      if (trovati.some((c) => c.clienteId !== clienteId)) {
+        throw new Error('I cantieri devono appartenere allo stesso cliente');
+      }
+
+      if (input.clienteId && input.clienteId !== clienteId) {
+        throw new Error('Il cantiere non appartiene al cliente selezionato');
+      }
+
+      // Nell'ordine scelto dall'operatore, non in quello del database
+      const byId = new Map(trovati.map((c) => [c.id, c]));
+
       return {
-        clienteId: cantiere.clienteId,
-        clienteNome: cantiere.cliente.nome,
-        cantiereId: cantiere.id,
-        cantiereNome: cantiere.nome,
+        clienteId,
+        clienteNome: primo.cliente.nome,
+        cantieri: cantieriIds.map((id) => ({ id, nome: byId.get(id)!.nome })),
       };
     }
 
@@ -232,13 +283,39 @@ export class BollettiniService {
     return {
       clienteId: cliente.id,
       clienteNome: cliente.nome,
-      cantiereId: null,
-      cantiereNome: null,
+      cantieri: [],
     };
+  }
+
+  /** Collaboratori con il nome copiato dall'anagrafica utenti. */
+  private async risolviCollaboratori(
+    ids: number[]
+  ): Promise<{ utenteId: number; nome: string }[]> {
+    const unici = [...new Set(ids)];
+    if (unici.length === 0) return [];
+
+    const utenti = await this.prisma.utente.findMany({
+      where: { id: { in: unici } },
+      select: { id: true, nome: true, cognome: true },
+    });
+
+    if (utenti.length !== unici.length) {
+      throw new Error('Collaboratore non trovato');
+    }
+
+    const byId = new Map(utenti.map((u) => [u.id, u]));
+
+    return unici.map((id) => {
+      const u = byId.get(id)!;
+      return { utenteId: id, nome: `${u.nome} ${u.cognome}`.trim() };
+    });
   }
 
   async create(input: CreateBollettinoInput): Promise<{ id: number }> {
     const destinazione = await this.risolviDestinazione(input);
+    const collaboratori = input.collaboratoriIds
+      ? await this.risolviCollaboratori(input.collaboratoriIds)
+      : null;
 
     const righe = await this.buildRighe(input);
 
@@ -262,13 +339,15 @@ export class BollettiniService {
       data: {
         utenteId: input.utenteId,
         clienteId: destinazione.clienteId,
-        cantiereId: destinazione.cantiereId,
+        cantiereId: destinazione.cantieri[0]?.id ?? null,
         dataRiferimento: input.dataRiferimento,
         attivita: input.attivita.trim(),
-        numeroOperai: input.numeroOperai,
+        numeroOperai: collaboratori ? collaboratori.length : input.numeroOperai,
         ore: input.ore,
         clienteNome: destinazione.clienteNome,
-        cantiereNome: destinazione.cantiereNome,
+        cantiereNome: destinazione.cantieri.length
+          ? destinazione.cantieri.map((c) => c.nome).join(', ')
+          : null,
         firmaOperatoreNome: input.firmaOperatoreNome.trim(),
         firmaOperatoreImg: input.firmaOperatoreImg,
         firmaCommittenteNome: input.firmaCommittenteNome.trim(),
@@ -277,6 +356,18 @@ export class BollettiniService {
         emailStato: input.emailStato ?? null,
         createdById: input.createdById,
         righe: { create: righe },
+        cantieri: {
+          create: destinazione.cantieri.map((c) => ({
+            cantiere: { connect: { id: c.id } },
+            nome: c.nome,
+          })),
+        },
+        collaboratori: {
+          create: (collaboratori ?? []).map((c) => ({
+            utente: { connect: { id: c.utenteId } },
+            nome: c.nome,
+          })),
+        },
         allegati: { connect: allegati.map((a) => ({ id: a.id })) },
       },
       select: { id: true },
@@ -314,8 +405,37 @@ export class BollettiniService {
 
     const vociById = new Map(voci.map((v) => [v.id, v]));
 
+    const veicoloIds = input.mezzi
+      .map((r) => r.veicoloId)
+      .filter((id): id is number => typeof id === 'number');
+
+    const veicoli = veicoloIds.length
+      ? await this.prisma.dreamVeicolo.findMany({
+          where: { id: { in: veicoloIds } },
+          select: { id: true, nome: true },
+        })
+      : [];
+
+    const veicoliById = new Map(veicoli.map((v) => [v.id, v]));
+
     return gruppi.flatMap(({ tipo, righe }) =>
       righe.map((riga) => {
+        // Il veicolo vale solo nella sezione mezzi, e li' ha la precedenza
+        if (tipo === 'MEZZO' && typeof riga.veicoloId === 'number') {
+          const veicolo = veicoliById.get(riga.veicoloId);
+
+          if (!veicolo) {
+            throw new Error('Mezzo non trovato');
+          }
+
+          return {
+            tipo,
+            veicolo: { connect: { id: veicolo.id } },
+            descrizione: veicolo.nome,
+            quantita: riga.quantita,
+          };
+        }
+
         const voce = typeof riga.voceId === 'number' ? vociById.get(riga.voceId) : undefined;
 
         if (typeof riga.voceId === 'number' && !voce) {
