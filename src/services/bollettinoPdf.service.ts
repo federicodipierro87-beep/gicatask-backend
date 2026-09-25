@@ -13,6 +13,8 @@ export interface BollettinoPdf {
   attivita: string;
   numeroOperai: number;
   ore: number;
+  // NULL nei bollettini senza ore per collaboratore
+  oreTotali: number | null;
   clienteNome: string;
   cantiereNome: string | null;
   firmaOperatoreNome: string;
@@ -21,7 +23,7 @@ export interface BollettinoPdf {
   firmaCommittenteImg: string;
   utente: { nome: string; cognome: string };
   // Vuoto per i bollettini precedenti alla selezione dei collaboratori
-  collaboratori: { nome: string }[];
+  collaboratori: { nome: string; ore: number | null }[];
   righe: RigaPdf[];
   // Solo i nomi: i file non vengono impaginati, servirebbe una lettura da R2
   // per ogni immagine e nel cumulativo di cliente sarebbero centinaia di GET
@@ -44,6 +46,14 @@ const SEZIONI: { tipo: TipoVoce; titolo: string; labelQuantita: string }[] = [
   { tipo: 'MATERIALE', titolo: 'Materiali', labelQuantita: 'Quantità' },
   { tipo: 'TRASPORTO', titolo: 'Trasporti', labelQuantita: 'Viaggi' },
 ];
+
+/**
+ * Ore complessive del bollettino: la somma per collaboratore quando c'e',
+ * altrimenti operai per ore come nei bollettini precedenti.
+ */
+function oreComplessive(b: BollettinoPdf): number {
+  return b.oreTotali ?? b.ore * b.numeroOperai;
+}
 
 function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString('it-IT');
@@ -110,8 +120,9 @@ function renderSezioneVoci(
   doc: PDFKit.PDFDocument,
   titolo: string,
   labelQuantita: string,
-  righe: RigaPdf[],
-  y: number
+  righe: { descrizione: string; quantita: number }[],
+  y: number,
+  totale?: { label: string; valore: number }
 ): number {
   let cursor = ensureSpace(doc, y, 34);
 
@@ -144,6 +155,19 @@ function renderSezioneVoci(
     });
     cursor += 16;
   });
+
+  if (totale) {
+    cursor = ensureSpace(doc, cursor, 16);
+    doc.moveTo(MARGIN, cursor).lineTo(MARGIN + CONTENT_WIDTH, cursor).strokeColor('#333').lineWidth(0.5).stroke();
+    doc.fontSize(9).fillColor('#000').font('Helvetica-Bold');
+    doc.text(totale.label, MARGIN + 5, cursor + 4, { width: CONTENT_WIDTH - 95 });
+    doc.text(formatNumero(totale.valore), MARGIN + CONTENT_WIDTH - 85, cursor + 4, {
+      width: 80,
+      align: 'right',
+    });
+    doc.font('Helvetica');
+    cursor += 16;
+  }
 
   return cursor + 2;
 }
@@ -198,10 +222,16 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
 
   labelCoppia(doc, 'Operatore', `${b.utente.nome} ${b.utente.cognome}`, MARGIN, y, colWidth - 10);
   labelCoppia(doc, 'N. Operai', String(b.numeroOperai), MARGIN + colWidth, y, colWidth - 10);
-  labelCoppia(doc, 'Ore (per operaio)', formatNumero(b.ore), MARGIN + colWidth * 2, y, colWidth - 10);
+  if (b.oreTotali !== null) {
+    labelCoppia(doc, 'Totale ore', formatNumero(b.oreTotali), MARGIN + colWidth * 2, y, colWidth - 10);
+  } else {
+    labelCoppia(doc, 'Ore (per operaio)', formatNumero(b.ore), MARGIN + colWidth * 2, y, colWidth - 10);
+  }
   y += 36;
 
-  if (b.collaboratori.length > 0) {
+  // Con le ore per collaboratore l'elenco diventa una tabella, stampata dopo
+  // le attivita'; qui resta la riga di soli nomi dei bollettini precedenti
+  if (b.oreTotali === null && b.collaboratori.length > 0) {
     labelCoppia(
       doc,
       'Collaboratori',
@@ -232,6 +262,17 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
     ellipsis: true,
   });
   y += altezzaBox + 14;
+
+  if (b.oreTotali !== null && b.collaboratori.length > 0) {
+    y = renderSezioneVoci(
+      doc,
+      'Collaboratori',
+      'Ore',
+      b.collaboratori.map((c) => ({ descrizione: c.nome, quantita: c.ore ?? 0 })),
+      y,
+      { label: 'Totale ore', valore: b.oreTotali }
+    ) + 6;
+  }
 
   for (const sezione of SEZIONI) {
     const righe = b.righe.filter((r) => r.tipo === sezione.tipo);
@@ -269,8 +310,9 @@ function renderCopertina(
   clienteNome: string,
   bollettini: BollettinoPdf[]
 ): void {
-  const totaleOre = bollettini.reduce((s, b) => s + b.ore, 0);
-  const totaleOreUomo = bollettini.reduce((s, b) => s + b.ore * b.numeroOperai, 0);
+  // Un solo totale: "ore per operaio" non esiste nei bollettini con le ore
+  // per collaboratore, e sommarlo con quelli vecchi darebbe un numero senza senso
+  const totaleOre = bollettini.reduce((s, b) => s + oreComplessive(b), 0);
 
   const date = bollettini.map((b) => new Date(b.dataRiferimento).getTime());
   const periodo = date.length
@@ -300,8 +342,7 @@ function renderCopertina(
   const voci: [string, string][] = [
     ['Periodo', periodo],
     ['Bollettini', String(bollettini.length)],
-    ['Totale ore (per operaio)', formatNumero(totaleOre)],
-    ['Totale ore-uomo', formatNumero(totaleOreUomo)],
+    ['Totale ore (tutti gli operai)', formatNumero(totaleOre)],
   ];
 
   for (const [label, valore] of voci) {

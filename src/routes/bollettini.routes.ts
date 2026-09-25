@@ -1,6 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
-import { BollettiniService, type RigaInput } from '../services/bollettini.service.js';
+import {
+  BollettiniService,
+  type CollaboratoreInput,
+  type RigaInput,
+} from '../services/bollettini.service.js';
 import { AllegatiBollettinoService } from '../services/allegatiBollettino.service.js';
 import {
   BollettinoPdfService,
@@ -50,6 +54,18 @@ const createBodySchema = {
     cantiereId: { type: 'number' },
     cantieriIds: { type: 'array', maxItems: 50, items: { type: 'number' } },
     collaboratoriIds: { type: 'array', maxItems: 200, items: { type: 'number' } },
+    collaboratori: {
+      type: 'array',
+      maxItems: 200,
+      items: {
+        type: 'object',
+        required: ['utenteId', 'ore'],
+        properties: {
+          utenteId: { type: 'number' },
+          ore: { type: 'number', minimum: 0, maximum: 24 },
+        },
+      },
+    },
     dataRiferimento: { type: 'string' },
     attivita: { type: 'string', minLength: 1, maxLength: 5000 },
     numeroOperai: { type: 'number', minimum: 0, maximum: 999 },
@@ -78,6 +94,7 @@ interface CreateBody {
   cantiereId?: number;
   cantieriIds?: number[];
   collaboratoriIds?: number[];
+  collaboratori?: CollaboratoreInput[];
   dataRiferimento: string;
   attivita: string;
   numeroOperai?: number;
@@ -323,6 +340,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
         cantiereId: body.cantiereId ?? null,
         cantieriIds: body.cantieriIds ?? [],
         collaboratoriIds: body.collaboratoriIds,
+        collaboratori: body.collaboratori,
         dataRiferimento: new Date(body.dataRiferimento),
         attivita: body.attivita,
         numeroOperai: body.numeroOperai ?? 0,

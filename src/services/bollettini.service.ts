@@ -9,13 +9,21 @@ export interface RigaInput {
   quantita: number;
 }
 
+export interface CollaboratoreInput {
+  utenteId: number;
+  ore: number;
+}
+
 export interface CreateBollettinoInput {
   utenteId: number;
   clienteId?: number | null;
   cantiereId?: number | null;
   // Selezione multipla; `cantiereId` resta per i client che mandano il singolo
   cantieriIds?: number[];
-  // Utenti presenti sul lavoro. Se c'e', `numeroOperai` e' il suo conteggio
+  // Utenti presenti sul lavoro, ciascuno con le sue ore. Se c'e',
+  // `numeroOperai` e' il conteggio e `oreTotali` la somma delle ore
+  collaboratori?: CollaboratoreInput[];
+  // Forma precedente, senza ore: resta accettata
   collaboratoriIds?: number[];
   dataRiferimento: Date;
   attivita: string;
@@ -57,6 +65,7 @@ const listSelect = {
   attivita: true,
   numeroOperai: true,
   ore: true,
+  oreTotali: true,
   clienteNome: true,
   cantiereNome: true,
   firmaOperatoreNome: true,
@@ -73,7 +82,7 @@ const listSelect = {
     orderBy: { id: 'asc' },
   },
   collaboratori: {
-    select: { utenteId: true, nome: true },
+    select: { utenteId: true, nome: true, ore: true },
     orderBy: { id: 'asc' },
   },
   // Metadati corti: al contrario delle firme non pesano sull'elenco, e cosi'
@@ -289,9 +298,12 @@ export class BollettiniService {
 
   /** Collaboratori con il nome copiato dall'anagrafica utenti. */
   private async risolviCollaboratori(
-    ids: number[]
-  ): Promise<{ utenteId: number; nome: string }[]> {
-    const unici = [...new Set(ids)];
+    righe: { utenteId: number; ore: number | null }[]
+  ): Promise<{ utenteId: number; nome: string; ore: number | null }[]> {
+    const unici = [...new Set(righe.map((r) => r.utenteId))];
+    if (unici.length !== righe.length) {
+      throw new Error('Lo stesso collaboratore è inserito due volte');
+    }
     if (unici.length === 0) return [];
 
     const utenti = await this.prisma.utente.findMany({
@@ -305,16 +317,24 @@ export class BollettiniService {
 
     const byId = new Map(utenti.map((u) => [u.id, u]));
 
-    return unici.map((id) => {
-      const u = byId.get(id)!;
-      return { utenteId: id, nome: `${u.nome} ${u.cognome}`.trim() };
+    return righe.map(({ utenteId, ore }) => {
+      const u = byId.get(utenteId)!;
+      return { utenteId, nome: `${u.nome} ${u.cognome}`.trim(), ore };
     });
   }
 
   async create(input: CreateBollettinoInput): Promise<{ id: number }> {
     const destinazione = await this.risolviDestinazione(input);
-    const collaboratori = input.collaboratoriIds
-      ? await this.risolviCollaboratori(input.collaboratoriIds)
+    const conOre = Boolean(input.collaboratori);
+    const collaboratori = input.collaboratori
+      ? await this.risolviCollaboratori(input.collaboratori)
+      : input.collaboratoriIds
+        ? await this.risolviCollaboratori(
+            input.collaboratoriIds.map((utenteId) => ({ utenteId, ore: null }))
+          )
+        : null;
+    const oreTotali = conOre
+      ? (collaboratori ?? []).reduce((s, c) => s + (c.ore ?? 0), 0)
       : null;
 
     const righe = await this.buildRighe(input);
@@ -343,7 +363,10 @@ export class BollettiniService {
         dataRiferimento: input.dataRiferimento,
         attivita: input.attivita.trim(),
         numeroOperai: collaboratori ? collaboratori.length : input.numeroOperai,
-        ore: input.ore,
+        // Con le ore per collaboratore l'ora "per operaio" non esiste piu':
+        // vale 0 e il totale sta in `oreTotali`
+        ore: conOre ? 0 : input.ore,
+        oreTotali,
         clienteNome: destinazione.clienteNome,
         cantiereNome: destinazione.cantieri.length
           ? destinazione.cantieri.map((c) => c.nome).join(', ')
@@ -366,6 +389,7 @@ export class BollettiniService {
           create: (collaboratori ?? []).map((c) => ({
             utente: { connect: { id: c.utenteId } },
             nome: c.nome,
+            ore: c.ore,
           })),
         },
         allegati: { connect: allegati.map((a) => ({ id: a.id })) },

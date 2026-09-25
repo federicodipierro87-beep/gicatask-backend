@@ -2260,6 +2260,51 @@ non passa `riusa` e continua a segnalare i doppioni.
 
 ---
 
+### Collaboratori a righe con le ore di ciascuno (25 Settembre 2026)
+
+Nel form del bollettino i collaboratori non sono più un elenco a spunta: **una riga per persona**,
+con la sua tendina e le sue **ore**. Il pulsante **+ Aggiungi collaboratore** aggiunge una riga
+uguale e sotto l'elenco compare il **Totale Ore**, con il numero operai. Il campo *Ore (per
+operaio)* sparisce: le ore sono ora per persona.
+
+- La prima riga parte con l'utente che compila. Una persona già scelta in una riga non compare
+  nelle tendine delle altre.
+- Le righe senza collaboratore e senza ore vengono ignorate. Una riga con le ore ma senza persona
+  blocca il salvataggio e mostra un avviso sotto la riga.
+- Componente nuovo: `CollaboratoriSelector`. Il `MultiSelect` resta per i cantieri.
+
+#### Schema (solo aggiunte)
+
+- `bollettini_collaboratori.ore` (Float, nullable): le ore di quella persona. NULL nelle righe
+  salvate tra il 23 e il 25 settembre, che avevano solo i nomi.
+- `bollettini.ore_totali` (Float, nullable): la somma delle ore dei collaboratori. NULL nei
+  bollettini precedenti.
+
+Nei bollettini nuovi `ore` vale 0 e `numeroOperai` è il conteggio dei collaboratori. Il totale di
+un bollettino si ricava sempre con la stessa regola, `oreTotali ?? ore * numeroOperai`:
+`oreComplessive` nel PDF (backend) e in `utils/oreBollettino.ts` (frontend).
+
+#### API
+
+`POST /api/bollettini` accetta `collaboratori: [{ utenteId, ore }]`, con ore da 0 a 24. Lo stesso
+utente ripetuto dà un 400 prima del salvataggio. `collaboratoriIds` (senza ore) resta accettato:
+in quel caso `ore_totali` resta NULL e vale il vecchio `ore`.
+
+#### Dove si vede
+
+- **PDF del singolo:** nell'intestazione *Totale ore* prende il posto di *Ore (per operaio)*.
+  Dopo le attività c'è una tabella **Collaboratori / Ore** con la riga **Totale ore**, disegnata
+  con `renderSezioneVoci`, che ora accetta un totale facoltativo. I bollettini precedenti restano
+  come prima.
+- **Copertina del cumulativo:** le due righe *Totale ore (per operaio)* e *Totale ore-uomo* diventano
+  una sola, **Totale ore (tutti gli operai)**. Sommare le "ore per operaio" non ha senso quando
+  una parte dei bollettini non le ha.
+- **Archivio:** la colonna *Ore* diventa **Ore totali**, e il riepilogo in alto parla di "ore
+  totali". Il tooltip della colonna Operai riporta anche le ore di ciascuno.
+- **Elenco del dipendente:** "N operai · X ore totali" e, sotto, i nomi con le ore.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
