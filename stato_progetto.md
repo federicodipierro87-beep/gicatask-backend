@@ -2221,6 +2221,45 @@ aggiunti nell'anagrafica veicoli di Gica/Dream.
 
 ---
 
+### Banca dati materiali e trasporti (25 Settembre 2026)
+
+Materiali e trasporti seguono ora lo stesso schema dei mezzi: si scelgono **dalla banca dati**,
+anche più di uno per sezione (`MultiSelect`), con la quantità per ciascuno. Il **testo libero è
+sparito**: una voce che manca si aggiunge alla banca dati direttamente dal form, e da lì resta
+disponibile per tutti i bollettini successivi.
+
+**Nessuna tabella nuova.** La banca dati è la `voci_bollettino` di sempre (tipo `MATERIALE` /
+`TRASPORTO`): cambia dove la si gestisce e come la si usa nel form. Le righe dei bollettini già
+firmati, comprese quelle a testo libero con `voce_id` NULL, restano come sono.
+
+#### Menu
+
+- *Impostazioni* ha due voci nuove, **Banca dati materiali** e **Banca dati trasporti**, visibili
+  solo a chi è abilitato ai bollettini (l'API le nega agli altri). Rotte invariate
+  (`/responsabile/materiali`, `/responsabile/trasporti`, nota 10).
+- Il gruppo *Bollettino* contiene solo l'**Archivio**.
+- La pagina **Mezzi** (`/responsabile/mezzi`, voci `MEZZO`) è **rimossa**: dal 23 settembre i mezzi
+  arrivano dalla Banca dati veicoli condivisa con Gica e Dream. Le voci `MEZZO` restano in tabella
+  per lo storico.
+
+#### Aggiunta dal form: `riusa`
+
+`POST /api/voci-bollettino/:tipo` accetta `riusa: true`. In quel caso
+`VociBollettinoService.trovaOCrea` cerca una voce dello stesso tipo con lo stesso nome (senza
+distinzione di maiuscole) e, se c'è, la restituisce, **riattivandola** se era disattivata; solo
+altrimenti la crea. Senza testo libero, il vecchio *"Voce già presente"* su una voce disattivata
+avrebbe lasciato l'operatore senza modo di inserirla. La pagina della banca dati del responsabile
+non passa `riusa` e continua a segnalare i doppioni.
+
+#### Frontend
+
+- `BancaDatiSelector` sostituisce sia `MezziSelector` sia `VociSelector` (entrambi rimossi): scelta
+  multipla, quantità per voce e, se riceve `onCrea`, il campo *"Aggiungi alla banca dati"*. I mezzi
+  non lo ricevono: si aggiungono dalla Banca dati veicoli.
+- Invio nel campo di aggiunta non invia il form del bollettino.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.

@@ -25,6 +25,8 @@ const nomeBodySchema = {
   required: ['nome'],
   properties: {
     nome: { type: 'string', minLength: 1, maxLength: 200 },
+    // Dal form del bollettino: una voce omonima si riusa invece di dare errore
+    riusa: { type: 'boolean' },
   },
 } as const;
 
@@ -58,7 +60,7 @@ export async function vociBollettinoRoutes(fastify: FastifyInstance) {
 
   // Crea voce: chi puo' compilare un bollettino puo' aggiungere una voce dal form.
   // Rinominare e disattivare restano al responsabile.
-  fastify.post<{ Params: { tipo: TipoSlug }; Body: { nome: string } }>('/:tipo', {
+  fastify.post<{ Params: { tipo: TipoSlug }; Body: { nome: string; riusa?: boolean } }>('/:tipo', {
     preHandler: [fastify.authenticate],
     schema: { params: tipoParamsSchema, body: nomeBodySchema },
   }, async (request, reply) => {
@@ -72,7 +74,10 @@ export async function vociBollettinoRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const voce = await service.create(SLUG_TO_TIPO[request.params.tipo], nome);
+      const tipo = SLUG_TO_TIPO[request.params.tipo];
+      const voce = request.body.riusa
+        ? await service.trovaOCrea(tipo, nome)
+        : await service.create(tipo, nome);
       return reply.status(201).send(voce);
     } catch (error) {
       if (isDuplicato(error)) {

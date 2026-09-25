@@ -29,6 +29,27 @@ export class VociBollettinoService {
     });
   }
 
+  /**
+   * Creazione dal form del bollettino: se una voce con lo stesso nome esiste
+   * gia' (maiuscole e spazi doppi a parte) si riusa quella, riattivandola se
+   * era disattivata. Dal form non c'e' piu' il testo libero, quindi un
+   * "gia' presente" lascerebbe l'operatore senza modo di inserire la voce.
+   */
+  async trovaOCrea(tipo: TipoVoce, nome: string): Promise<VoceBollettino> {
+    const pulito = nome.trim().replace(/\s+/g, ' ');
+
+    const esistente = await this.prisma.voceBollettino.findFirst({
+      where: { tipo, nome: { equals: pulito, mode: 'insensitive' } },
+      orderBy: [{ attivo: 'desc' }, { id: 'asc' }],
+    });
+
+    if (esistente) {
+      return esistente.attivo ? esistente : this.activate(esistente.id);
+    }
+
+    return this.create(tipo, pulito);
+  }
+
   async update(id: number, nome: string): Promise<VoceBollettino> {
     return this.prisma.voceBollettino.update({
       where: { id },
