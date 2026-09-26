@@ -3,6 +3,8 @@ import multipart from '@fastify/multipart';
 import {
   BollettiniService,
   type CollaboratoreInput,
+  type FasceOrarie,
+  type SquadraInput,
   type RigaInput,
 } from '../services/bollettini.service.js';
 import { AllegatiBollettinoService } from '../services/allegatiBollettino.service.js';
@@ -35,6 +37,15 @@ const righeSchema = {
   },
 } as const;
 
+// Niente `pattern` sugli orari: il formato lo verifica il service, dentro il
+// try che risponde 400 con un messaggio leggibile
+const fasceProperties = {
+  oraInizioMattino: { type: ['string', 'null'], maxLength: 5 },
+  oraFineMattino: { type: ['string', 'null'], maxLength: 5 },
+  oraInizioPomeriggio: { type: ['string', 'null'], maxLength: 5 },
+  oraFinePomeriggio: { type: ['string', 'null'], maxLength: 5 },
+} as const;
+
 const createBodySchema = {
   type: 'object',
   // Ne' `clienteId` ne' `cantiereId` sono `required`: la regola e' "almeno uno
@@ -54,6 +65,20 @@ const createBodySchema = {
     cantiereId: { type: 'number' },
     cantieriIds: { type: 'array', maxItems: 50, items: { type: 'number' } },
     collaboratoriIds: { type: 'array', maxItems: 200, items: { type: 'number' } },
+    fasce: { type: 'object', properties: fasceProperties },
+    squadre: {
+      type: 'array',
+      maxItems: 50,
+      items: {
+        type: 'object',
+        required: ['numeroOperai'],
+        properties: {
+          numeroOperai: { type: 'integer', minimum: 1, maximum: 999 },
+          ...fasceProperties,
+        },
+      },
+    },
+    materialiTesto: { type: 'string', maxLength: 5000 },
     collaboratori: {
       type: 'array',
       maxItems: 200,
@@ -95,6 +120,9 @@ interface CreateBody {
   cantieriIds?: number[];
   collaboratoriIds?: number[];
   collaboratori?: CollaboratoreInput[];
+  fasce?: FasceOrarie;
+  squadre?: SquadraInput[];
+  materialiTesto?: string;
   dataRiferimento: string;
   attivita: string;
   numeroOperai?: number;
@@ -341,6 +369,9 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
         cantieriIds: body.cantieriIds ?? [],
         collaboratoriIds: body.collaboratoriIds,
         collaboratori: body.collaboratori,
+        fasce: body.fasce,
+        squadre: body.squadre,
+        materialiTesto: body.materialiTesto ?? null,
         dataRiferimento: new Date(body.dataRiferimento),
         attivita: body.attivita,
         numeroOperai: body.numeroOperai ?? 0,

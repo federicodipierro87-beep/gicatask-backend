@@ -15,6 +15,20 @@ export interface BollettinoPdf {
   ore: number;
   // NULL nei bollettini senza ore per collaboratore
   oreTotali: number | null;
+  oraInizioMattino: string | null;
+  oraFineMattino: string | null;
+  oraInizioPomeriggio: string | null;
+  oraFinePomeriggio: string | null;
+  // NULL nei bollettini con i materiali a righe
+  materialiTesto: string | null;
+  squadre: {
+    numeroOperai: number;
+    oraInizioMattino: string | null;
+    oraFineMattino: string | null;
+    oraInizioPomeriggio: string | null;
+    oraFinePomeriggio: string | null;
+    ore: number;
+  }[];
   clienteNome: string;
   cantiereNome: string | null;
   firmaOperatoreNome: string;
@@ -42,7 +56,7 @@ const FIRME_ALTEZZA = 110;
 const FIRME_TOP = PAGE_HEIGHT - MARGIN - FIRME_ALTEZZA;
 
 const SEZIONI: { tipo: TipoVoce; titolo: string; labelQuantita: string }[] = [
-  { tipo: 'MEZZO', titolo: 'Mezzi', labelQuantita: 'Ore' },
+  { tipo: 'MEZZO', titolo: 'Mezzi', labelQuantita: 'Valore' },
   { tipo: 'MATERIALE', titolo: 'Materiali', labelQuantita: 'Quantità' },
   { tipo: 'TRASPORTO', titolo: 'Trasporti', labelQuantita: 'Viaggi' },
 ];
@@ -53,6 +67,53 @@ const SEZIONI: { tipo: TipoVoce; titolo: string; labelQuantita: string }[] = [
  */
 function oreComplessive(b: BollettinoPdf): number {
   return b.oreTotali ?? b.ore * b.numeroOperai;
+}
+
+function fascia(inizio: string | null, fine: string | null): string | null {
+  return inizio && fine ? `${inizio}–${fine}` : null;
+}
+
+/** "07:00–12:00 / 13:00–17:00", oppure la sola fascia presente. */
+function fasceTesto(f: {
+  oraInizioMattino: string | null;
+  oraFineMattino: string | null;
+  oraInizioPomeriggio: string | null;
+  oraFinePomeriggio: string | null;
+}): string {
+  return [
+    fascia(f.oraInizioMattino, f.oraFineMattino),
+    fascia(f.oraInizioPomeriggio, f.oraFinePomeriggio),
+  ].filter(Boolean).join(' / ');
+}
+
+/**
+ * Riquadro di testo libero con titolo, dimensionato sul testo e limitato in
+ * altezza: attivita' e materiali sono campi da 5000 caratteri.
+ */
+function renderTestoLibero(
+  doc: PDFKit.PDFDocument,
+  titolo: string,
+  testo: string,
+  y: number,
+  altezzaMax: number
+): number {
+  let cursor = ensureSpace(doc, y, 60);
+  doc.fontSize(8).fillColor('#666').text(titolo, MARGIN, cursor, { width: CONTENT_WIDTH });
+  cursor += 12;
+
+  const contenuto = testo || '-';
+  doc.fontSize(10).fillColor('#000');
+  const altezzaTesto = doc.heightOfString(contenuto, { width: CONTENT_WIDTH - 12 });
+  const altezzaBox = Math.min(Math.max(altezzaTesto + 12, 36), Math.max(altezzaMax, 36));
+
+  doc.rect(MARGIN, cursor, CONTENT_WIDTH, altezzaBox).strokeColor('#ccc').lineWidth(0.5).stroke();
+  doc.text(contenuto, MARGIN + 6, cursor + 6, {
+    width: CONTENT_WIDTH - 12,
+    height: altezzaBox - 12,
+    ellipsis: true,
+  });
+
+  return cursor + altezzaBox + 14;
 }
 
 function formatDate(date: Date): string {
@@ -229,6 +290,14 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
   }
   y += 36;
 
+  const mattino = fascia(b.oraInizioMattino, b.oraFineMattino);
+  const pomeriggio = fascia(b.oraInizioPomeriggio, b.oraFinePomeriggio);
+  if (mattino || pomeriggio) {
+    labelCoppia(doc, 'Mattino', mattino ?? '—', MARGIN, y, colWidth - 10);
+    labelCoppia(doc, 'Pomeriggio', pomeriggio ?? '—', MARGIN + colWidth, y, colWidth - 10);
+    y += 36;
+  }
+
   // Con le ore per collaboratore l'elenco diventa una tabella, stampata dopo
   // le attivita'; qui resta la riga di soli nomi dei bollettini precedenti
   if (b.oreTotali === null && b.collaboratori.length > 0) {
@@ -263,7 +332,19 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
   });
   y += altezzaBox + 14;
 
-  if (b.oreTotali !== null && b.collaboratori.length > 0) {
+  if (b.squadre.length > 0 && b.oreTotali !== null) {
+    y = renderSezioneVoci(
+      doc,
+      'Operai',
+      'Ore',
+      b.squadre.map((s) => ({
+        descrizione: `${s.numeroOperai} ${s.numeroOperai === 1 ? 'operaio' : 'operai'} · ${fasceTesto(s)}`,
+        quantita: s.ore,
+      })),
+      y,
+      { label: 'Totale ore', valore: b.oreTotali }
+    ) + 6;
+  } else if (b.oreTotali !== null && b.collaboratori.length > 0) {
     y = renderSezioneVoci(
       doc,
       'Collaboratori',
@@ -275,6 +356,11 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
   }
 
   for (const sezione of SEZIONI) {
+    // Materiali come testo libero nei bollettini nuovi, a righe nei precedenti
+    if (sezione.tipo === 'MATERIALE' && b.materialiTesto !== null) {
+      y = renderTestoLibero(doc, 'Materiali', b.materialiTesto, y, 120);
+      continue;
+    }
     const righe = b.righe.filter((r) => r.tipo === sezione.tipo);
     y = renderSezioneVoci(doc, sezione.titolo, sezione.labelQuantita, righe, y) + 6;
   }

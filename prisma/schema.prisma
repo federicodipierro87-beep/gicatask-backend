@@ -307,6 +307,17 @@ model Bollettino {
   // quali il totale resta numeroOperai * ore
   oreTotali       Float?   @map("ore_totali")
 
+  // Fasce orarie della giornata, come nelle attivita' (HH:mm). NULL nei
+  // bollettini precedenti
+  oraInizioMattino    String? @map("ora_inizio_mattino")
+  oraFineMattino      String? @map("ora_fine_mattino")
+  oraInizioPomeriggio String? @map("ora_inizio_pomeriggio")
+  oraFinePomeriggio   String? @map("ora_fine_pomeriggio")
+
+  // Materiali come testo libero. NULL nei bollettini precedenti, che hanno
+  // i materiali come righe di tipo MATERIALE
+  materialiTesto String? @map("materiali_testo") @db.Text
+
   // Copia dei nomi al momento della firma: il documento non deve cambiare
   // se cliente o cantiere vengono rinominati in seguito
   clienteNome  String  @map("cliente_nome")
@@ -340,6 +351,7 @@ model Bollettino {
   // bollettini precedenti alla selezione multipla continuano a leggere quelli
   cantieri      BollettinoCantiere[]
   collaboratori BollettinoCollaboratore[]
+  squadre       BollettinoSquadra[]
 
   @@index([clienteId, dataRiferimento])
   @@index([cantiereId, dataRiferimento])
@@ -382,6 +394,24 @@ model BollettinoCantiere {
   @@index([bollettinoId])
   @@index([cantiereId])
   @@map("bollettini_cantieri")
+}
+
+/// Gruppi di operai con gli stessi orari: "3 operai 07-12 / 13-17". Le ore
+/// della riga (operai x durata delle fasce) le calcola il server.
+model BollettinoSquadra {
+  id                  Int     @id @default(autoincrement())
+  bollettinoId        Int     @map("bollettino_id")
+  numeroOperai        Int     @map("numero_operai")
+  oraInizioMattino    String? @map("ora_inizio_mattino")
+  oraFineMattino      String? @map("ora_fine_mattino")
+  oraInizioPomeriggio String? @map("ora_inizio_pomeriggio")
+  oraFinePomeriggio   String? @map("ora_fine_pomeriggio")
+  ore                 Float
+
+  bollettino Bollettino @relation(fields: [bollettinoId], references: [id], onDelete: Cascade)
+
+  @@index([bollettinoId])
+  @@map("bollettini_squadre")
 }
 
 /// Operai presenti sul lavoro, scelti fra gli utenti. `numeroOperai` del

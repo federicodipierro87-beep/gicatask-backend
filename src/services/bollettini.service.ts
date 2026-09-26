@@ -1,5 +1,6 @@
 import { PrismaClient, Prisma, TipoVoce } from '@prisma/client';
 import { AllegatiBollettinoService } from './allegatiBollettino.service.js';
+import { calculateDurationMinutes, isValidTimeFormat } from '../utils/duration.js';
 
 export interface RigaInput {
   voceId?: number | null;
@@ -7,6 +8,17 @@ export interface RigaInput {
   veicoloId?: number | null;
   descrizione?: string;
   quantita: number;
+}
+
+export interface FasceOrarie {
+  oraInizioMattino?: string | null;
+  oraFineMattino?: string | null;
+  oraInizioPomeriggio?: string | null;
+  oraFinePomeriggio?: string | null;
+}
+
+export interface SquadraInput extends FasceOrarie {
+  numeroOperai: number;
 }
 
 export interface CollaboratoreInput {
@@ -25,6 +37,12 @@ export interface CreateBollettinoInput {
   collaboratori?: CollaboratoreInput[];
   // Forma precedente, senza ore: resta accettata
   collaboratoriIds?: number[];
+  // Fasce della giornata, come nelle attivita'
+  fasce?: FasceOrarie;
+  // Operai a gruppi con i propri orari. Se c'e', prevale sui collaboratori:
+  // `numeroOperai` e' la somma degli operai e `oreTotali` quella delle ore
+  squadre?: SquadraInput[];
+  materialiTesto?: string | null;
   dataRiferimento: Date;
   attivita: string;
   numeroOperai: number;
@@ -66,6 +84,11 @@ const listSelect = {
   numeroOperai: true,
   ore: true,
   oreTotali: true,
+  oraInizioMattino: true,
+  oraFineMattino: true,
+  oraInizioPomeriggio: true,
+  oraFinePomeriggio: true,
+  materialiTesto: true,
   clienteNome: true,
   cantiereNome: true,
   firmaOperatoreNome: true,
@@ -97,6 +120,17 @@ export type BollettinoListItem = Prisma.BollettinoGetPayload<{ select: typeof li
 
 const detailSelect = {
   ...listSelect,
+  squadre: {
+    select: {
+      numeroOperai: true,
+      oraInizioMattino: true,
+      oraFineMattino: true,
+      oraInizioPomeriggio: true,
+      oraFinePomeriggio: true,
+      ore: true,
+    },
+    orderBy: { id: 'asc' },
+  },
   righe: {
     select: {
       id: true,
@@ -119,6 +153,47 @@ const fullSelect = {
 } satisfies Prisma.BollettinoSelect;
 
 export type BollettinoFull = Prisma.BollettinoGetPayload<{ select: typeof fullSelect }>;
+
+/**
+ * Fasce normalizzate (stringa vuota -> null) e loro durata in minuti. Una
+ * fascia vale solo con inizio e fine; ne basta una sola delle due. Stessa
+ * regola delle attivita': fine prima dell'inizio = turno che finisce il
+ * giorno dopo.
+ */
+function risolviFasce(f: FasceOrarie | undefined, dove: string): {
+  fasce: Required<{ [K in keyof FasceOrarie]: string | null }>;
+  minuti: number;
+} {
+  const pulisci = (v: string | null | undefined) => (v && v.trim() ? v.trim() : null);
+  const fasce = {
+    oraInizioMattino: pulisci(f?.oraInizioMattino),
+    oraFineMattino: pulisci(f?.oraFineMattino),
+    oraInizioPomeriggio: pulisci(f?.oraInizioPomeriggio),
+    oraFinePomeriggio: pulisci(f?.oraFinePomeriggio),
+  };
+
+  let minuti = 0;
+  const coppie: [string, string | null, string | null][] = [
+    ['mattino', fasce.oraInizioMattino, fasce.oraFineMattino],
+    ['pomeriggio', fasce.oraInizioPomeriggio, fasce.oraFinePomeriggio],
+  ];
+
+  for (const [nome, inizio, fine] of coppie) {
+    if (!inizio && !fine) continue;
+    if (!inizio || !fine) {
+      throw new Error(`${dove}: indica inizio e fine del ${nome}`);
+    }
+    if (!isValidTimeFormat(inizio) || !isValidTimeFormat(fine)) {
+      throw new Error(`${dove}: orario del ${nome} non valido`);
+    }
+    if (inizio === fine) {
+      throw new Error(`${dove}: l'ora di fine del ${nome} deve essere diversa dall'inizio`);
+    }
+    minuti += calculateDurationMinutes(inizio, fine);
+  }
+
+  return { fasce, minuti };
+}
 
 export class BollettiniService {
   constructor(private prisma: PrismaClient) {}
@@ -333,9 +408,37 @@ export class BollettiniService {
             input.collaboratoriIds.map((utenteId) => ({ utenteId, ore: null }))
           )
         : null;
-    const oreTotali = conOre
-      ? (collaboratori ?? []).reduce((s, c) => s + (c.ore ?? 0), 0)
+    const intestazione = risolviFasce(input.fasce, 'Orari');
+
+    // Le ore della riga si calcolano qui e non si prendono dal client: il
+    // totale stampato sul documento firmato deve tornare con gli orari
+    const squadre = input.squadre
+      ? input.squadre.map((s, i) => {
+          const { fasce, minuti } = risolviFasce(s, `Operai, riga ${i + 1}`);
+          if (minuti === 0) {
+            throw new Error(`Operai, riga ${i + 1}: indica almeno una fascia oraria`);
+          }
+          return {
+            ...fasce,
+            numeroOperai: s.numeroOperai,
+            ore: Math.round(((s.numeroOperai * minuti) / 60) * 100) / 100,
+          };
+        })
       : null;
+
+    const oreTotali = squadre
+      ? Math.round(squadre.reduce((s, q) => s + q.ore, 0) * 100) / 100
+      : conOre
+        ? (collaboratori ?? []).reduce((s, c) => s + (c.ore ?? 0), 0)
+        : null;
+
+    const numeroOperai = squadre
+      ? squadre.reduce((s, q) => s + q.numeroOperai, 0)
+      : collaboratori
+        ? collaboratori.length
+        : input.numeroOperai;
+
+    const materialiTesto = input.materialiTesto?.trim() || null;
 
     const righe = await this.buildRighe(input);
 
@@ -362,11 +465,13 @@ export class BollettiniService {
         cantiereId: destinazione.cantieri[0]?.id ?? null,
         dataRiferimento: input.dataRiferimento,
         attivita: input.attivita.trim(),
-        numeroOperai: collaboratori ? collaboratori.length : input.numeroOperai,
-        // Con le ore per collaboratore l'ora "per operaio" non esiste piu':
-        // vale 0 e il totale sta in `oreTotali`
-        ore: conOre ? 0 : input.ore,
+        numeroOperai,
+        // Con le ore per squadra o per collaboratore l'ora "per operaio" non
+        // esiste piu': vale 0 e il totale sta in `oreTotali`
+        ore: oreTotali !== null ? 0 : input.ore,
         oreTotali,
+        ...intestazione.fasce,
+        materialiTesto,
         clienteNome: destinazione.clienteNome,
         cantiereNome: destinazione.cantieri.length
           ? destinazione.cantieri.map((c) => c.nome).join(', ')
@@ -392,6 +497,7 @@ export class BollettiniService {
             ore: c.ore,
           })),
         },
+        squadre: { create: squadre ?? [] },
         allegati: { connect: allegati.map((a) => ({ id: a.id })) },
       },
       select: { id: true },

@@ -2305,6 +2305,60 @@ in quel caso `ore_totali` resta NULL e vale il vecchio `ore`.
 
 ---
 
+### Bollettino: fasce orarie, operai a gruppi, materiali liberi (26 Settembre 2026)
+
+Il form del bollettino è cambiato così:
+
+- **Intestazione come nel form attività:** Data, poi **Mattino** e **Pomeriggio** con inizio e fine,
+  prima di Cliente/Cantieri e Attività svolte. Vale la stessa regola delle attività: almeno una
+  fascia, nessuna lasciata a metà, fine prima dell'inizio = turno che finisce il giorno dopo.
+  Componente riusabile `FasceOrarieInput`.
+- **Operai a gruppi** (`SquadreSelector`), al posto dei collaboratori scelti dagli utenti. Ogni riga
+  è un **numero di operai** con i propri orari di mattino e pomeriggio. Il **+** aggiunge una riga
+  che parte dagli orari dell'intestazione. La prima riga **segue l'intestazione** finché non la si
+  modifica, così nel caso più comune non si riscrive nulla. Sotto ci sono **Numero operai** e
+  **Totale Ore** (Σ operai × durata).
+- **Materiali** è un campo di testo libero come *Attività svolte*, senza quantità.
+- **Mezzi:** la colonna *Ore* si chiama **Valore**, anche nel PDF.
+- Il pulsante *Firma e salva* diventa **Firma e Invia**.
+
+#### Schema (solo aggiunte)
+
+- `bollettini`: `ora_inizio_mattino`, `ora_fine_mattino`, `ora_inizio_pomeriggio`,
+  `ora_fine_pomeriggio` (String, nullable, HH:mm come in `attivita`) e `materiali_testo` (Text,
+  nullable).
+- Tabella nuova `bollettini_squadre`: `numero_operai`, le quattro fasce e `ore`, cioè le ore-uomo
+  della riga. `bollettino_id` va in cascade.
+
+Il server **ricalcola le ore dagli orari** (`risolviFasce` + `calculateDurationMinutes`), non le
+prende dal client: il totale stampato sul documento firmato deve tornare con gli orari. Poi
+`numeroOperai` = somma degli operai, `oreTotali` = somma delle ore, `ore` = 0. Un orario mancante
+o non valido dà un 400 con un messaggio leggibile ("Operai, riga 2: indica inizio e fine del
+mattino"). Il formato degli orari non sta nello schema JSON, così l'errore arriva comunque in
+italiano.
+
+`POST /api/bollettini` accetta `fasce`, `squadre[]` e `materialiTesto`. `collaboratori`,
+`collaboratoriIds` e le righe `materiali` restano accettati per compatibilità, ma il form non li
+manda più.
+
+#### PDF
+
+- Nell'intestazione c'è una riga **Mattino / Pomeriggio**, se valorizzata.
+- Dopo le attività c'è una tabella **Operai / Ore** ("3 operai · 07:00–12:00 / 13:00–17:00") con la
+  riga **Totale ore**.
+- *Materiali* è un riquadro di testo (`renderTestoLibero`) quando `materiali_testo` non è NULL. I
+  bollettini precedenti mantengono la tabella a righe e la tabella dei collaboratori.
+
+#### Da sapere
+
+- La **Banca dati materiali** è tolta da Impostazioni, rotta `/responsabile/materiali` compresa: il
+  form non la usa più. Le voci `MATERIALE` restano in tabella per lo storico.
+- `CollaboratoriSelector` è rimosso. Le tabelle `bollettini_collaboratori` e le righe `MATERIALE`
+  restano per lo storico.
+- Backup: `bollettiniSquadre` entra nel dump, nel ripristino e nel reset delle sequence.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
