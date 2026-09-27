@@ -2590,6 +2590,23 @@ rilegge a mezzanotte UTC. I risultati della pagina non cambiano.
 
 ---
 
+### Report Saldi Ore: prospetto anche nella pagina (28 Settembre 2026)
+
+Nella scheda **Report Saldi Ore**, accanto ai pulsanti di export, c'è l'interruttore **Mese /
+Prospetto gen–<mese>**.
+
+- **Mese** è la tabella di sempre.
+- **Prospetto** mostra la stessa griglia degli export: una riga per dipendente, la **differenza
+  di ogni mese** da gennaio a quello scelto (verde o rossa, col `+` sui crediti), il **Saldo** in
+  fondo e la riga Totale. La colonna del nome resta ferma mentre la tabella scorre in
+  orizzontale. I mesi senza ore dovute sono in arancione con l'asterisco, e passandoci sopra si
+  vede la spiegazione.
+- Solo frontend: le `differenzeMensili` arrivano già da `GET /api/attivita/saldi-ore`. La vista
+  scelta resta cambiando mese. Gli export non dipendono dalla vista: contengono sempre entrambe
+  le tabelle.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
