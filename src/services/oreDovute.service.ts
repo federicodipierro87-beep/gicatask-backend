@@ -28,6 +28,52 @@ export interface RigaProspetto {
   totale: number;
 }
 
+export interface OreDovutePeriodo {
+  minuti: number;
+  /** Mesi del periodo senza ore dovute impostate, come "2026-03": valgono zero. */
+  mesiNonImpostati: string[];
+}
+
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+// Oltre non e' piu' un report mensile: e' quasi certamente un refuso nelle date
+const MAX_MESI_PERIODO = 36;
+
+/**
+ * I mesi (anno, mese) di un periodo fatto di mesi interi: dal primo giorno di
+ * un mese all'ultimo di un mese. `null` per qualunque altro periodo, perche'
+ * le ore dovute esistono solo per mese intero e un pro-rata sui giorni di
+ * calendario darebbe un numero che nessuno ha deciso.
+ */
+export function mesiInteriDelPeriodo(
+  startDate: string,
+  endDate: string
+): { anno: number; mese: number }[] | null {
+  const inizio = ISO_DATE.exec(startDate);
+  const fine = ISO_DATE.exec(endDate);
+  if (!inizio || !fine || inizio[3] !== '01') return null;
+
+  const annoFine = Number(fine[1]);
+  const meseFine = Number(fine[2]);
+  // Ultimo giorno del mese: il giorno 0 del mese dopo
+  const ultimoGiorno = new Date(Date.UTC(annoFine, meseFine, 0)).getUTCDate();
+  if (Number(fine[3]) !== ultimoGiorno) return null;
+
+  const mesi: { anno: number; mese: number }[] = [];
+  let anno = Number(inizio[1]);
+  let mese = Number(inizio[2]);
+  while (anno < annoFine || (anno === annoFine && mese <= meseFine)) {
+    mesi.push({ anno, mese });
+    if (mesi.length > MAX_MESI_PERIODO) return null;
+    mese += 1;
+    if (mese > 12) {
+      mese = 1;
+      anno += 1;
+    }
+  }
+
+  return mesi.length > 0 ? mesi : null;
+}
+
 const MAX_MINUTI_MESE = 31 * 24 * 60;
 const MAX_MINUTI_ANNO = 366 * 24 * 60;
 
@@ -53,6 +99,55 @@ export class OreDovuteService {
       })),
       minutiAnnui: annuale?.minuti ?? null,
     };
+  }
+
+  /**
+   * Ore dovute di un dipendente su un periodo a mesi interi, con la
+   * percentuale in vigore in ciascun mese: gli stessi valori del Report Saldi
+   * Ore. `null` se il periodo non e' fatto di mesi interi.
+   */
+  async getOreDovutePeriodo(
+    utenteId: number,
+    startDate: string,
+    endDate: string
+  ): Promise<OreDovutePeriodo | null> {
+    const mesi = mesiInteriDelPeriodo(startDate, endDate);
+    if (!mesi) return null;
+
+    const [righe, utente] = await Promise.all([
+      this.prisma.oreDovuteMese.findMany({
+        where: { OR: mesi.map(({ anno, mese }) => ({ anno, mese })) },
+      }),
+      this.prisma.utente.findUnique({
+        where: { id: utenteId },
+        select: {
+          percentualeLavoro: true,
+          percentualiLavoro: { select: { decorrenza: true, percentuale: true } },
+        },
+      }),
+    ]);
+    if (!utente) return null;
+
+    const tempoPieno = new Map(righe.map((r) => [`${r.anno}-${r.mese}`, r.minuti]));
+    let minuti = 0;
+    const mesiNonImpostati: string[] = [];
+
+    for (const { anno, mese } of mesi) {
+      const base = tempoPieno.get(`${anno}-${mese}`);
+      if (base === undefined) {
+        mesiNonImpostati.push(`${anno}-${String(mese).padStart(2, '0')}`);
+        continue;
+      }
+      const percentuale = percentualeNelMese(
+        utente.percentualeLavoro,
+        utente.percentualiLavoro,
+        anno,
+        mese
+      );
+      minuti += minutiPerPercentuale(base, percentuale);
+    }
+
+    return { minuti, mesiNonImpostati };
   }
 
   /**

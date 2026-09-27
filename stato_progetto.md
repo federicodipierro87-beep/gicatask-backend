@@ -2714,6 +2714,32 @@ arancione.
 
 ---
 
+### Report Attività: ore dovute e saldo in fondo agli export (28 Settembre 2026)
+
+In fondo alla tabella degli export **PDF ed Excel** del Report Attività la riga `TOTALE` diventa
+**`TOTALE ORE MESE`**, sempre comprese le assenze. Nella sezione di un dipendente si aggiungono:
+
+| Riga | Valore |
+|---|---|
+| `TOTALE ORE DOVUTE` | ore dovute dei mesi del periodo × la % lavoro in vigore in ciascun mese: gli stessi valori del Report Saldi Ore |
+| `ORE DI LAVORO (SENZA ASSENZE)` | solo se nel periodo ci sono assenze, cioè quando differisce dal totale ore mese |
+| `SALDO ORE` | **ore di lavoro − ore dovute**, come il Report Saldi Ore (verde se positivo, rosso se negativo) |
+
+- **Quando compaiono:** solo nelle sezioni di **un dipendente** e **senza filtro su cliente o
+  cantiere**. È la condizione `soloDipendente` dei giorni segnaposto: con un cliente il totale è
+  parziale e un saldo non avrebbe senso. Negli altri casi resta solo `TOTALE ORE MESE`.
+- **Solo periodi a mesi interi**, dal primo di un mese all'ultimo giorno di un mese, anche su più
+  mesi (massimo 36). Con un periodo diverso la riga ore dovute dice *"disponibile solo per periodi
+  a mesi interi"* e non c'è il saldo: nessun pro-rata sui giorni (`mesiInteriDelPeriodo`).
+- I mesi senza ore dovute impostate valgono zero e sono elencati accanto all'etichetta.
+- Excel: le etichette delle righe finali sono in celle unite A–I, altrimenti la colonna
+  Dipendente accanto le taglierebbe. Il saldo ha il formato numerico colorato col `+`.
+- Backend: `OreDovuteService.getOreDovutePeriodo(utenteId, startDate, endDate)`. `datiExport`
+  in `attivita.routes.ts` la chiama per ogni sezione e la mette in `GruppoReport.oreDovute`. La
+  riga di riepilogo in cima al PDF ("Totale: N attività - X ore") non cambia.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.

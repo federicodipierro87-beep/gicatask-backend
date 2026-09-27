@@ -56,6 +56,65 @@ export interface GruppoReport {
   /** `undefined` sul report unico non filtrato su una persona. */
   utenteNome?: string;
   attivita: AttivitaExport[];
+  /**
+   * Presente solo nella sezione di un dipendente senza filtro su cliente o
+   * cantiere: altrimenti il totale e' parziale e un saldo non avrebbe senso.
+   */
+  oreDovute?: OreDovuteSezione;
+}
+
+export interface OreDovuteSezione {
+  /** `null` se il periodo non e' fatto di mesi interi. */
+  minuti: number | null;
+  /** Mesi senza ore dovute impostate, come "2026-03". */
+  mesiNonImpostati: string[];
+}
+
+const NOMI_MESI = [
+  'gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+  'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre',
+];
+
+/**
+ * Le righe finali della tabella, in ordine. Il saldo si fa sulle sole ore di
+ * lavoro, come il Report Saldi Ore, mentre il totale ore mese comprende le
+ * assenze: quando le due cifre differiscono c'e' anche la riga delle ore di
+ * lavoro, altrimenti il saldo non si potrebbe verificare a occhio.
+ */
+function righeTotali(gruppo: GruppoReport): { etichetta: string; minuti: number | null; nota?: string }[] {
+  const totale = gruppo.attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
+  const righe: { etichetta: string; minuti: number | null; nota?: string }[] = [
+    { etichetta: 'TOTALE ORE MESE', minuti: totale },
+  ];
+
+  const dovute = gruppo.oreDovute;
+  if (!dovute) return righe;
+
+  if (dovute.minuti === null) {
+    righe.push({
+      etichetta: 'TOTALE ORE DOVUTE',
+      minuti: null,
+      nota: 'disponibile solo per periodi a mesi interi',
+    });
+    return righe;
+  }
+
+  const lavoro = gruppo.attivita
+    .filter((a) => !a.assenza)
+    .reduce((sum, a) => sum + a.durataMinuti, 0);
+
+  const nota = dovute.mesiNonImpostati.length > 0
+    ? `non impostate per ${dovute.mesiNonImpostati
+        .map((m) => `${NOMI_MESI[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`)
+        .join(', ')}: valgono zero`
+    : undefined;
+
+  righe.push({ etichetta: 'TOTALE ORE DOVUTE', minuti: dovute.minuti, nota });
+  if (lavoro !== totale) {
+    righe.push({ etichetta: 'ORE DI LAVORO (SENZA ASSENZE)', minuti: lavoro });
+  }
+  righe.push({ etichetta: 'SALDO ORE', minuti: lavoro - dovute.minuti });
+  return righe;
 }
 
 function formatDate(date: Date): string {
@@ -432,30 +491,43 @@ function renderSezione(
     y += rowHeight;
   });
 
-  // Riga totali. Se non entra nella pagina corrente ne apre una nuova con
-  // l'intestazione ripetuta, come per le righe normali
-  if (y + MIN_ROW_HEIGHT > PDF_BOTTOM) {
-    doc.addPage();
-    y = drawTableHeader(PDF_MARGIN);
-  }
+  // Righe finali: etichetta (con l'eventuale nota) sulle colonne prima della
+  // durata, valore sotto la durata. Ognuna, se non entra nella pagina, ne apre
+  // una nuova con l'intestazione ripetuta, come le righe normali
+  const larghezzaEtichetta = TABLE_WIDTH - (PDF_COLUMNS[PDF_COLONNA_TOTALE] as PdfColumn).width;
+  const xValore = PDF_MARGIN + larghezzaEtichetta;
 
-  doc.font('Helvetica-Bold').fillColor('#000000');
-  let xTotali = PDF_MARGIN;
-  PDF_COLUMNS.forEach((col, index) => {
-    const testo =
-      index === 0 ? 'TOTALE' : index === PDF_COLONNA_TOTALE ? totalHours : '';
+  righeTotali(gruppo).forEach(({ etichetta, minuti, nota }) => {
+    if (y + MIN_ROW_HEIGHT > PDF_BOTTOM) {
+      doc.addPage();
+      y = drawTableHeader(PDF_MARGIN);
+    }
 
-    if (testo) {
-      doc.text(testo, xTotali + CELL_PAD_X, y + CELL_PAD_Y, {
-        width: col.width - CELL_PAD_X * 2,
-        height: MIN_ROW_HEIGHT - CELL_PAD_Y,
+    doc.font('Helvetica-Bold').fontSize(BODY_FONT_SIZE).fillColor('#000000');
+    doc.text(etichetta, PDF_MARGIN + CELL_PAD_X, y + CELL_PAD_Y, { continued: !!nota, lineBreak: false });
+    if (nota) {
+      doc.font('Helvetica').fillColor('#b45309').text(`  (${nota})`, { lineBreak: false });
+    }
+
+    if (minuti !== null) {
+      const saldo = etichetta === 'SALDO ORE';
+      doc.font('Helvetica-Bold').fillColor(
+        saldo && minuti > 0 ? '#15803d' : saldo && minuti < 0 ? '#dc2626' : '#000000'
+      );
+      const testo = saldo && minuti > 0 ? `+${formatOreDecimali(minuti)}` : formatOreDecimali(minuti);
+      doc.text(testo, xValore + CELL_PAD_X, y + CELL_PAD_Y, {
+        width: (PDF_COLUMNS[PDF_COLONNA_TOTALE] as PdfColumn).width - CELL_PAD_X * 2,
+        lineBreak: false,
       });
     }
-    xTotali += col.width;
+
+    doc.lineWidth(GRID_LINE_WIDTH).strokeColor(GRID_COLOR);
+    doc.rect(PDF_MARGIN, y, larghezzaEtichetta, MIN_ROW_HEIGHT).stroke();
+    doc.rect(xValore, y, (PDF_COLUMNS[PDF_COLONNA_TOTALE] as PdfColumn).width, MIN_ROW_HEIGHT).stroke();
+    y += MIN_ROW_HEIGHT;
   });
 
-  drawGrid(y, MIN_ROW_HEIGHT);
-  doc.font('Helvetica');
+  doc.font('Helvetica').fillColor('#000000');
 }
 
 // Excel vieta `: \ / ? * [ ]` nel nome di un foglio, lo tronca a 31 caratteri
@@ -553,12 +625,19 @@ function scriviFoglioAttivita(
     applyGrid(row, 10, riga.grigia ? XLS_GRIGIO_FESTIVO : undefined);
   });
 
-  // Riga totali in fondo alla tabella
-  const totaleMinuti = gruppo.attivita.reduce((sum, att) => sum + att.durataMinuti, 0);
-  const totaliRow = worksheet.addRow(['TOTALE', '', '', '', '', '', '', '', '', oreDecimali(totaleMinuti)]);
-  totaliRow.font = { bold: true };
-  totaliRow.getCell(10).numFmt = '0.00';
-  applyGrid(totaliRow, 10);
+  // Righe finali. L'etichetta occupa le colonne A-I unite: in una cella sola
+  // "TOTALE ORE DOVUTE" verrebbe tagliata dalla colonna Dipendente accanto
+  righeTotali(gruppo).forEach(({ etichetta, minuti, nota }) => {
+    const row = worksheet.addRow([
+      nota ? `${etichetta}  (${nota})` : etichetta,
+      '', '', '', '', '', '', '', '',
+      minuti === null ? null : oreDecimali(minuti),
+    ]);
+    worksheet.mergeCells(row.number, 1, row.number, 9);
+    row.font = { bold: true };
+    row.getCell(10).numFmt = etichetta === 'SALDO ORE' ? '[Color10]+0.00;[Red]-0.00;0.00' : '0.00';
+    applyGrid(row, 10);
+  });
 }
 
 export class ExportService {

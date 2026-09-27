@@ -3,6 +3,7 @@ import { AttivitaService } from '../services/attivita.service.js';
 import { ExportService } from '../services/export.service.js';
 import { SaldiOreService } from '../services/saldiOre.service.js';
 import { SaldiOreExportService } from '../services/saldiOreExport.service.js';
+import { OreDovuteService } from '../services/oreDovute.service.js';
 import type { GruppoReport, ReportFilters } from '../services/export.service.js';
 import { nomeUtente } from '../utils/nomeUtente.js';
 import type { JwtPayload } from '../types/index.js';
@@ -72,6 +73,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
   const exportService = new ExportService();
   const saldiOreService = new SaldiOreService(fastify.prisma);
   const saldiOreExportService = new SaldiOreExportService();
+  const oreDovuteService = new OreDovuteService(fastify.prisma);
 
   // Get activities for current user (dipendente) or all (responsabile)
   fastify.get('/', {
@@ -311,12 +313,29 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     // volte lo stesso piano con un id diverso, e i totali del riepilogo si
     // calcolano comunque sull'insieme intero. Un dipendente senza attivita'
     // nel periodo mantiene la sua sezione, coi soli giorni segnaposto
-    const gruppi: GruppoReport[] = utentiIds.length > 1
+    const gruppi: (GruppoReport & { utenteId?: number })[] = utentiIds.length > 1
       ? utenti.map((u) => ({
+          utenteId: u.id,
           utenteNome: nomeUtente(u),
           attivita: attivita.filter((a) => a.utenteId === u.id),
         }))
-      : [{ utenteNome: utenti[0] ? nomeUtente(utenti[0]) : undefined, attivita }];
+      : [{ utenteId: utenti[0]?.id, utenteNome: utenti[0] ? nomeUtente(utenti[0]) : undefined, attivita }];
+
+    // Ore dovute e saldo in fondo alla sezione di un dipendente, e solo senza
+    // filtro su cliente o cantiere: e' la stessa condizione dei giorni
+    // segnaposto, perche' con un cliente il totale e' parziale
+    if (filters.soloDipendente && query.startDate && query.endDate) {
+      const { startDate, endDate } = query;
+      await Promise.all(
+        gruppi.map(async (g) => {
+          if (g.utenteId === undefined) return;
+          const dovute = await oreDovuteService.getOreDovutePeriodo(g.utenteId, startDate, endDate);
+          g.oreDovute = dovute
+            ? { minuti: dovute.minuti, mesiNonImpostati: dovute.mesiNonImpostati }
+            : { minuti: null, mesiNonImpostati: [] };
+        })
+      );
+    }
 
     return { gruppi, filters, perUtente: utentiIds.length > 1 };
   };
