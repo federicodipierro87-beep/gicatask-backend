@@ -1,7 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { nomeUtente } from '../utils/nomeUtente.js';
-import { minutiPerPercentuale } from './oreDovute.service.js';
-import { inizioMese, percentualeNelMese } from '../utils/percentualeLavoro.js';
+import { inizioMese, minutiPerPercentuale, percentualeNelMese } from '../utils/percentualeLavoro.js';
 
 const MESE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
@@ -25,6 +24,32 @@ export interface SaldiOreMese {
    * zero, quindi differenza e saldo di quei mesi sono gonfiati.
    */
   mesiSenzaOreDovute: number[];
+}
+
+/**
+ * Chi compare nei report delle ore: i dipendenti attivi, anche a zero ore,
+ * perche' con le ore dovute un mese vuoto e' un saldo negativo. Chiunque altro
+ * (responsabili, dipendenti disattivati) solo se ha ore di lavoro nel periodo,
+ * `idsConOre`: il suo saldo esiste comunque. Condiviso con il prospetto delle
+ * ore dovute, cosi' i due report elencano le stesse persone.
+ */
+export function utentiDeiReportOre(prisma: PrismaClient, idsConOre: number[]) {
+  return prisma.utente.findMany({
+    where: {
+      OR: [
+        { attivo: true, ruolo: 'DIPENDENTE' },
+        { id: { in: idsConOre } },
+      ],
+    },
+    select: {
+      id: true,
+      nome: true,
+      cognome: true,
+      percentualeLavoro: true,
+      percentualiLavoro: { select: { decorrenza: true, percentuale: true } },
+    },
+    orderBy: [{ ruolo: 'asc' }, { cognome: 'asc' }, { nome: 'asc' }],
+  });
 }
 
 export class SaldiOreService {
@@ -75,26 +100,7 @@ export class SaldiOreService {
     const minutiMese = new Map(delMese.map((r) => [r.utenteId, r._sum.durataMinuti ?? 0]));
     const minutiAnno = new Map(dallInizioAnno.map((r) => [r.utenteId, r._sum.durataMinuti ?? 0]));
 
-    // I dipendenti attivi compaiono anche a zero ore, perche' con le ore dovute
-    // un mese vuoto e' un saldo negativo. Chiunque altro (responsabili,
-    // dipendenti disattivati) solo se ha lavorato nell'anno: il suo saldo
-    // esiste comunque
-    const utenti = await this.prisma.utente.findMany({
-      where: {
-        OR: [
-          { attivo: true, ruolo: 'DIPENDENTE' },
-          { id: { in: [...minutiAnno.keys()] } },
-        ],
-      },
-      select: {
-        id: true,
-        nome: true,
-        cognome: true,
-        percentualeLavoro: true,
-        percentualiLavoro: { select: { decorrenza: true, percentuale: true } },
-      },
-      orderBy: [{ ruolo: 'asc' }, { cognome: 'asc' }, { nome: 'asc' }],
-    });
+    const utenti = await utentiDeiReportOre(this.prisma, [...minutiAnno.keys()]);
 
     const righe = utenti.map((u) => {
       // Ogni mese con la percentuale in vigore in quel mese: una variazione

@@ -25,6 +25,15 @@ export function decorrenzaDaMese(meseKey: string): Date | null {
   return match ? inizioMese(Number(match[1]), Number(match[2])) : null;
 }
 
+/**
+ * Minuti dovuti da chi lavora a `percentuale` in un mese che a tempo pieno ne
+ * vale `minutiTempoPieno`. Arrotondati al minuto mese per mese: il saldo
+ * cumulativo somma gli stessi valori che il report mostra.
+ */
+export function minutiPerPercentuale(minutiTempoPieno: number, percentuale: number): number {
+  return Math.round((minutiTempoPieno * percentuale) / 100);
+}
+
 export function percentualeNelMese(
   base: number,
   variazioni: VariazionePercentuale[],

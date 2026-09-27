@@ -2543,6 +2543,28 @@ l'anno mostrato. I file si chiamano `ore-dovute-2026.pdf` / `.xlsx`.
 
 ---
 
+### Ore dovute: prospetto per dipendente negli export (28 Settembre 2026)
+
+Gli export della pagina **Ore dovute** hanno ora anche il **prospetto per dipendente**: una riga
+per dipendente e una colonna per mese, con le ore dovute = ore a tempo pieno del mese ×
+**percentuale in vigore in quel mese**, come nel Report Saldi Ore.
+
+- **PDF:** una seconda pagina **A4 orizzontale** (più pagine se servono, con l'intestazione
+  ripetuta). Sotto il nome compare la percentuale quando non è 100% tutto l'anno: "50%", oppure
+  i tratti "gen-giu 80%, lug-dic 60%" se cambia. Le ore sono in `ore:minuti`, `-` per i mesi non
+  impostati. In fondo c'è la colonna **Totale** e la riga **TOTALE**.
+- **Excel:** secondo foglio **Per dipendente** con Dipendente, Percentuale, i 12 mesi e il Totale
+  in **ore decimali**. Cella vuota per i mesi non impostati. Nome e intestazione sono bloccati
+  quando si scorre, e il foglio è impostato per la stampa orizzontale su una pagina di larghezza.
+- **Chi compare:** le stesse persone del Report Saldi Ore. La regola è stata estratta in
+  `utentiDeiReportOre()` (`saldiOre.service.ts`) ed è usata da entrambi: dipendenti attivi, più
+  chiunque abbia ore di lavoro nell'anno.
+- `OreDovuteService.getProspetto(anno)` calcola le righe. `minutiPerPercentuale` è passata da
+  `oreDovute.service.ts` a `utils/percentualeLavoro.ts`, per evitare un import circolare fra i due
+  servizi.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.

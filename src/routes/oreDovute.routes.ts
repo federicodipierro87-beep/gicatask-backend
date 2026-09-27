@@ -43,9 +43,10 @@ export async function oreDovuteRoutes(fastify: FastifyInstance) {
     }
 
     const dati = await service.getAnno(anno);
+    const prospetto = await service.getProspetto(anno, dati);
     const buffer = formato === 'pdf'
-      ? await exportService.generaPdf(dati, anno)
-      : await exportService.generaExcel(dati, anno);
+      ? await exportService.generaPdf(dati, prospetto, anno)
+      : await exportService.generaExcel(dati, prospetto, anno);
     const cfg = FORMATI[formato];
 
     return reply

@@ -1,4 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
+import { nomeUtente } from '../utils/nomeUtente.js';
+import { inizioMese, minutiPerPercentuale, percentualeNelMese } from '../utils/percentualeLavoro.js';
+import { utentiDeiReportOre } from './saldiOre.service.js';
 
 export interface MeseOreDovute {
   mese: number;
@@ -15,20 +18,21 @@ export interface OreDovuteAnno {
   minutiAnnui: number | null;
 }
 
+export interface RigaProspetto {
+  utenteId: number;
+  utenteNome: string;
+  /** Percentuale in vigore in ciascun mese, gennaio in posizione 0. */
+  percentuali: number[];
+  /** Minuti dovuti mese per mese; `null` dove il mese non e' impostato. */
+  minuti: (number | null)[];
+  totale: number;
+}
+
 const MAX_MINUTI_MESE = 31 * 24 * 60;
 const MAX_MINUTI_ANNO = 366 * 24 * 60;
 
 export function annoValido(anno: number): boolean {
   return Number.isInteger(anno) && anno >= 2000 && anno <= 2100;
-}
-
-/**
- * Minuti dovuti da chi lavora a `percentuale` in un mese che a tempo pieno ne
- * vale `minutiTempoPieno`. Arrotondati al minuto mese per mese: il saldo
- * cumulativo somma gli stessi valori che il report mostra.
- */
-export function minutiPerPercentuale(minutiTempoPieno: number, percentuale: number): number {
-  return Math.round((minutiTempoPieno * percentuale) / 100);
 }
 
 export class OreDovuteService {
@@ -49,6 +53,43 @@ export class OreDovuteService {
       })),
       minutiAnnui: annuale?.minuti ?? null,
     };
+  }
+
+  /**
+   * Ore dovute di ciascun dipendente nei dodici mesi: quelle a tempo pieno per
+   * la percentuale in vigore in quel mese, come nel Report Saldi Ore. Le
+   * persone sono le stesse del report, con le ore di lavoro dell'intero anno.
+   */
+  async getProspetto(anno: number, dati?: OreDovuteAnno): Promise<RigaProspetto[]> {
+    const [tempoPieno, conOre] = await Promise.all([
+      dati ?? this.getAnno(anno),
+      this.prisma.attivita.groupBy({
+        by: ['utenteId'],
+        where: {
+          assenzaId: null,
+          dataRiferimento: { gte: inizioMese(anno, 1), lt: inizioMese(anno + 1, 1) },
+        },
+      }),
+    ]);
+
+    const utenti = await utentiDeiReportOre(this.prisma, conOre.map((r) => r.utenteId));
+
+    return utenti.map((u) => {
+      const percentuali = tempoPieno.mesi.map((m) =>
+        percentualeNelMese(u.percentualeLavoro, u.percentualiLavoro, anno, m.mese)
+      );
+      const minuti = tempoPieno.mesi.map((m, i) =>
+        m.minuti === null ? null : minutiPerPercentuale(m.minuti, percentuali[i] as number)
+      );
+
+      return {
+        utenteId: u.id,
+        utenteNome: nomeUtente(u),
+        percentuali,
+        minuti,
+        totale: minuti.reduce<number>((tot, m) => tot + (m ?? 0), 0),
+      };
+    });
   }
 
   /**
