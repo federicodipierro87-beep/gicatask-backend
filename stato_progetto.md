@@ -2682,6 +2682,23 @@ vuote.
 
 ---
 
+### Report Saldi Ore: vista Dipendente nella pagina (28 Settembre 2026)
+
+L'interruttore della scheda **Report Saldi Ore** ha una terza posizione, **Dipendente**, oltre a
+Mese e Prospetto. Si sceglie il dipendente da un menu e si vede una riga per mese da gennaio al
+mese scelto con **% lavoro**, **ore dovute**, **ore effettuate**, **differenza** e **saldo
+progressivo**, più il Totale. È lo stesso contenuto delle pagine e dei fogli per dipendente
+degli export. I mesi senza ore dovute sono in arancione con l'asterisco.
+
+- **Nomi cliccabili:** nelle viste Mese e Prospetto il nome del dipendente apre la sua vista
+  Dipendente.
+- Il dipendente scelto è tenuto per id: cambiando mese resta lo stesso. Se in quel mese non
+  compare, si passa al primo dell'elenco.
+- Solo frontend: i `mensili` arrivano già da `GET /api/attivita/saldi-ore`. Il saldo progressivo
+  è la somma delle differenze mese per mese, quindi l'ultimo coincide col saldo cumulativo.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
