@@ -2428,9 +2428,8 @@ Le **ore dovute** del Report Saldi Ore non valgono più zero. Si calcolano così
 
 - Le ore dovute del dipendente si **arrotondano al minuto mese per mese**
   (`minutiPerPercentuale`). Il saldo cumulativo somma gli stessi valori mostrati nel report.
-- **La percentuale è una sola, quella attuale**, e vale per tutti i mesi. Se cambia a metà anno,
-  anche i saldi dei mesi precedenti vengono ricalcolati con la nuova percentuale. Per uno
-  storico servirebbe una percentuale con data di decorrenza.
+- ~~La percentuale è una sola e vale per tutti i mesi~~: superato dalle variazioni con decorrenza
+  (voce del 28 Settembre, *Percentuale di lavoro con decorrenza*).
 - **Le assenze non riducono le ore dovute.** Restano escluse dalle ore effettuate, quindi un
   giorno di Vacanza o Malattia fa scendere il saldo. Questa scelta sostituisce l'ipotesi della
   voce precedente, secondo cui le assenze sarebbero state scalate dalle ore dovute.
@@ -2481,6 +2480,47 @@ Report Attività. Esportano il mese mostrato. Il file si chiama `saldi-ore-2026-
 - Backend: `GET /api/attivita/saldi-ore/export/pdf|excel?mese=YYYY-MM`, solo responsabile, in
   `saldiOreExport.service.ts`. I dati sono quelli di `SaldiOreService.getMese`, quindi pagina ed
   export non possono divergere. Il mese viene validato prima di finire nel nome del file.
+
+---
+
+### Percentuale di lavoro con decorrenza (28 Settembre 2026)
+
+La percentuale di lavoro ora ha uno **storico**. Una variazione dice *"dal mese X vale Y%"* e resta
+valida fino alla variazione successiva. Cambiare la percentuale non riscrive più i saldi dei mesi
+precedenti.
+
+- **La decorrenza è mensile**, come le ore dovute. Una decorrenza a metà mese richiederebbe un
+  pro-rata sui giorni che il calcolo non fa.
+- **La percentuale base** (`utenti.percentuale_lavoro`, il campo che c'era già) vale nei mesi
+  prima della prima variazione. Per questo i dati esistenti non hanno avuto bisogno di migrazione.
+- Regola unica in `src/utils/percentualeLavoro.ts` (`percentualeNelMese`): per ogni mese vince la
+  variazione con la decorrenza più recente fra quelle già iniziate, altrimenti vale la base. Il
+  frontend ne ha una copia in `UtentiPage` solo per mostrare la percentuale attuale.
+- **Report Saldi Ore:** ogni mese del cumulativo usa la sua percentuale. La colonna, il PDF e
+  l'Excel mostrano la percentuale in vigore nel mese scelto.
+
+#### Interfaccia (Utenti)
+
+- La colonna *% lavoro* mostra la percentuale **in vigore oggi**, con la nota "con storico" se ci
+  sono variazioni.
+- Nel modale **Modifica**, il campo diventa *Percentuale di lavoro base*. Sotto c'è il riquadro
+  **Variazioni della percentuale**: l'elenco ("Da marzo 2026: 80%", con Elimina) e una riga per
+  aggiungerne una, con il mese scelto tramite `MonthNavigator` e la percentuale. Le variazioni
+  **si salvano subito**, indipendentemente dal pulsante Salva del modale. Una variazione con lo
+  stesso mese di una esistente la sostituisce.
+
+#### Schema e API
+
+- Tabella nuova `percentuali_lavoro`: `utente_id` (cascade), `decorrenza` (@db.Date, sempre il
+  primo del mese), `percentuale`. Unica su (`utente_id`, `decorrenza`).
+- `GET /api/utenti` include `percentualiLavoro` (id, decorrenza, percentuale), ordinate per
+  decorrenza.
+- `POST /api/utenti/:id/percentuali` con `{ decorrenza: 'YYYY-MM', percentuale }` crea la
+  variazione o aggiorna quella dello stesso mese.
+- `DELETE /api/utenti/:id/percentuali/:variazioneId` la elimina. Il filtro sull'utente impedisce
+  di cancellare la variazione di un altro.
+- Backup: `percentualiLavoro` entra nel dump, nel ripristino (dopo gli utenti) e nel reset delle
+  sequence. Con i backup precedenti gli utenti tornano con la sola percentuale base.
 
 ---
 

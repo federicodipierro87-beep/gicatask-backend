@@ -15,8 +15,9 @@ model Utente {
   ruolo               Ruolo    @default(DIPENDENTE)
   attivo              Boolean  @default(true)
   abilitatoBollettini Boolean  @default(false) @map("abilitato_bollettini")
-  // Percentuale di lavoro (100 = tempo pieno): scala le ore dovute del
-  // Report Saldi Ore
+  // Percentuale di lavoro base (100 = tempo pieno): scala le ore dovute del
+  // Report Saldi Ore nei mesi precedenti alla prima variazione in
+  // `percentuali_lavoro`
   percentualeLavoro   Int      @default(100) @map("percentuale_lavoro")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
@@ -26,6 +27,7 @@ model Utente {
   bollettini         Bollettino[]              @relation("UtenteBollettini")
   allegatiBollettino AllegatoBollettino[]      @relation("UtenteAllegatiBollettino")
   collaborazioni     BollettinoCollaboratore[]
+  percentualiLavoro  PercentualeLavoro[]
 
   @@map("utenti")
 }
@@ -215,6 +217,22 @@ model GicaNoleggio {
 
   @@index([data])
   @@map("gica_noleggi")
+}
+
+/// Variazioni della percentuale di lavoro di un utente. Ognuna vale dal mese
+/// di `decorrenza` (sempre il primo del mese) fino alla successiva; prima della
+/// prima variazione vale `utenti.percentuale_lavoro`.
+model PercentualeLavoro {
+  id          Int      @id @default(autoincrement())
+  utenteId    Int      @map("utente_id")
+  decorrenza  DateTime @db.Date
+  percentuale Int
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  utente Utente @relation(fields: [utenteId], references: [id], onDelete: Cascade)
+
+  @@unique([utenteId, decorrenza])
+  @@map("percentuali_lavoro")
 }
 
 /// Ore dovute di ciascun mese per un tempo pieno (100%), inserite a inizio

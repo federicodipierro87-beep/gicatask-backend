@@ -1,15 +1,24 @@
 import { PrismaClient, Utente, Ruolo } from '@prisma/client';
 import { hashPassword } from '../utils/password.js';
+import { decorrenzaDaMese } from '../utils/percentualeLavoro.js';
 
 export class UtentiService {
   constructor(private prisma: PrismaClient) {}
 
-  async getAll(includeInactive = false): Promise<Omit<Utente, 'passwordHash'>[]> {
+  async getAll(includeInactive = false) {
     const utenti = await this.prisma.utente.findMany({
       where: includeInactive ? {} : { attivo: true },
       // Stesso ordinamento di AuthService.getActiveUsers: i responsabili dopo
       // i dipendenti, perche' l'enum Ruolo li dichiara in quest'ordine
       orderBy: [{ ruolo: 'asc' }, { cognome: 'asc' }, { nome: 'asc' }],
+      // Poche righe per utente: servono alla pagina Utenti per mostrare la
+      // percentuale in vigore e lo storico
+      include: {
+        percentualiLavoro: {
+          select: { id: true, decorrenza: true, percentuale: true },
+          orderBy: { decorrenza: 'asc' },
+        },
+      },
     });
 
     return utenti.map(({ passwordHash, ...rest }) => rest);
@@ -66,6 +75,39 @@ export class UtentiService {
 
     const { passwordHash, ...rest } = utente;
     return rest;
+  }
+
+  /**
+   * Imposta la percentuale di lavoro di un utente dal mese `YYYY-MM`. Una
+   * variazione con la stessa decorrenza viene sovrascritta.
+   */
+  async setVariazionePercentuale(utenteId: number, meseKey: string, percentuale: number) {
+    const decorrenza = decorrenzaDaMese(meseKey);
+    if (!decorrenza) {
+      throw new Error('Mese di decorrenza non valido');
+    }
+
+    const utente = await this.prisma.utente.findUnique({ where: { id: utenteId } });
+    if (!utente) {
+      throw new Error('Utente non trovato');
+    }
+
+    return this.prisma.percentualeLavoro.upsert({
+      where: { utenteId_decorrenza: { utenteId, decorrenza } },
+      create: { utenteId, decorrenza, percentuale },
+      update: { percentuale },
+      select: { id: true, decorrenza: true, percentuale: true },
+    });
+  }
+
+  /** Il vincolo sull'utente impedisce di cancellare la variazione di un altro. */
+  async deleteVariazionePercentuale(utenteId: number, variazioneId: number): Promise<void> {
+    const { count } = await this.prisma.percentualeLavoro.deleteMany({
+      where: { id: variazioneId, utenteId },
+    });
+    if (count === 0) {
+      throw new Error('Variazione non trovata');
+    }
   }
 
   async setPassword(id: number, password: string | null): Promise<void> {

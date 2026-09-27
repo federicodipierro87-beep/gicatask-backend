@@ -32,6 +32,7 @@ interface BackupData {
     gicaNoleggi?: any[];
     oreDovuteMesi?: any[];
     oreDovuteAnni?: any[];
+    percentualiLavoro?: any[];
   };
 }
 
@@ -101,6 +102,7 @@ export class BackupService {
           gicaNoleggi: await this.prisma.gicaNoleggio.findMany(),
           oreDovuteMesi: await this.prisma.oreDovuteMese.findMany(),
           oreDovuteAnni: await this.prisma.oreDovuteAnno.findMany(),
+          percentualiLavoro: await this.prisma.percentualeLavoro.findMany(),
         },
       };
 
@@ -227,6 +229,8 @@ export class BackupService {
       await tx.bollettino.deleteMany();
       await tx.voceBollettino.deleteMany();
       await tx.attivita.deleteMany();
+      // Referenziano gli utenti, cancellati piu' sotto
+      await tx.percentualeLavoro.deleteMany();
       // Anche gli eventi referenziano i clienti: senza questa riga la
       // deleteMany dei clienti fallirebbe sul vincolo di chiave esterna
       await tx.calendarioEvento.deleteMany();
@@ -371,6 +375,14 @@ export class BackupService {
         stats.oreDovuteAnni = oreDovuteAnni.length;
       }
 
+      // Dopo gli utenti, che referenziano. I backup precedenti non hanno la
+      // sezione e gli utenti tornano con la sola percentuale base
+      const percentualiLavoro = backupData.tables.percentualiLavoro ?? [];
+      if (percentualiLavoro.length > 0) {
+        await tx.percentualeLavoro.createMany({ data: percentualiLavoro });
+        stats.percentualiLavoro = percentualiLavoro.length;
+      }
+
       // Reset sequences for PostgreSQL
       const tables = [
         'utenti',
@@ -394,6 +406,7 @@ export class BackupService {
         'gica_noleggi',
         'ore_dovute_mesi',
         'ore_dovute_anni',
+        'percentuali_lavoro',
       ];
       for (const table of tables) {
         try {

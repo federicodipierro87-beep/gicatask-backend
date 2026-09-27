@@ -1,12 +1,14 @@
 import { PrismaClient } from '@prisma/client';
 import { nomeUtente } from '../utils/nomeUtente.js';
 import { minutiPerPercentuale } from './oreDovute.service.js';
+import { inizioMese, percentualeNelMese } from '../utils/percentualeLavoro.js';
 
 const MESE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
 export interface RigaSaldoOre {
   utenteId: number;
   utenteNome: string;
+  /** Percentuale in vigore nel mese richiesto. */
   percentualeLavoro: number;
   oreDovuteMinuti: number;
   oreEffettuateMinuti: number;
@@ -23,11 +25,6 @@ export interface SaldiOreMese {
    * zero, quindi differenza e saldo di quei mesi sono gonfiati.
    */
   mesiSenzaOreDovute: number[];
-}
-
-/** Primo giorno del mese a mezzanotte UTC, come Prisma rilegge le @db.Date. */
-function inizioMese(anno: number, mese: number): Date {
-  return new Date(Date.UTC(anno, mese - 1, 1));
 }
 
 export class SaldiOreService {
@@ -89,15 +86,22 @@ export class SaldiOreService {
           { id: { in: [...minutiAnno.keys()] } },
         ],
       },
-      select: { id: true, nome: true, cognome: true, percentualeLavoro: true },
+      select: {
+        id: true,
+        nome: true,
+        cognome: true,
+        percentualeLavoro: true,
+        percentualiLavoro: { select: { decorrenza: true, percentuale: true } },
+      },
       orderBy: [{ ruolo: 'asc' }, { cognome: 'asc' }, { nome: 'asc' }],
     });
 
     const righe = utenti.map((u) => {
-      // La percentuale e' quella di oggi e vale per tutti i mesi: cambiarla
-      // ricalcola anche i saldi dei mesi passati
-      const dovuti = (m: number) =>
-        minutiPerPercentuale(tempoPieno.get(m) ?? 0, u.percentualeLavoro);
+      // Ogni mese con la percentuale in vigore in quel mese: una variazione
+      // non riscrive i saldi dei mesi precedenti alla sua decorrenza
+      const percentuale = (m: number) =>
+        percentualeNelMese(u.percentualeLavoro, u.percentualiLavoro, anno, m);
+      const dovuti = (m: number) => minutiPerPercentuale(tempoPieno.get(m) ?? 0, percentuale(m));
 
       const oreDovuteMinuti = dovuti(mese);
       const oreEffettuateMinuti = minutiMese.get(u.id) ?? 0;
@@ -106,7 +110,7 @@ export class SaldiOreService {
       return {
         utenteId: u.id,
         utenteNome: nomeUtente(u),
-        percentualeLavoro: u.percentualeLavoro,
+        percentualeLavoro: percentuale(mese),
         oreDovuteMinuti,
         oreEffettuateMinuti,
         differenzaMinuti: oreEffettuateMinuti - oreDovuteMinuti,

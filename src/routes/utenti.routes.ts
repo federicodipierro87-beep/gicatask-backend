@@ -85,6 +85,53 @@ export async function utentiRoutes(fastify: FastifyInstance) {
     return reply.send(utente);
   });
 
+  // Variazione della percentuale di lavoro dal mese indicato (responsabile only)
+  fastify.post<{ Params: { id: string }; Body: { decorrenza: string; percentuale: number } }>(
+    '/:id/percentuali',
+    {
+      preHandler: [fastify.requireRole('RESPONSABILE')],
+      schema: {
+        body: {
+          type: 'object',
+          required: ['decorrenza', 'percentuale'],
+          properties: {
+            decorrenza: { type: 'string' },
+            percentuale: { type: 'integer', minimum: 0, maximum: 100 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const id = parseInt(request.params.id, 10);
+      try {
+        const variazione = await service.setVariazionePercentuale(
+          id,
+          request.body.decorrenza,
+          request.body.percentuale
+        );
+        return reply.status(201).send(variazione);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Errore';
+        return reply.status(400).send({ error: message });
+      }
+    }
+  );
+
+  // Elimina una variazione della percentuale di lavoro (responsabile only)
+  fastify.delete<{ Params: { id: string; variazioneId: string } }>('/:id/percentuali/:variazioneId', {
+    preHandler: [fastify.requireRole('RESPONSABILE')],
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const variazioneId = parseInt(request.params.variazioneId, 10);
+    try {
+      await service.deleteVariazionePercentuale(id, variazioneId);
+      return reply.send({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Errore';
+      return reply.status(404).send({ error: message });
+    }
+  });
+
   // Set/remove password (responsabile only)
   fastify.post<{ Params: { id: string }; Body: { password: string | null } }>('/:id/password', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
