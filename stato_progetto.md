@@ -2699,6 +2699,21 @@ degli export. I mesi senza ore dovute sono in arancione con l'asterisco.
 
 ---
 
+### Ore dovute: vista Dipendente nella pagina (28 Settembre 2026)
+
+La card **Prospetto per dipendente** della pagina **Ore dovute** ha l'interruttore **Prospetto /
+Dipendente**. Nella vista Dipendente si sceglie una persona da un menu e si vedono i 12 mesi con
+**ore a tempo pieno**, **% lavoro** in vigore e **ore dovute**, più il Totale. È lo stesso
+contenuto delle pagine e dei fogli per dipendente degli export. I mesi non impostati sono in
+arancione.
+
+- Nel prospetto il nome del dipendente è cliccabile e apre la sua vista Dipendente.
+- Il dipendente scelto è tenuto per id: cambiando anno resta lo stesso, se compare.
+- Solo frontend. Le ore a tempo pieno sono quelle **salvate**, non i campi in modifica, come il
+  resto della card.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
