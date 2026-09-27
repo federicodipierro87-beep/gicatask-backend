@@ -29,8 +29,14 @@ export interface MeseSaldoOre {
   mese: number;
   percentuale: number;
   dovutiMinuti: number;
+  /** Solo ore di lavoro, senza assenze: e' la base del saldo. */
   effettuatiMinuti: number;
   differenzaMinuti: number;
+  /**
+   * Tutte le ore del mese, assenze comprese: il "Totale ore mese" del Report
+   * Attivita'. Non entra nel saldo.
+   */
+  totaleMinuti: number;
 }
 
 export interface SaldiOreMese {
@@ -87,17 +93,15 @@ export class SaldiOreService {
 
     const anno = Number(match[1]);
     const mese = Number(match[2]);
-    const lavoro = { assenzaId: null };
-
     // Le singole attivita' e non un groupBy: Prisma non raggruppa per mese di
-    // una data, e le righe di un anno sono poche migliaia al massimo
+    // una data, e le righe di un anno sono poche migliaia al massimo. Assenze
+    // comprese: servono al totale ore mese, e restano fuori da lavoro e saldo
     const [attivita, oreDovute] = await Promise.all([
       this.prisma.attivita.findMany({
         where: {
-          ...lavoro,
           dataRiferimento: { gte: inizioMese(anno, 1), lt: inizioMese(anno, mese + 1) },
         },
-        select: { utenteId: true, dataRiferimento: true, durataMinuti: true },
+        select: { utenteId: true, dataRiferimento: true, durataMinuti: true, assenzaId: true },
       }),
       this.prisma.oreDovuteMese.findMany({ where: { anno, mese: { lte: mese } } }),
     ]);
@@ -106,17 +110,23 @@ export class SaldiOreService {
     const tempoPieno = new Map(oreDovute.map((r) => [r.mese, r.minuti]));
     const mesiDelPeriodo = Array.from({ length: mese }, (_, i) => i + 1);
 
-    // Minuti effettuati per utente, un elemento per mese da gennaio. La data e'
-    // @db.Date, riletta a mezzanotte UTC: il mese va preso in UTC
+    // Minuti per utente, un elemento per mese da gennaio: `effettuati` le sole
+    // ore di lavoro, `totali` anche le assenze. La data e' @db.Date, riletta a
+    // mezzanotte UTC: il mese va preso in UTC
     const effettuati = new Map<number, number[]>();
-    for (const a of attivita) {
-      let mesi = effettuati.get(a.utenteId);
+    const totali = new Map<number, number[]>();
+    const aggiungi = (mappa: Map<number, number[]>, utenteId: number, i: number, minuti: number) => {
+      let mesi = mappa.get(utenteId);
       if (!mesi) {
         mesi = Array(mese).fill(0) as number[];
-        effettuati.set(a.utenteId, mesi);
+        mappa.set(utenteId, mesi);
       }
+      mesi[i] = (mesi[i] ?? 0) + minuti;
+    };
+    for (const a of attivita) {
       const i = a.dataRiferimento.getUTCMonth();
-      mesi[i] = (mesi[i] ?? 0) + a.durataMinuti;
+      aggiungi(totali, a.utenteId, i, a.durataMinuti);
+      if (a.assenzaId === null) aggiungi(effettuati, a.utenteId, i, a.durataMinuti);
     }
 
     const utenti = await utentiDeiReportOre(this.prisma, [...effettuati.keys()]);
@@ -129,6 +139,7 @@ export class SaldiOreService {
       const dovuti = (m: number) => minutiPerPercentuale(tempoPieno.get(m) ?? 0, percentuale(m));
 
       const mesiEffettuati = effettuati.get(u.id) ?? (Array(mese).fill(0) as number[]);
+      const mesiTotali = totali.get(u.id);
       const mensili: MeseSaldoOre[] = mesiDelPeriodo.map((m) => {
         const dovutiMinuti = dovuti(m);
         const effettuatiMinuti = mesiEffettuati[m - 1] ?? 0;
@@ -138,6 +149,7 @@ export class SaldiOreService {
           dovutiMinuti,
           effettuatiMinuti,
           differenzaMinuti: effettuatiMinuti - dovutiMinuti,
+          totaleMinuti: mesiTotali?.[m - 1] ?? 0,
         };
       });
       const differenzeMensili = mensili.map((x) => x.differenzaMinuti);

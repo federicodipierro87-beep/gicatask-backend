@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
-import type { RigaSaldoOre, SaldiOreMese } from './saldiOre.service.js';
+import type { MeseSaldoOre, RigaSaldoOre, SaldiOreMese } from './saldiOre.service.js';
 import { nomeFoglio } from '../utils/nomeFoglioExcel.js';
 
 const NOMI_MESI = [
@@ -198,6 +198,24 @@ const D_COLUMNS: { header: string; width: number }[] = [
   { header: 'Saldo progressivo', width: 105 },
 ];
 const D_TABLE_WIDTH = D_COLUMNS.reduce((tot, col) => tot + col.width, 0);
+
+/**
+ * Le righe di riepilogo del mese scelto in fondo al dettaglio di un
+ * dipendente, le stesse del Report Attivita': il totale ore mese comprende le
+ * assenze, il saldo si fa sulle sole ore di lavoro. La riga delle ore di
+ * lavoro c'e' solo quando differisce dal totale, cioe' con delle assenze.
+ */
+function righeRiepilogoMese(m: MeseSaldoOre): { etichetta: string; minuti: number; saldo?: boolean }[] {
+  const righe: { etichetta: string; minuti: number; saldo?: boolean }[] = [
+    { etichetta: 'TOTALE ORE MESE', minuti: m.totaleMinuti },
+    { etichetta: 'TOTALE ORE DOVUTE', minuti: m.dovutiMinuti },
+  ];
+  if (m.effettuatiMinuti !== m.totaleMinuti) {
+    righe.push({ etichetta: 'ORE DI LAVORO (SENZA ASSENZE)', minuti: m.effettuatiMinuti });
+  }
+  righe.push({ etichetta: 'SALDO ORE', minuti: m.differenzaMinuti, saldo: true });
+  return righe;
+}
 
 export class SaldiOreExportService {
   async generaPdf(dati: SaldiOreMese, meseKey: string): Promise<Buffer> {
@@ -423,6 +441,32 @@ export class SaldiOreExportService {
           segni: [undefined, undefined, undefined, undefined, r.saldoCumulativoMinuti, r.saldoCumulativoMinuti],
         }
       );
+
+      // Riepilogo del mese scelto, con le righe del Report Attivita'
+      const ultimo = r.mensili[r.mensili.length - 1];
+      if (!ultimo) return;
+
+      y += ROW_HEIGHT + 12;
+      doc.font('Helvetica-Bold').fontSize(FONT_SIZE).fillColor('#000000');
+      doc.text(`Riepilogo di ${titoloMese(meseKey).toLowerCase()}`, PDF_MARGIN, y);
+      y += ROW_HEIGHT;
+
+      const larghezzaEtichetta = D_TABLE_WIDTH - (D_COLUMNS[D_COLUMNS.length - 1] as { width: number }).width;
+      const larghezzaValore = D_TABLE_WIDTH - larghezzaEtichetta;
+      righeRiepilogoMese(ultimo).forEach(({ etichetta, minuti, saldo }) => {
+        doc.font('Helvetica-Bold').fontSize(FONT_SIZE).fillColor('#000000');
+        doc.text(etichetta, PDF_MARGIN + CELL_PAD_X, y + CELL_PAD_Y, { lineBreak: false });
+        doc.fillColor(saldo ? coloreSegno(minuti) : '#000000');
+        doc.text(saldo ? formatSaldo(minuti) : formatDurata(minuti), PDF_MARGIN + larghezzaEtichetta + CELL_PAD_X, y + CELL_PAD_Y, {
+          width: larghezzaValore - CELL_PAD_X * 2,
+          align: 'right',
+          lineBreak: false,
+        });
+        doc.lineWidth(GRID_LINE_WIDTH).strokeColor(GRID_COLOR);
+        doc.rect(PDF_MARGIN, y, larghezzaEtichetta, ROW_HEIGHT).stroke();
+        doc.rect(PDF_MARGIN + larghezzaEtichetta, y, larghezzaValore, ROW_HEIGHT).stroke();
+        y += ROW_HEIGHT;
+      });
     });
   }
 
@@ -765,6 +809,23 @@ export class SaldiOreExportService {
       ]);
       totale.font = { bold: true };
       formatta(totale);
+
+      // Riepilogo del mese scelto, con le righe del Report Attivita'.
+      // Etichetta su A-E unite, valore sotto la colonna del saldo
+      const ultimo = r.mensili[r.mensili.length - 1];
+      if (ultimo) {
+        ws.addRow([]);
+        const titoloRiepilogo = ws.addRow([`Riepilogo di ${titoloMese(meseKey).toLowerCase()}`]);
+        titoloRiepilogo.font = { bold: true };
+
+        righeRiepilogoMese(ultimo).forEach(({ etichetta, minuti, saldo }) => {
+          const row = ws.addRow([etichetta, null, null, null, null, oreDecimali(minuti)]);
+          ws.mergeCells(row.number, 1, row.number, 5);
+          row.font = { bold: true };
+          row.getCell(6).numFmt = saldo ? FORMATO_SALDO : FORMATO_ORE;
+          for (let i = 1; i <= colonne; i++) row.getCell(i).border = GRID_BORDER;
+        });
+      }
 
       ws.views = [{ state: 'frozen', ySplit: header.number }];
     });

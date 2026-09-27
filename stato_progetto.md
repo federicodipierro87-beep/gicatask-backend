@@ -2740,6 +2740,28 @@ In fondo alla tabella degli export **PDF ed Excel** del Report Attività la riga
 
 ---
 
+### Report Saldi Ore: riepilogo del mese nel dettaglio dipendente (28 Settembre 2026)
+
+In fondo al **dettaglio di ogni dipendente** del Report Saldi Ore (vista Dipendente della pagina,
+pagine per dipendente del PDF, fogli per dipendente dell'Excel) c'è il **Riepilogo di <mese>**,
+con le stesse righe in fondo agli export del Report Attività, per il mese scelto:
+
+- **Totale ore mese**: tutte le ore, **assenze comprese**;
+- **Totale ore dovute**;
+- **Ore di lavoro (senza assenze)**: solo se differisce dal totale;
+- **Saldo ore**: ore di lavoro − ore dovute del mese, cioè la differenza del mese. Non è il saldo
+  progressivo, che resta nell'ultima colonna della tabella.
+
+Per avere il totale con le assenze, `SaldiOreService.getMese` ora legge **anche le assenze** e
+tiene due somme per utente e mese: `effettuati` (solo lavoro, base di differenza e saldo) e
+`totali` (tutto). Ogni `mensili[]` ha il nuovo campo `totaleMinuti`. Saldi e differenze non
+cambiano. Anche chi compare nel report non cambia: si decide ancora sulle sole ore di lavoro, e
+un utente con solo assenze non viene aggiunto. Etichette e riepilogo stanno in
+`righeRiepilogoMese()` in `saldiOreExport.service.ts`. In pagina il riepilogo ricade sulle ore
+di lavoro se il backend non manda ancora `totaleMinuti`.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
