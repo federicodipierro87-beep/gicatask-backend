@@ -2669,6 +2669,19 @@ quello del prospetto (`disegnaDipendenti` in `oreDovuteExport.service.ts`, sugli
 
 ---
 
+### Ore dovute: un foglio per dipendente nell'Excel (28 Settembre 2026)
+
+L'Excel della pagina **Ore dovute** ha ora, dopo *Ore dovute <anno>* e *Per dipendente*, **un
+foglio per ogni dipendente**, come le pagine del PDF. C'è una riga per ciascuno dei 12 mesi con
+**ore a tempo pieno** e **ore dovute** in decimali, la **% lavoro** in vigore e le ore dovute
+anche in `ore:minuti`, più la riga TOTALE. I mesi non impostati sono in arancione con le celle
+vuote.
+
+- `nomeFoglio()` è passata da `saldiOreExport.service.ts` a `src/utils/nomeFoglioExcel.ts`,
+  condivisa dai due export: nomi validi per Excel e omonimi resi unici ("Rossi Mario (2)").
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.

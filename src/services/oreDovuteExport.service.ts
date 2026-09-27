@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
 import type { OreDovuteAnno, RigaProspetto } from './oreDovute.service.js';
+import { nomeFoglio } from '../utils/nomeFoglioExcel.js';
 
 const NOMI_MESI = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -476,6 +477,7 @@ export class OreDovuteExportService {
     esitoRow.getCell(1).font = { bold: true, color: { argb: r.scarto === 0 ? 'FF15803D' : 'FFB45309' } };
 
     this.foglioProspetto(workbook, dati, prospetto, anno);
+    this.fogliDipendenti(workbook, dati, prospetto, anno);
 
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
@@ -544,5 +546,87 @@ export class OreDovuteExportService {
 
     // Nome e intestazione restano visibili scorrendo
     ws.views = [{ state: 'frozen', xSplit: 1, ySplit: header.number }];
+  }
+
+  /**
+   * Un foglio per dipendente dopo *Per dipendente*, come le pagine del PDF:
+   * per ogni mese le ore a tempo pieno, la percentuale in vigore e le ore
+   * dovute, in decimali per i calcoli e in ore:minuti per la lettura.
+   */
+  private fogliDipendenti(
+    workbook: ExcelJS.Workbook,
+    dati: OreDovuteAnno,
+    righe: RigaProspetto[],
+    anno: number
+  ): void {
+    const usati = new Set([`ore dovute ${anno}`, 'per dipendente']);
+    const colonne = 5;
+
+    righe.forEach((r) => {
+      const ws = workbook.addWorksheet(nomeFoglio(r.utenteNome, usati));
+
+      const titolo = ws.addRow([`${r.utenteNome.toUpperCase()} - ORE DOVUTE ${anno}`]);
+      ws.mergeCells(titolo.number, 1, titolo.number, colonne);
+      titolo.getCell(1).font = { size: 14, bold: true };
+
+      const nota = ws.addRow([
+        'Ore a tempo pieno del mese x percentuale di lavoro in vigore nel mese. ' +
+          'Ore decimali: 172,20 = 172:12. Cella vuota = mese non impostato.',
+      ]);
+      ws.mergeCells(nota.number, 1, nota.number, colonne);
+      nota.getCell(1).font = { size: 9, italic: true, color: { argb: 'FF666666' } };
+
+      ws.addRow([]);
+
+      const header = ws.addRow([
+        'Mese',
+        'Ore a tempo pieno',
+        '% lavoro',
+        'Ore dovute',
+        'Ore dovute (ore:minuti)',
+      ]);
+      header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF333333' } };
+
+      ws.columns = [{ width: 14 }, { width: 18 }, { width: 10 }, { width: 13 }, { width: 22 }];
+
+      const formatta = (row: ExcelJS.Row) => {
+        row.getCell(2).numFmt = '0.00';
+        row.getCell(3).numFmt = '0"%"';
+        row.getCell(4).numFmt = '0.00';
+        row.getCell(5).alignment = { horizontal: 'right' };
+        for (let i = 1; i <= colonne; i++) row.getCell(i).border = GRID_BORDER;
+      };
+      formatta(header);
+
+      dati.mesi.forEach((m, i) => {
+        const dovuti = r.minuti[i];
+        const row = ws.addRow([
+          NOMI_MESI[m.mese - 1] ?? String(m.mese),
+          m.minuti === null ? null : oreDecimali(m.minuti),
+          r.percentuali[i] ?? 100,
+          dovuti == null ? null : oreDecimali(dovuti),
+          dovuti == null ? 'non impostato' : formatOre(dovuti),
+        ]);
+        formatta(row);
+        if (m.minuti === null) {
+          row.getCell(1).font = { color: { argb: 'FFB45309' } };
+          row.getCell(5).font = { color: { argb: 'FFB45309' } };
+        }
+      });
+
+      const sommaMesi = riepilogo(dati).sommaMesi;
+      const totale = ws.addRow([
+        'TOTALE',
+        oreDecimali(sommaMesi),
+        null,
+        oreDecimali(r.totale),
+        formatOre(r.totale),
+      ]);
+      totale.font = { bold: true };
+      formatta(totale);
+
+      ws.views = [{ state: 'frozen', ySplit: header.number }];
+    });
   }
 }
