@@ -184,6 +184,23 @@ const P_ROW = 15;
 const P_FONT = 8;
 const P_PAD = 3;
 
+/**
+ * Nome di foglio valido per Excel: al massimo 31 caratteri, senza : \ / ? * [ ],
+ * senza apostrofi in testa o in coda e unico senza distinzione di maiuscole.
+ * Due omonimi diventano "Rossi Mario" e "Rossi Mario (2)".
+ */
+function nomeFoglio(nome: string, usati: Set<string>): string {
+  const pulito = nome.replace(/[:\\/?*[\]]/g, ' ').replace(/\s+/g, ' ').replace(/^'+|'+$/g, '').trim();
+  const base = pulito.slice(0, 31) || 'Dipendente';
+  let candidato = base;
+  for (let n = 2; usati.has(candidato.toLowerCase()); n++) {
+    const suffisso = ` (${n})`;
+    candidato = base.slice(0, 31 - suffisso.length) + suffisso;
+  }
+  usati.add(candidato.toLowerCase());
+  return candidato;
+}
+
 export class SaldiOreExportService {
   async generaPdf(dati: SaldiOreMese, meseKey: string): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -482,6 +499,7 @@ export class SaldiOreExportService {
     formattaRiga(totaliRow);
 
     this.foglioProspetto(workbook, dati, meseKey);
+    this.fogliDipendenti(workbook, dati, meseKey);
 
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
@@ -550,5 +568,93 @@ export class SaldiOreExportService {
     formatta(totaliRow);
 
     ws.views = [{ state: 'frozen', xSplit: 1, ySplit: header.number }];
+  }
+
+  /**
+   * Un foglio per dipendente, dopo i due riepiloghi: una riga per mese da
+   * gennaio con percentuale, ore dovute ed effettuate, differenza e saldo
+   * progressivo. L'ultimo saldo e' quello del report.
+   */
+  private fogliDipendenti(workbook: ExcelJS.Workbook, dati: SaldiOreMese, meseKey: string): void {
+    const usati = new Set(['saldi ore', 'prospetto']);
+    const anno = meseKey.slice(0, 4);
+    const colonne = 6;
+
+    dati.righe.forEach((r) => {
+      const ws = workbook.addWorksheet(nomeFoglio(r.utenteNome, usati));
+
+      const titolo = ws.addRow([`${r.utenteNome.toUpperCase()} - SALDI ORE ${anno}`]);
+      ws.mergeCells(titolo.number, 1, titolo.number, colonne);
+      titolo.getCell(1).font = { size: 14, bold: true };
+
+      const nota = ws.addRow([
+        `Da gennaio a ${titoloMese(meseKey).toLowerCase()}. Ore decimali (8,50 = 8h 30m). ` +
+          'Ore effettuate senza assenze.',
+      ]);
+      ws.mergeCells(nota.number, 1, nota.number, colonne);
+      nota.getCell(1).font = { size: 9, italic: true, color: { argb: 'FF666666' } };
+
+      if (dati.mesiSenzaOreDovute.length > 0) {
+        const asterisco = ws.addRow([NOTA_ASTERISCO]);
+        ws.mergeCells(asterisco.number, 1, asterisco.number, colonne);
+        asterisco.getCell(1).font = { size: 9, bold: true, color: { argb: 'FFB45309' } };
+      }
+
+      ws.addRow([]);
+
+      const header = ws.addRow([
+        'Mese',
+        '% lavoro',
+        'Ore dovute',
+        'Ore effettuate',
+        'Differenza',
+        'Saldo progressivo',
+      ]);
+      header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF333333' } };
+
+      ws.columns = [{ width: 14 }, { width: 10 }, { width: 13 }, { width: 15 }, { width: 13 }, { width: 18 }];
+
+      const formatta = (row: ExcelJS.Row) => {
+        row.getCell(2).numFmt = '0"%"';
+        row.getCell(3).numFmt = FORMATO_ORE;
+        row.getCell(4).numFmt = FORMATO_ORE;
+        row.getCell(5).numFmt = FORMATO_SALDO;
+        row.getCell(6).numFmt = FORMATO_SALDO;
+        for (let i = 1; i <= colonne; i++) row.getCell(i).border = GRID_BORDER;
+      };
+      formatta(header);
+
+      // Il saldo progressivo somma le differenze arrotondate al minuto, come
+      // il report: l'ultima riga coincide col saldo cumulativo
+      let saldo = 0;
+      r.mensili.forEach((m) => {
+        saldo += m.differenzaMinuti;
+        const senzaDovute = dati.mesiSenzaOreDovute.includes(m.mese);
+        formatta(
+          ws.addRow([
+            `${NOMI_MESI[m.mese - 1]}${senzaDovute ? '*' : ''}`,
+            m.percentuale,
+            oreDecimali(m.dovutiMinuti),
+            oreDecimali(m.effettuatiMinuti),
+            oreDecimali(m.differenzaMinuti),
+            oreDecimali(saldo),
+          ])
+        );
+      });
+
+      const totale = ws.addRow([
+        'TOTALE',
+        null,
+        oreDecimali(r.mensili.reduce((t, m) => t + m.dovutiMinuti, 0)),
+        oreDecimali(r.mensili.reduce((t, m) => t + m.effettuatiMinuti, 0)),
+        oreDecimali(r.saldoCumulativoMinuti),
+        oreDecimali(r.saldoCumulativoMinuti),
+      ]);
+      totale.font = { bold: true };
+      formatta(totale);
+
+      ws.views = [{ state: 'frozen', ySplit: header.number }];
+    });
   }
 }

@@ -21,6 +21,16 @@ export interface RigaSaldoOre {
    * annuale degli export.
    */
   differenzeMensili: number[];
+  /** Dettaglio di ciascun mese da gennaio: serve al foglio per dipendente. */
+  mensili: MeseSaldoOre[];
+}
+
+export interface MeseSaldoOre {
+  mese: number;
+  percentuale: number;
+  dovutiMinuti: number;
+  effettuatiMinuti: number;
+  differenzaMinuti: number;
 }
 
 export interface SaldiOreMese {
@@ -119,7 +129,18 @@ export class SaldiOreService {
       const dovuti = (m: number) => minutiPerPercentuale(tempoPieno.get(m) ?? 0, percentuale(m));
 
       const mesiEffettuati = effettuati.get(u.id) ?? (Array(mese).fill(0) as number[]);
-      const differenzeMensili = mesiDelPeriodo.map((m) => (mesiEffettuati[m - 1] ?? 0) - dovuti(m));
+      const mensili: MeseSaldoOre[] = mesiDelPeriodo.map((m) => {
+        const dovutiMinuti = dovuti(m);
+        const effettuatiMinuti = mesiEffettuati[m - 1] ?? 0;
+        return {
+          mese: m,
+          percentuale: percentuale(m),
+          dovutiMinuti,
+          effettuatiMinuti,
+          differenzaMinuti: effettuatiMinuti - dovutiMinuti,
+        };
+      });
+      const differenzeMensili = mensili.map((x) => x.differenzaMinuti);
 
       const oreDovuteMinuti = dovuti(mese);
       const oreEffettuateMinuti = mesiEffettuati[mese - 1] ?? 0;
@@ -133,6 +154,7 @@ export class SaldiOreService {
         differenzaMinuti: oreEffettuateMinuti - oreDovuteMinuti,
         saldoCumulativoMinuti: differenzeMensili.reduce((tot, d) => tot + d, 0),
         differenzeMensili,
+        mensili,
       };
     });
 

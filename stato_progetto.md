@@ -2624,6 +2624,24 @@ mesi e il Totale, più la riga Totale in fondo.
 
 ---
 
+### Report Saldi Ore: un foglio per dipendente nell'Excel (28 Settembre 2026)
+
+L'Excel del Report Saldi Ore ha ora, dopo *Saldi Ore* e *Prospetto*, **un foglio per ogni
+dipendente**, con il nome del dipendente. Contiene una riga per mese da gennaio al mese scelto,
+con **% lavoro** (quella in vigore in quel mese), **ore dovute**, **ore effettuate**,
+**differenza** e **saldo progressivo**, più la riga TOTALE. L'ultimo saldo progressivo coincide
+col saldo cumulativo del report. Le ore sono decimali, la differenza e il saldo verdi o rossi, i
+mesi senza ore dovute con l'asterisco e la nota. Il PDF non cambia.
+
+- **Nomi dei fogli:** `nomeFoglio()` li rende validi per Excel: al massimo 31 caratteri, senza
+  `: \ / ? * [ ]`, senza apostrofi in testa o in coda, unici senza distinzione di maiuscole.
+  Gli omonimi diventano "Rossi Mario (2)".
+- **Servizio:** ogni riga di `getMese` ha ora anche `mensili` (mese, percentuale, minuti dovuti,
+  effettuati, differenza), calcolati una volta sola insieme a `differenzeMensili`. Il dato
+  arriva anche alla pagina, che non lo usa.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
