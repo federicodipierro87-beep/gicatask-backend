@@ -77,6 +77,7 @@ const GRID_LINE_WIDTH = 0.5;
 
 const VERDE = '#15803d';
 const ROSSO = '#dc2626';
+const AMBRA_PDF = '#b45309';
 
 interface PdfColumn {
   header: string;
@@ -145,6 +146,43 @@ function oreDecimali(minuti: number): number {
 const FORMATO_ORE = '0.00';
 // Il "+" sui crediti come nel PDF, verde/rosso come a schermo
 const FORMATO_SALDO = '[Color10]+0.00;[Red]-0.00;0.00';
+
+const MESI_BREVI = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'];
+
+/**
+ * Intestazioni dei mesi del prospetto, da gennaio a quello scelto. Un mese
+ * senza ore dovute ha l'asterisco: la sua differenza e' gonfiata.
+ */
+function intestazioniMesi(dati: SaldiOreMese, meseKey: string): string[] {
+  const mesi = Number(meseKey.slice(5, 7));
+  return MESI_BREVI.slice(0, mesi).map((m, i) =>
+    dati.mesiSenzaOreDovute.includes(i + 1) ? `${m}*` : m
+  );
+}
+
+/** Differenze di tutte le righe sommate mese per mese. */
+function totaliMensili(righe: RigaSaldoOre[], mesi: number): number[] {
+  return Array.from({ length: mesi }, (_, i) =>
+    righe.reduce((tot, r) => tot + (r.differenzeMensili[i] ?? 0), 0)
+  );
+}
+
+const NOTA_PROSPETTO =
+  'Differenza di ogni mese (ore effettuate - ore dovute); l\'ultima colonna e\' il saldo cumulativo.';
+const NOTA_ASTERISCO = '* ore dovute non impostate: in quel mese valgono zero.';
+
+/**
+ * Prospetto su A4 orizzontale: 792pt utili, nome 150, saldo 70 e fino a
+ * dodici mesi da 47. Con meno mesi la tabella si accorcia.
+ */
+const LAND_WIDTH = 842;
+const LAND_HEIGHT = 595;
+const P_COL_NOME = 150;
+const P_COL_MESE = 47;
+const P_COL_SALDO = 70;
+const P_ROW = 15;
+const P_FONT = 8;
+const P_PAD = 3;
 
 export class SaldiOreExportService {
   async generaPdf(dati: SaldiOreMese, meseKey: string): Promise<Buffer> {
@@ -216,7 +254,7 @@ export class SaldiOreExportService {
 
       const avviso = avvisoMesiMancanti(dati, meseKey);
       if (avviso) {
-        doc.moveDown(0.3).fillColor('#b45309').text(avviso, { width: TABLE_WIDTH, align: 'center' });
+        doc.moveDown(0.3).fillColor(AMBRA_PDF).text(avviso, { width: TABLE_WIDTH, align: 'center' });
       }
       doc.moveDown(0.8);
 
@@ -261,7 +299,101 @@ export class SaldiOreExportService {
         true
       );
 
+      this.disegnaProspetto(doc, dati, meseKey);
+
       doc.end();
+    });
+  }
+
+  /** Pagine orizzontali: una riga per dipendente, differenza di ogni mese e saldo. */
+  private disegnaProspetto(doc: PDFKit.PDFDocument, dati: SaldiOreMese, meseKey: string): void {
+    const intestazioni = intestazioniMesi(dati, meseKey);
+    const mesi = intestazioni.length;
+    const colonne = [P_COL_NOME, ...Array(mesi).fill(P_COL_MESE), P_COL_SALDO] as number[];
+    const larghezza = colonne.reduce((tot, w) => tot + w, 0);
+    const bottom = LAND_HEIGHT - PDF_MARGIN;
+    const nuovaPagina = () => doc.addPage({ size: 'A4', layout: 'landscape', margin: PDF_MARGIN });
+
+    // Testi di una riga; `segni` colora le celle numeriche come nel resto del report
+    const riga = (
+      y: number,
+      testi: string[],
+      stile: { font?: string; fill?: string; colore?: string; segni?: (number | undefined)[] } = {}
+    ): number => {
+      if (stile.fill) doc.rect(PDF_MARGIN, y, larghezza, P_ROW).fill(stile.fill);
+      doc.font(stile.font ?? 'Helvetica').fontSize(P_FONT);
+
+      let x = PDF_MARGIN;
+      testi.forEach((t, i) => {
+        const w = colonne[i] as number;
+        const segno = stile.segni?.[i];
+        doc.fillColor(stile.colore ?? (segno === undefined ? '#000000' : coloreSegno(segno)));
+        doc.text(t, x + P_PAD, y + P_PAD + 1, {
+          width: w - P_PAD * 2,
+          align: i === 0 ? 'left' : 'right',
+          lineBreak: false,
+          ellipsis: true,
+        });
+        x += w;
+      });
+
+      doc.lineWidth(GRID_LINE_WIDTH).strokeColor(GRID_COLOR);
+      x = PDF_MARGIN;
+      colonne.forEach((w) => {
+        doc.rect(x, y, w, P_ROW).stroke();
+        x += w;
+      });
+      return y + P_ROW;
+    };
+
+    const intestazione = (y: number) =>
+      riga(y, ['Dipendente', ...intestazioni, 'Saldo'], {
+        font: 'Helvetica-Bold',
+        fill: '#333333',
+        colore: '#ffffff',
+      });
+
+    nuovaPagina();
+    doc.font('Helvetica-Bold').fontSize(14).fillColor('#000000');
+    doc.text(
+      `Saldi Ore - Prospetto gennaio-${titoloMese(meseKey).toLowerCase()}`,
+      PDF_MARGIN,
+      PDF_MARGIN,
+      { width: LAND_WIDTH - PDF_MARGIN * 2, align: 'center' }
+    );
+    doc.font('Helvetica').fontSize(8).fillColor('#666666');
+    doc.text(NOTA_PROSPETTO, { width: LAND_WIDTH - PDF_MARGIN * 2, align: 'center' });
+    if (dati.mesiSenzaOreDovute.length > 0) {
+      doc.fillColor(AMBRA_PDF).text(NOTA_ASTERISCO, { width: LAND_WIDTH - PDF_MARGIN * 2, align: 'center' });
+    }
+    doc.moveDown(0.8);
+
+    let y = intestazione(doc.y);
+
+    dati.righe.forEach((r, index) => {
+      if (y + P_ROW > bottom) {
+        nuovaPagina();
+        y = intestazione(PDF_MARGIN);
+      }
+      const segni = [undefined, ...r.differenzeMensili, r.saldoCumulativoMinuti];
+      y = riga(
+        y,
+        [nomeConPercentuale(r), ...r.differenzeMensili.map(formatSaldo), formatSaldo(r.saldoCumulativoMinuti)],
+        { fill: index % 2 === 0 ? '#f5f5f5' : undefined, segni }
+      );
+    });
+
+    if (y + P_ROW > bottom) {
+      nuovaPagina();
+      y = intestazione(PDF_MARGIN);
+    }
+
+    const totali = totaliMensili(dati.righe, mesi);
+    const saldo = dati.righe.reduce((tot, r) => tot + r.saldoCumulativoMinuti, 0);
+    riga(y, ['TOTALE', ...totali.map(formatSaldo), formatSaldo(saldo)], {
+      font: 'Helvetica-Bold',
+      fill: '#e5e5e5',
+      segni: [undefined, ...totali, saldo],
     });
   }
 
@@ -349,7 +481,74 @@ export class SaldiOreExportService {
     totaliRow.font = { bold: true };
     formattaRiga(totaliRow);
 
+    this.foglioProspetto(workbook, dati, meseKey);
+
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
+  }
+
+  /** Secondo foglio: differenza di ogni mese da gennaio e saldo, in ore decimali. */
+  private foglioProspetto(workbook: ExcelJS.Workbook, dati: SaldiOreMese, meseKey: string): void {
+    const intestazioni = intestazioniMesi(dati, meseKey);
+    const mesi = intestazioni.length;
+    const colonne = mesi + 2;
+
+    const ws = workbook.addWorksheet('Prospetto', {
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    });
+
+    const titolo = ws.addRow([`SALDI ORE - PROSPETTO GENNAIO-${titoloMese(meseKey).toUpperCase()}`]);
+    ws.mergeCells(titolo.number, 1, titolo.number, colonne);
+    titolo.getCell(1).font = { size: 16, bold: true };
+    titolo.getCell(1).alignment = { horizontal: 'center' };
+
+    const note = [
+      `Ore decimali (8,50 = 8h 30m). ${NOTA_PROSPETTO}`,
+      ...(dati.mesiSenzaOreDovute.length > 0 ? [NOTA_ASTERISCO] : []),
+    ];
+    note.forEach((testo, i) => {
+      const row = ws.addRow([testo]);
+      ws.mergeCells(row.number, 1, row.number, colonne);
+      row.getCell(1).font = i === 0
+        ? { size: 9, italic: true, color: { argb: 'FF666666' } }
+        : { size: 9, bold: true, color: { argb: 'FFB45309' } };
+      row.getCell(1).alignment = { horizontal: 'center' };
+    });
+
+    ws.addRow([]);
+
+    const header = ws.addRow(['Dipendente', ...intestazioni, 'Saldo']);
+    header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF333333' } };
+
+    ws.columns = [{ width: 32 }, ...Array(mesi).fill({ width: 9 }), { width: 11 }];
+
+    const formatta = (row: ExcelJS.Row) => {
+      for (let i = 1; i <= colonne; i++) {
+        row.getCell(i).border = GRID_BORDER;
+        if (i >= 2) row.getCell(i).numFmt = FORMATO_SALDO;
+      }
+    };
+    formatta(header);
+
+    dati.righe.forEach((r) => {
+      formatta(
+        ws.addRow([
+          nomeConPercentuale(r),
+          ...r.differenzeMensili.map(oreDecimali),
+          oreDecimali(r.saldoCumulativoMinuti),
+        ])
+      );
+    });
+
+    const totaliRow = ws.addRow([
+      'TOTALE',
+      ...totaliMensili(dati.righe, mesi).map(oreDecimali),
+      oreDecimali(dati.righe.reduce((tot, r) => tot + r.saldoCumulativoMinuti, 0)),
+    ]);
+    totaliRow.font = { bold: true };
+    formatta(totaliRow);
+
+    ws.views = [{ state: 'frozen', xSplit: 1, ySplit: header.number }];
   }
 }

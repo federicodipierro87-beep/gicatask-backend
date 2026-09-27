@@ -15,6 +15,12 @@ export interface RigaSaldoOre {
   differenzaMinuti: number;
   /** Somma delle differenze da gennaio al mese richiesto compreso. */
   saldoCumulativoMinuti: number;
+  /**
+   * Differenza di ciascun mese da gennaio a quello richiesto (gennaio in
+   * posizione 0): la loro somma e' il saldo cumulativo. Serve al prospetto
+   * annuale degli export.
+   */
+  differenzeMensili: number[];
 }
 
 export interface SaldiOreMese {
@@ -73,22 +79,15 @@ export class SaldiOreService {
     const mese = Number(match[2]);
     const lavoro = { assenzaId: null };
 
-    const [delMese, dallInizioAnno, oreDovute] = await Promise.all([
-      this.prisma.attivita.groupBy({
-        by: ['utenteId'],
-        where: {
-          ...lavoro,
-          dataRiferimento: { gte: inizioMese(anno, mese), lt: inizioMese(anno, mese + 1) },
-        },
-        _sum: { durataMinuti: true },
-      }),
-      this.prisma.attivita.groupBy({
-        by: ['utenteId'],
+    // Le singole attivita' e non un groupBy: Prisma non raggruppa per mese di
+    // una data, e le righe di un anno sono poche migliaia al massimo
+    const [attivita, oreDovute] = await Promise.all([
+      this.prisma.attivita.findMany({
         where: {
           ...lavoro,
           dataRiferimento: { gte: inizioMese(anno, 1), lt: inizioMese(anno, mese + 1) },
         },
-        _sum: { durataMinuti: true },
+        select: { utenteId: true, dataRiferimento: true, durataMinuti: true },
       }),
       this.prisma.oreDovuteMese.findMany({ where: { anno, mese: { lte: mese } } }),
     ]);
@@ -97,10 +96,20 @@ export class SaldiOreService {
     const tempoPieno = new Map(oreDovute.map((r) => [r.mese, r.minuti]));
     const mesiDelPeriodo = Array.from({ length: mese }, (_, i) => i + 1);
 
-    const minutiMese = new Map(delMese.map((r) => [r.utenteId, r._sum.durataMinuti ?? 0]));
-    const minutiAnno = new Map(dallInizioAnno.map((r) => [r.utenteId, r._sum.durataMinuti ?? 0]));
+    // Minuti effettuati per utente, un elemento per mese da gennaio. La data e'
+    // @db.Date, riletta a mezzanotte UTC: il mese va preso in UTC
+    const effettuati = new Map<number, number[]>();
+    for (const a of attivita) {
+      let mesi = effettuati.get(a.utenteId);
+      if (!mesi) {
+        mesi = Array(mese).fill(0) as number[];
+        effettuati.set(a.utenteId, mesi);
+      }
+      const i = a.dataRiferimento.getUTCMonth();
+      mesi[i] = (mesi[i] ?? 0) + a.durataMinuti;
+    }
 
-    const utenti = await utentiDeiReportOre(this.prisma, [...minutiAnno.keys()]);
+    const utenti = await utentiDeiReportOre(this.prisma, [...effettuati.keys()]);
 
     const righe = utenti.map((u) => {
       // Ogni mese con la percentuale in vigore in quel mese: una variazione
@@ -109,9 +118,11 @@ export class SaldiOreService {
         percentualeNelMese(u.percentualeLavoro, u.percentualiLavoro, anno, m);
       const dovuti = (m: number) => minutiPerPercentuale(tempoPieno.get(m) ?? 0, percentuale(m));
 
+      const mesiEffettuati = effettuati.get(u.id) ?? (Array(mese).fill(0) as number[]);
+      const differenzeMensili = mesiDelPeriodo.map((m) => (mesiEffettuati[m - 1] ?? 0) - dovuti(m));
+
       const oreDovuteMinuti = dovuti(mese);
-      const oreEffettuateMinuti = minutiMese.get(u.id) ?? 0;
-      const dovuteAnno = mesiDelPeriodo.reduce((tot, m) => tot + dovuti(m), 0);
+      const oreEffettuateMinuti = mesiEffettuati[mese - 1] ?? 0;
 
       return {
         utenteId: u.id,
@@ -120,7 +131,8 @@ export class SaldiOreService {
         oreDovuteMinuti,
         oreEffettuateMinuti,
         differenzaMinuti: oreEffettuateMinuti - oreDovuteMinuti,
-        saldoCumulativoMinuti: (minutiAnno.get(u.id) ?? 0) - dovuteAnno,
+        saldoCumulativoMinuti: differenzeMensili.reduce((tot, d) => tot + d, 0),
+        differenzeMensili,
       };
     });
 

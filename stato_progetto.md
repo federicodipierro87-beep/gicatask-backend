@@ -2565,6 +2565,31 @@ per dipendente e una colonna per mese, con le ore dovute = ore a tempo pieno del
 
 ---
 
+### Report Saldi Ore: prospetto annuale negli export (28 Settembre 2026)
+
+Gli export del **Report Saldi Ore** hanno ora anche il **prospetto da gennaio al mese scelto**:
+una riga per dipendente, **la differenza di ogni mese** (effettuate − dovute) e nell'ultima
+colonna il **saldo cumulativo**, che è la somma di quelle differenze. La pagina resta mensile.
+
+- **PDF:** seconda pagina A4 orizzontale, più pagine se servono, con l'intestazione ripetuta.
+  Celle verdi o rosse col `+` sui crediti come nel resto del report, riga TOTALE.
+- **Excel:** secondo foglio **Prospetto**, in ore decimali con lo stesso formato colorato. Nome e
+  intestazione bloccati, stampa orizzontale su una pagina di larghezza.
+- I mesi **senza ore dovute impostate** hanno l'asterisco nell'intestazione (`Gen*`) e una nota:
+  la loro differenza è gonfiata.
+
+#### Calcolo del report riscritto
+
+`SaldiOreService.getMese` non fa più due `groupBy` (mese e da gennaio). Ora legge **una volta**
+le attività di lavoro da gennaio al mese scelto e le aggrega in memoria per dipendente e mese:
+Prisma non sa raggruppare per mese di una data, e le righe di un anno sono poche migliaia. Da
+lì escono le **`differenzeMensili`** di ogni riga, e il saldo cumulativo è la loro somma. Ore
+del mese, differenze e saldo vengono dagli stessi numeri, quindi non possono divergere. Il mese
+si prende dalla data in **UTC** (`getUTCMonth`), perché la colonna è `@db.Date` e Prisma la
+rilegge a mezzanotte UTC. I risultati della pagina non cambiano.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
