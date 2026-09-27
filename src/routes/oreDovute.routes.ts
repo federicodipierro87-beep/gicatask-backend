@@ -2,6 +2,26 @@ import { FastifyInstance } from 'fastify';
 import { OreDovuteService, annoValido } from '../services/oreDovute.service.js';
 import type { MeseOreDovute } from '../services/oreDovute.service.js';
 import { OreDovuteExportService } from '../services/oreDovuteExport.service.js';
+import type { RiepiloghiPeriodo } from '../services/oreDovuteExport.service.js';
+import { SaldiOreService } from '../services/saldiOre.service.js';
+
+const NOMI_MESI = [
+  'gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
+  'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre',
+];
+
+/** Anno e mese di oggi in Svizzera: il server gira in UTC. */
+function meseCorrente(): { anno: number; mese: number } {
+  const [anno, mese] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Zurich',
+    year: 'numeric',
+    month: '2-digit',
+  })
+    .format(new Date())
+    .split('-')
+    .map(Number);
+  return { anno: anno as number, mese: mese as number };
+}
 
 const FORMATI = {
   pdf: { contentType: 'application/pdf', estensione: 'pdf' },
@@ -14,6 +34,33 @@ const FORMATI = {
 export async function oreDovuteRoutes(fastify: FastifyInstance) {
   const service = new OreDovuteService(fastify.prisma);
   const exportService = new OreDovuteExportService();
+  const saldiOreService = new SaldiOreService(fastify.prisma);
+
+  /**
+   * Le ore del periodo trascorso dell'anno per dipendente: da gennaio al mese
+   * corrente, o tutto l'anno se e' passato. Vengono dal Report Saldi Ore,
+   * quindi il saldo e' il suo saldo cumulativo. `undefined` per un anno futuro.
+   */
+  const riepiloghiPeriodo = async (anno: number): Promise<RiepiloghiPeriodo | undefined> => {
+    const oggi = meseCorrente();
+    if (anno > oggi.anno) return undefined;
+    const fino = anno < oggi.anno ? 12 : oggi.mese;
+
+    const saldi = await saldiOreService.getMese(`${anno}-${String(fino).padStart(2, '0')}`);
+    const perUtente = new Map(
+      saldi.righe.map((r) => [
+        r.utenteId,
+        {
+          totaleMinuti: r.mensili.reduce((t, m) => t + m.totaleMinuti, 0),
+          dovutiMinuti: r.mensili.reduce((t, m) => t + m.dovutiMinuti, 0),
+          lavoroMinuti: r.mensili.reduce((t, m) => t + m.effettuatiMinuti, 0),
+        },
+      ])
+    );
+
+    const etichetta = fino === 1 ? `gennaio ${anno}` : `gennaio-${NOMI_MESI[fino - 1]} ${anno}`;
+    return { etichetta, perUtente };
+  };
 
   // Ore dovute dei dodici mesi di un anno (responsabile only)
   fastify.get<{ Params: { anno: string } }>('/:anno', {
@@ -56,10 +103,13 @@ export async function oreDovuteRoutes(fastify: FastifyInstance) {
     }
 
     const dati = await service.getAnno(anno);
-    const prospetto = await service.getProspetto(anno, dati);
+    const [prospetto, riepiloghi] = await Promise.all([
+      service.getProspetto(anno, dati),
+      riepiloghiPeriodo(anno),
+    ]);
     const buffer = formato === 'pdf'
-      ? await exportService.generaPdf(dati, prospetto, anno)
-      : await exportService.generaExcel(dati, prospetto, anno);
+      ? await exportService.generaPdf(dati, prospetto, anno, riepiloghi)
+      : await exportService.generaExcel(dati, prospetto, anno, riepiloghi);
     const cfg = FORMATI[formato];
 
     return reply

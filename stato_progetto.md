@@ -2762,6 +2762,30 @@ di lavoro se il backend non manda ancora `totaleMinuti`.
 
 ---
 
+### Ore dovute: riepilogo del periodo trascorso negli export (28 Settembre 2026)
+
+In fondo alle **pagine per dipendente del PDF** e ai **fogli per dipendente dell'Excel** delle
+Ore dovute c'è il **Riepilogo gennaio-<mese corrente> <anno>**, con le righe del Report
+Attività:
+
+- **Totale ore**: assenze comprese;
+- **Totale ore dovute**;
+- **Ore di lavoro (senza assenze)**: solo se differisce dal totale;
+- **Saldo ore**: ore di lavoro − ore dovute.
+
+- **Periodo:** da gennaio al **mese corrente compreso**, calcolato sul fuso `Europe/Zurich`
+  perché il server gira in UTC. Per un anno passato vale l'anno intero. Per un anno futuro il
+  riepilogo non c'è. Ci si ferma a oggi perché le ore dovute dei mesi futuri, contate subito,
+  renderebbero il saldo molto negativo durante tutto l'anno.
+- **I numeri vengono da `SaldiOreService.getMese`** sul mese finale: il saldo coincide con il
+  **saldo cumulativo del Report Saldi Ore** di quel mese. Il calcolo sta in
+  `riepiloghiPeriodo()` in `oreDovute.routes.ts`.
+- Le righe di riepilogo (etichette, riga ore di lavoro solo se diversa) sono in
+  `src/utils/righeRiepilogoOre.ts`, usata dagli export di Ore dovute e Saldi Ore. Qui il totale
+  si chiama "TOTALE ORE" e non "TOTALE ORE MESE", perché copre più mesi.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.

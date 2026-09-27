@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
 import type { MeseSaldoOre, RigaSaldoOre, SaldiOreMese } from './saldiOre.service.js';
 import { nomeFoglio } from '../utils/nomeFoglioExcel.js';
+import { righeRiepilogoOre } from '../utils/righeRiepilogoOre.js';
 
 const NOMI_MESI = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -199,22 +200,8 @@ const D_COLUMNS: { header: string; width: number }[] = [
 ];
 const D_TABLE_WIDTH = D_COLUMNS.reduce((tot, col) => tot + col.width, 0);
 
-/**
- * Le righe di riepilogo del mese scelto in fondo al dettaglio di un
- * dipendente, le stesse del Report Attivita': il totale ore mese comprende le
- * assenze, il saldo si fa sulle sole ore di lavoro. La riga delle ore di
- * lavoro c'e' solo quando differisce dal totale, cioe' con delle assenze.
- */
-function righeRiepilogoMese(m: MeseSaldoOre): { etichetta: string; minuti: number; saldo?: boolean }[] {
-  const righe: { etichetta: string; minuti: number; saldo?: boolean }[] = [
-    { etichetta: 'TOTALE ORE MESE', minuti: m.totaleMinuti },
-    { etichetta: 'TOTALE ORE DOVUTE', minuti: m.dovutiMinuti },
-  ];
-  if (m.effettuatiMinuti !== m.totaleMinuti) {
-    righe.push({ etichetta: 'ORE DI LAVORO (SENZA ASSENZE)', minuti: m.effettuatiMinuti });
-  }
-  righe.push({ etichetta: 'SALDO ORE', minuti: m.differenzaMinuti, saldo: true });
-  return righe;
+function riepilogoDelMese(m: MeseSaldoOre) {
+  return { totaleMinuti: m.totaleMinuti, dovutiMinuti: m.dovutiMinuti, lavoroMinuti: m.effettuatiMinuti };
 }
 
 export class SaldiOreExportService {
@@ -453,7 +440,7 @@ export class SaldiOreExportService {
 
       const larghezzaEtichetta = D_TABLE_WIDTH - (D_COLUMNS[D_COLUMNS.length - 1] as { width: number }).width;
       const larghezzaValore = D_TABLE_WIDTH - larghezzaEtichetta;
-      righeRiepilogoMese(ultimo).forEach(({ etichetta, minuti, saldo }) => {
+      righeRiepilogoOre(riepilogoDelMese(ultimo)).forEach(({ etichetta, minuti, saldo }) => {
         doc.font('Helvetica-Bold').fontSize(FONT_SIZE).fillColor('#000000');
         doc.text(etichetta, PDF_MARGIN + CELL_PAD_X, y + CELL_PAD_Y, { lineBreak: false });
         doc.fillColor(saldo ? coloreSegno(minuti) : '#000000');
@@ -818,7 +805,7 @@ export class SaldiOreExportService {
         const titoloRiepilogo = ws.addRow([`Riepilogo di ${titoloMese(meseKey).toLowerCase()}`]);
         titoloRiepilogo.font = { bold: true };
 
-        righeRiepilogoMese(ultimo).forEach(({ etichetta, minuti, saldo }) => {
+        righeRiepilogoOre(riepilogoDelMese(ultimo)).forEach(({ etichetta, minuti, saldo }) => {
           const row = ws.addRow([etichetta, null, null, null, null, oreDecimali(minuti)]);
           ws.mergeCells(row.number, 1, row.number, 5);
           row.font = { bold: true };

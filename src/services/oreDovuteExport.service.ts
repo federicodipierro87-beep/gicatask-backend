@@ -2,6 +2,18 @@ import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
 import type { OreDovuteAnno, RigaProspetto } from './oreDovute.service.js';
 import { nomeFoglio } from '../utils/nomeFoglioExcel.js';
+import { righeRiepilogoOre } from '../utils/righeRiepilogoOre.js';
+import type { RiepilogoOre } from '../utils/righeRiepilogoOre.js';
+
+/**
+ * Ore del periodo trascorso per dipendente, per le righe di riepilogo in fondo
+ * al dettaglio: `etichetta` e' il periodo, come "gennaio-settembre 2026".
+ * Assente per un anno futuro, in cui non c'e' ancora niente da confrontare.
+ */
+export interface RiepiloghiPeriodo {
+  etichetta: string;
+  perUtente: Map<number, RiepilogoOre>;
+}
 
 const NOMI_MESI = [
   'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
@@ -143,7 +155,12 @@ const D_COLUMNS: { header: string; width: number }[] = [
 const D_TABLE_WIDTH = D_COLUMNS.reduce((tot, col) => tot + col.width, 0);
 
 export class OreDovuteExportService {
-  async generaPdf(dati: OreDovuteAnno, prospetto: RigaProspetto[], anno: number): Promise<Buffer> {
+  async generaPdf(
+    dati: OreDovuteAnno,
+    prospetto: RigaProspetto[],
+    anno: number,
+    riepiloghi?: RiepiloghiPeriodo
+  ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: PDF_MARGIN, size: 'A4' });
       const chunks: Buffer[] = [];
@@ -223,7 +240,7 @@ export class OreDovuteExportService {
       }
 
       this.disegnaProspetto(doc, dati, prospetto, anno);
-      this.disegnaDipendenti(doc, dati, prospetto, anno);
+      this.disegnaDipendenti(doc, dati, prospetto, anno, riepiloghi);
 
       doc.end();
     });
@@ -238,7 +255,8 @@ export class OreDovuteExportService {
     doc: PDFKit.PDFDocument,
     dati: OreDovuteAnno,
     righe: RigaProspetto[],
-    anno: number
+    anno: number,
+    riepiloghi?: RiepiloghiPeriodo
   ): void {
     const riga = (
       y: number,
@@ -306,11 +324,38 @@ export class OreDovuteExportService {
         );
       });
 
-      riga(
+      y = riga(
         y,
         ['TOTALE', formatOre(riepilogo(dati).sommaMesi), '', formatOre(r.totale)],
         { font: 'Helvetica-Bold', fill: '#e5e5e5' }
       );
+
+      // Riepilogo del periodo trascorso, con le righe del Report Attivita'.
+      // Etichetta sulle prime tre colonne, valore sotto le ore dovute
+      const ore = riepiloghi?.perUtente.get(r.utenteId);
+      if (!riepiloghi || !ore) return;
+
+      y += 12;
+      doc.font('Helvetica-Bold').fontSize(FONT_SIZE).fillColor('#000000');
+      doc.text(`Riepilogo ${riepiloghi.etichetta}`, PDF_MARGIN, y);
+      y += ROW_HEIGHT;
+
+      const larghezzaValore = (D_COLUMNS[D_COLUMNS.length - 1] as { width: number }).width;
+      const larghezzaEtichetta = D_TABLE_WIDTH - larghezzaValore;
+      righeRiepilogoOre(ore, 'TOTALE ORE').forEach(({ etichetta, minuti, saldo }) => {
+        doc.font('Helvetica-Bold').fontSize(FONT_SIZE).fillColor('#000000');
+        doc.text(etichetta, PDF_MARGIN + CELL_PAD_X, y + CELL_PAD_Y, { lineBreak: false });
+        doc.fillColor(saldo ? (minuti > 0 ? VERDE : minuti < 0 ? '#dc2626' : '#000000') : '#000000');
+        doc.text(saldo && minuti > 0 ? `+${formatOre(minuti)}` : formatOre(minuti), PDF_MARGIN + larghezzaEtichetta + CELL_PAD_X, y + CELL_PAD_Y, {
+          width: larghezzaValore - CELL_PAD_X * 2,
+          align: 'right',
+          lineBreak: false,
+        });
+        doc.lineWidth(0.5).strokeColor(GRID_COLOR);
+        doc.rect(PDF_MARGIN, y, larghezzaEtichetta, ROW_HEIGHT).stroke();
+        doc.rect(PDF_MARGIN + larghezzaEtichetta, y, larghezzaValore, ROW_HEIGHT).stroke();
+        y += ROW_HEIGHT;
+      });
     });
   }
 
@@ -414,7 +459,12 @@ export class OreDovuteExportService {
     griglia(y, P_MIN_ROW);
   }
 
-  async generaExcel(dati: OreDovuteAnno, prospetto: RigaProspetto[], anno: number): Promise<Buffer> {
+  async generaExcel(
+    dati: OreDovuteAnno,
+    prospetto: RigaProspetto[],
+    anno: number,
+    riepiloghi?: RiepiloghiPeriodo
+  ): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'GicaTask';
     workbook.created = new Date();
@@ -477,7 +527,7 @@ export class OreDovuteExportService {
     esitoRow.getCell(1).font = { bold: true, color: { argb: r.scarto === 0 ? 'FF15803D' : 'FFB45309' } };
 
     this.foglioProspetto(workbook, dati, prospetto, anno);
-    this.fogliDipendenti(workbook, dati, prospetto, anno);
+    this.fogliDipendenti(workbook, dati, prospetto, anno, riepiloghi);
 
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
@@ -557,7 +607,8 @@ export class OreDovuteExportService {
     workbook: ExcelJS.Workbook,
     dati: OreDovuteAnno,
     righe: RigaProspetto[],
-    anno: number
+    anno: number,
+    riepiloghi?: RiepiloghiPeriodo
   ): void {
     const usati = new Set([`ore dovute ${anno}`, 'per dipendente']);
     const colonne = 5;
@@ -625,6 +676,29 @@ export class OreDovuteExportService {
       ]);
       totale.font = { bold: true };
       formatta(totale);
+
+      // Riepilogo del periodo trascorso, con le righe del Report Attivita'.
+      // Etichetta su A-C unite, valore decimale e in ore:minuti come sopra
+      const ore = riepiloghi?.perUtente.get(r.utenteId);
+      if (riepiloghi && ore) {
+        ws.addRow([]);
+        ws.addRow([`Riepilogo ${riepiloghi.etichetta}`]).font = { bold: true };
+
+        righeRiepilogoOre(ore, 'TOTALE ORE').forEach(({ etichetta, minuti, saldo }) => {
+          const row = ws.addRow([
+            etichetta,
+            null,
+            null,
+            oreDecimali(minuti),
+            saldo && minuti > 0 ? `+${formatOre(minuti)}` : formatOre(minuti),
+          ]);
+          ws.mergeCells(row.number, 1, row.number, 3);
+          row.font = { bold: true };
+          row.getCell(4).numFmt = saldo ? '[Color10]+0.00;[Red]-0.00;0.00' : '0.00';
+          row.getCell(5).alignment = { horizontal: 'right' };
+          for (let i = 1; i <= colonne; i++) row.getCell(i).border = GRID_BORDER;
+        });
+      }
 
       ws.views = [{ state: 'frozen', ySplit: header.number }];
     });
