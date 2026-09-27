@@ -15,6 +15,7 @@ import { dreamVeicoliRoutes } from './dreamVeicoli.routes.js';
 import { dreamClientiRoutes } from './dreamClienti.routes.js';
 import { dreamNoleggiRoutes } from './dreamNoleggi.routes.js';
 import { gicaNoleggiRoutes } from './gicaNoleggi.routes.js';
+import { oreDovuteRoutes } from './oreDovute.routes.js';
 
 export const registerRoutes: FastifyPluginAsync = async (fastify) => {
   // Health check
@@ -41,4 +42,5 @@ export const registerRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(dreamClientiRoutes, { prefix: '/api/dream-clienti' });
   await fastify.register(dreamNoleggiRoutes, { prefix: '/api/dream-noleggi' });
   await fastify.register(gicaNoleggiRoutes, { prefix: '/api/gica-noleggi' });
+  await fastify.register(oreDovuteRoutes, { prefix: '/api/ore-dovute' });
 };

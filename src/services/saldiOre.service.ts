@@ -1,11 +1,13 @@
 import { PrismaClient } from '@prisma/client';
 import { nomeUtente } from '../utils/nomeUtente.js';
+import { minutiPerPercentuale } from './oreDovute.service.js';
 
 const MESE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
 export interface RigaSaldoOre {
   utenteId: number;
   utenteNome: string;
+  percentualeLavoro: number;
   oreDovuteMinuti: number;
   oreEffettuateMinuti: number;
   /** Effettuate meno dovute: positiva se il dipendente ha lavorato di piu'. */
@@ -14,15 +16,13 @@ export interface RigaSaldoOre {
   saldoCumulativoMinuti: number;
 }
 
-/**
- * Minuti dovuti da un dipendente in un mese.
- *
- * Segnaposto: le ore dovute arriveranno da una tabella dedicata, finche' non
- * esiste valgono zero. Il saldo le somma gia' mese per mese, quindi quando la
- * tabella arriva va riscritta solo questa funzione.
- */
-function minutiDovuti(_utenteId: number, _anno: number, _mese: number): number {
-  return 0;
+export interface SaldiOreMese {
+  righe: RigaSaldoOre[];
+  /**
+   * Mesi da gennaio a quello richiesto senza ore dovute impostate: valgono
+   * zero, quindi differenza e saldo di quei mesi sono gonfiati.
+   */
+  mesiSenzaOreDovute: number[];
 }
 
 /** Primo giorno del mese a mezzanotte UTC, come Prisma rilegge le @db.Date. */
@@ -38,11 +38,10 @@ export class SaldiOreService {
    *
    * Le ore effettuate sono le sole attivita' di lavoro: le assenze restano
    * fuori, comprese quelle che valgono una giornata piena (Vacanza, Malattia),
-   * che andranno scalate dalle ore dovute. Il "Recupero ore" non ha bisogno di
-   * un caso a parte: il giorno recuperato non ha ore di lavoro e il saldo cala
-   * da solo. Il cumulativo riparte da zero a gennaio.
+   * e non riducono le ore dovute: e' una scelta, un giorno di assenza fa
+   * scendere il saldo. Il cumulativo riparte da zero a gennaio.
    */
-  async getMese(meseKey: string): Promise<RigaSaldoOre[]> {
+  async getMese(meseKey: string): Promise<SaldiOreMese> {
     const match = MESE.exec(meseKey);
     if (!match) {
       throw new Error(`Mese non valido: ${meseKey}`);
@@ -52,7 +51,7 @@ export class SaldiOreService {
     const mese = Number(match[2]);
     const lavoro = { assenzaId: null };
 
-    const [delMese, dallInizioAnno] = await Promise.all([
+    const [delMese, dallInizioAnno, oreDovute] = await Promise.all([
       this.prisma.attivita.groupBy({
         by: ['utenteId'],
         where: {
@@ -69,7 +68,12 @@ export class SaldiOreService {
         },
         _sum: { durataMinuti: true },
       }),
+      this.prisma.oreDovuteMese.findMany({ where: { anno, mese: { lte: mese } } }),
     ]);
+
+    // Minuti dovuti a tempo pieno, da gennaio al mese richiesto
+    const tempoPieno = new Map(oreDovute.map((r) => [r.mese, r.minuti]));
+    const mesiDelPeriodo = Array.from({ length: mese }, (_, i) => i + 1);
 
     const minutiMese = new Map(delMese.map((r) => [r.utenteId, r._sum.durataMinuti ?? 0]));
     const minutiAnno = new Map(dallInizioAnno.map((r) => [r.utenteId, r._sum.durataMinuti ?? 0]));
@@ -85,27 +89,34 @@ export class SaldiOreService {
           { id: { in: [...minutiAnno.keys()] } },
         ],
       },
-      select: { id: true, nome: true, cognome: true },
+      select: { id: true, nome: true, cognome: true, percentualeLavoro: true },
       orderBy: [{ ruolo: 'asc' }, { cognome: 'asc' }, { nome: 'asc' }],
     });
 
-    return utenti.map((u) => {
-      const oreDovuteMinuti = minutiDovuti(u.id, anno, mese);
-      const oreEffettuateMinuti = minutiMese.get(u.id) ?? 0;
+    const righe = utenti.map((u) => {
+      // La percentuale e' quella di oggi e vale per tutti i mesi: cambiarla
+      // ricalcola anche i saldi dei mesi passati
+      const dovuti = (m: number) =>
+        minutiPerPercentuale(tempoPieno.get(m) ?? 0, u.percentualeLavoro);
 
-      let dovuteAnno = 0;
-      for (let m = 1; m <= mese; m++) {
-        dovuteAnno += minutiDovuti(u.id, anno, m);
-      }
+      const oreDovuteMinuti = dovuti(mese);
+      const oreEffettuateMinuti = minutiMese.get(u.id) ?? 0;
+      const dovuteAnno = mesiDelPeriodo.reduce((tot, m) => tot + dovuti(m), 0);
 
       return {
         utenteId: u.id,
         utenteNome: nomeUtente(u),
+        percentualeLavoro: u.percentualeLavoro,
         oreDovuteMinuti,
         oreEffettuateMinuti,
         differenzaMinuti: oreEffettuateMinuti - oreDovuteMinuti,
         saldoCumulativoMinuti: (minutiAnno.get(u.id) ?? 0) - dovuteAnno,
       };
     });
+
+    return {
+      righe,
+      mesiSenzaOreDovute: mesiDelPeriodo.filter((m) => !tempoPieno.has(m)),
+    };
   }
 }

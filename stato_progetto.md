@@ -2392,6 +2392,55 @@ Differenza e saldo sono verdi se positivi e rossi se negativi.
 
 ---
 
+### Ore dovute e percentuale di lavoro (28 Settembre 2026)
+
+Le **ore dovute** del Report Saldi Ore non valgono più zero. Si calcolano così:
+
+> ore dovute del dipendente nel mese = ore del mese a **tempo pieno** × **percentuale di lavoro**
+
+- **Impostazioni → Ore dovute** (`/responsabile/ore-dovute`, `OreDovutePage`): si sceglie l'anno
+  con le frecce e si scrivono le ore dovute a tempo pieno di ciascuno dei 12 mesi, in formato
+  `ore:minuti` (`172:12`). Si accettano anche `172` e `172,5`. Un campo vuoto vuol dire mese
+  non impostato. In fondo c'è il **totale anno**, utile per il controllo con le ore annuali.
+- **Utenti:** nuovo campo **Percentuale di lavoro** (intero da 0 a 100, default 100), sia in
+  creazione sia in modifica, e colonna *% lavoro* nella tabella.
+- **Report Saldi Ore:** accanto al nome compare la percentuale, quando non è 100. Un avviso
+  giallo elenca i mesi da gennaio a quello scelto che non hanno ore dovute impostate: in quei
+  mesi valgono zero e il saldo risulta gonfiato.
+
+#### Schema (solo aggiunte)
+
+- `utenti.percentuale_lavoro` (Int, default 100). Gli utenti esistenti partono a tempo pieno.
+- Tabella nuova `ore_dovute_mesi`: `anno`, `mese`, `minuti`, unica su (`anno`, `mese`). Ci sono
+  solo righe per i mesi impostati.
+
+#### API
+
+- `GET /api/ore-dovute/:anno` restituisce sempre 12 mesi, `minuti: null` per quelli non
+  impostati.
+- `PUT /api/ore-dovute/:anno` con `{ mesi: [{ mese, minuti }] }`: un valore crea o aggiorna il
+  mese, `null` lo cancella. Tutto in una transazione. Solo responsabile.
+- `GET /api/attivita/saldi-ore` ora restituisce `{ righe, mesiSenzaOreDovute }`, non più
+  l'array. Ogni riga ha anche `percentualeLavoro`.
+- `POST`/`PUT /api/utenti` accettano `percentualeLavoro`.
+
+#### Da sapere
+
+- Le ore dovute del dipendente si **arrotondano al minuto mese per mese**
+  (`minutiPerPercentuale`). Il saldo cumulativo somma gli stessi valori mostrati nel report.
+- **La percentuale è una sola, quella attuale**, e vale per tutti i mesi. Se cambia a metà anno,
+  anche i saldi dei mesi precedenti vengono ricalcolati con la nuova percentuale. Per uno
+  storico servirebbe una percentuale con data di decorrenza.
+- **Le assenze non riducono le ore dovute.** Restano escluse dalle ore effettuate, quindi un
+  giorno di Vacanza o Malattia fa scendere il saldo. Questa scelta sostituisce l'ipotesi della
+  voce precedente, secondo cui le assenze sarebbero state scalate dalle ore dovute.
+- Il controllo incrociato con le **ore annuali** da inserire a mano non c'è ancora: per ora la
+  pagina mostra solo il totale dei 12 mesi.
+- Backup: `oreDovuteMesi` entra nel dump, nel ripristino e nel reset delle sequence. I backup
+  precedenti restano ripristinabili e gli utenti riprendono `percentuale_lavoro` = 100.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
@@ -2517,6 +2566,7 @@ frontend/
 │   │       ├── UtentiPage.tsx
 │   │       ├── ReportPage.tsx
 │   │       ├── SaldiOreReport.tsx
+│   │       ├── OreDovutePage.tsx
 │   │       ├── AssegnaAttivitaPage.tsx
 │   │       ├── BackupPage.tsx
 │   │       ├── ImportPage.tsx

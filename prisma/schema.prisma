@@ -15,6 +15,9 @@ model Utente {
   ruolo               Ruolo    @default(DIPENDENTE)
   attivo              Boolean  @default(true)
   abilitatoBollettini Boolean  @default(false) @map("abilitato_bollettini")
+  // Percentuale di lavoro (100 = tempo pieno): scala le ore dovute del
+  // Report Saldi Ore
+  percentualeLavoro   Int      @default(100) @map("percentuale_lavoro")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
@@ -212,6 +215,20 @@ model GicaNoleggio {
 
   @@index([data])
   @@map("gica_noleggi")
+}
+
+/// Ore dovute di ciascun mese per un tempo pieno (100%), inserite a inizio
+/// anno. Quelle di un dipendente sono queste per la sua percentuale di lavoro.
+/// Un mese senza riga vale zero: il Report Saldi Ore lo segnala.
+model OreDovuteMese {
+  id        Int      @id @default(autoincrement())
+  anno      Int
+  mese      Int
+  minuti    Int
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([anno, mese])
+  @@map("ore_dovute_mesi")
 }
 
 model BackupLog {

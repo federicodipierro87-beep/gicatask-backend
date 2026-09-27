@@ -31,6 +31,7 @@ export class UtentiService {
     cognome: string;
     ruolo: Ruolo;
     password?: string;
+    percentualeLavoro?: number;
   }): Promise<Omit<Utente, 'passwordHash'>> {
     const passwordHash = data.password ? await hashPassword(data.password) : null;
 
@@ -39,6 +40,7 @@ export class UtentiService {
         nome: data.nome,
         cognome: data.cognome,
         ruolo: data.ruolo,
+        percentualeLavoro: data.percentualeLavoro,
         passwordHash,
       },
     });
@@ -54,6 +56,7 @@ export class UtentiService {
       cognome?: string;
       ruolo?: Ruolo;
       abilitatoBollettini?: boolean;
+      percentualeLavoro?: number;
     }
   ): Promise<Omit<Utente, 'passwordHash'>> {
     const utente = await this.prisma.utente.update({

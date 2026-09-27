@@ -30,6 +30,7 @@ interface BackupData {
     dreamClienti?: any[];
     dreamNoleggi?: any[];
     gicaNoleggi?: any[];
+    oreDovuteMesi?: any[];
   };
 }
 
@@ -97,6 +98,7 @@ export class BackupService {
           dreamClienti: await this.prisma.dreamCliente.findMany(),
           dreamNoleggi: await this.prisma.dreamNoleggio.findMany(),
           gicaNoleggi: await this.prisma.gicaNoleggio.findMany(),
+          oreDovuteMesi: await this.prisma.oreDovuteMese.findMany(),
         },
       };
 
@@ -238,6 +240,7 @@ export class BackupService {
       await tx.cliente.deleteMany();
       await tx.utente.deleteMany();
       await tx.configurazione.deleteMany();
+      await tx.oreDovuteMese.deleteMany();
 
       // Restore data (in order of dependencies)
       if (backupData.tables.utenti.length > 0) {
@@ -352,6 +355,13 @@ export class BackupService {
         stats.gicaNoleggi = gicaNoleggi.length;
       }
 
+      // I backup creati prima del Report Saldi Ore non hanno la sezione
+      const oreDovuteMesi = backupData.tables.oreDovuteMesi ?? [];
+      if (oreDovuteMesi.length > 0) {
+        await tx.oreDovuteMese.createMany({ data: oreDovuteMesi });
+        stats.oreDovuteMesi = oreDovuteMesi.length;
+      }
+
       // Reset sequences for PostgreSQL
       const tables = [
         'utenti',
@@ -373,6 +383,7 @@ export class BackupService {
         'dream_clienti',
         'dream_noleggi',
         'gica_noleggi',
+        'ore_dovute_mesi',
       ];
       for (const table of tables) {
         try {

@@ -29,7 +29,9 @@ export async function utentiRoutes(fastify: FastifyInstance) {
   });
 
   // Create user (responsabile only)
-  fastify.post<{ Body: { nome: string; cognome: string; ruolo: Ruolo; password?: string } }>('/', {
+  fastify.post<{
+    Body: { nome: string; cognome: string; ruolo: Ruolo; password?: string; percentualeLavoro?: number };
+  }>('/', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
     schema: {
       body: {
@@ -43,6 +45,7 @@ export async function utentiRoutes(fastify: FastifyInstance) {
           cognome: { type: 'string', minLength: 1 },
           ruolo: { type: 'string', enum: ['DIPENDENTE', 'RESPONSABILE'] },
           password: { type: 'string' },
+          percentualeLavoro: { type: 'integer', minimum: 0, maximum: 100 },
         },
       },
     },
@@ -54,7 +57,13 @@ export async function utentiRoutes(fastify: FastifyInstance) {
   // Update user (responsabile only)
   fastify.put<{
     Params: { id: string };
-    Body: { nome?: string; cognome?: string; ruolo?: Ruolo; abilitatoBollettini?: boolean };
+    Body: {
+      nome?: string;
+      cognome?: string;
+      ruolo?: Ruolo;
+      abilitatoBollettini?: boolean;
+      percentualeLavoro?: number;
+    };
   }>('/:id', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
     schema: {
@@ -66,6 +75,7 @@ export async function utentiRoutes(fastify: FastifyInstance) {
           cognome: { type: 'string', minLength: 1 },
           ruolo: { type: 'string', enum: ['DIPENDENTE', 'RESPONSABILE'] },
           abilitatoBollettini: { type: 'boolean' },
+          percentualeLavoro: { type: 'integer', minimum: 0, maximum: 100 },
         },
       },
     },
