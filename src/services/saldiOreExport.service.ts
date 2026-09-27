@@ -185,6 +185,20 @@ const P_FONT = 8;
 const P_PAD = 3;
 
 /**
+ * Pagina per dipendente, A4 verticale: le larghezze sommano a 545 come nella
+ * tabella del mese. Al massimo dodici mesi, quindi una pagina basta sempre.
+ */
+const D_COLUMNS: { header: string; width: number }[] = [
+  { header: 'Mese', width: 100 },
+  { header: '% lavoro', width: 60 },
+  { header: 'Ore dovute', width: 95 },
+  { header: 'Ore effettuate', width: 95 },
+  { header: 'Differenza', width: 90 },
+  { header: 'Saldo progressivo', width: 105 },
+];
+const D_TABLE_WIDTH = D_COLUMNS.reduce((tot, col) => tot + col.width, 0);
+
+/**
  * Nome di foglio valido per Excel: al massimo 31 caratteri, senza : \ / ? * [ ],
  * senza apostrofi in testa o in coda e unico senza distinzione di maiuscole.
  * Due omonimi diventano "Rossi Mario" e "Rossi Mario (2)".
@@ -317,12 +331,117 @@ export class SaldiOreExportService {
       );
 
       this.disegnaProspetto(doc, dati, meseKey);
+      this.disegnaDipendenti(doc, dati, meseKey);
 
       doc.end();
     });
   }
 
   /** Pagine orizzontali: una riga per dipendente, differenza di ogni mese e saldo. */
+  /**
+   * Una pagina per dipendente dopo il prospetto, come i fogli dell'Excel: una
+   * riga per mese da gennaio con percentuale, ore dovute ed effettuate,
+   * differenza e saldo progressivo. L'ultimo saldo e' quello del report.
+   */
+  private disegnaDipendenti(doc: PDFKit.PDFDocument, dati: SaldiOreMese, meseKey: string): void {
+    const anno = meseKey.slice(0, 4);
+
+    const riga = (
+      y: number,
+      testi: string[],
+      stile: { font?: string; fill?: string; colore?: string; segni?: (number | undefined)[] } = {}
+    ): number => {
+      if (stile.fill) doc.rect(PDF_MARGIN, y, D_TABLE_WIDTH, ROW_HEIGHT).fill(stile.fill);
+      doc.font(stile.font ?? 'Helvetica').fontSize(FONT_SIZE);
+
+      let x = PDF_MARGIN;
+      D_COLUMNS.forEach((col, i) => {
+        const segno = stile.segni?.[i];
+        doc.fillColor(stile.colore ?? (segno === undefined ? '#000000' : coloreSegno(segno)));
+        doc.text(testi[i] ?? '', x + CELL_PAD_X, y + CELL_PAD_Y, {
+          width: col.width - CELL_PAD_X * 2,
+          align: i === 0 ? 'left' : 'right',
+          lineBreak: false,
+        });
+        x += col.width;
+      });
+
+      doc.lineWidth(GRID_LINE_WIDTH).strokeColor(GRID_COLOR);
+      x = PDF_MARGIN;
+      D_COLUMNS.forEach((col) => {
+        doc.rect(x, y, col.width, ROW_HEIGHT).stroke();
+        x += col.width;
+      });
+      return y + ROW_HEIGHT;
+    };
+
+    dati.righe.forEach((r) => {
+      doc.addPage({ size: 'A4', margin: PDF_MARGIN });
+
+      doc.font('Helvetica-Bold').fontSize(14).fillColor('#000000');
+      doc.text(r.utenteNome, PDF_MARGIN, PDF_MARGIN, { width: D_TABLE_WIDTH, align: 'center' });
+      doc.font('Helvetica').fontSize(10).fillColor('#333333');
+      doc.text(`Saldi Ore ${anno} - da gennaio a ${titoloMese(meseKey).toLowerCase()}`, {
+        width: D_TABLE_WIDTH,
+        align: 'center',
+      });
+      doc.fontSize(8).fillColor('#666666');
+      doc.text('Ore effettuate senza assenze. % lavoro in vigore nel mese.', {
+        width: D_TABLE_WIDTH,
+        align: 'center',
+      });
+      if (dati.mesiSenzaOreDovute.length > 0) {
+        doc.fillColor(AMBRA_PDF).text(NOTA_ASTERISCO, { width: D_TABLE_WIDTH, align: 'center' });
+      }
+      doc.moveDown(0.8);
+
+      let y = riga(doc.y, D_COLUMNS.map((col) => col.header), {
+        font: 'Helvetica-Bold',
+        fill: '#333333',
+        colore: '#ffffff',
+      });
+
+      // Somma delle differenze arrotondate al minuto, come il report
+      let saldo = 0;
+      r.mensili.forEach((m, index) => {
+        saldo += m.differenzaMinuti;
+        const senzaDovute = dati.mesiSenzaOreDovute.includes(m.mese);
+        y = riga(
+          y,
+          [
+            `${NOMI_MESI[m.mese - 1]}${senzaDovute ? '*' : ''}`,
+            `${m.percentuale}%`,
+            formatDurata(m.dovutiMinuti),
+            formatDurata(m.effettuatiMinuti),
+            formatSaldo(m.differenzaMinuti),
+            formatSaldo(saldo),
+          ],
+          {
+            fill: index % 2 === 0 ? '#f5f5f5' : undefined,
+            segni: [undefined, undefined, undefined, undefined, m.differenzaMinuti, saldo],
+          }
+        );
+      });
+
+      riga(
+        y,
+        [
+          'TOTALE',
+          '',
+          formatDurata(r.mensili.reduce((t, m) => t + m.dovutiMinuti, 0)),
+          formatDurata(r.mensili.reduce((t, m) => t + m.effettuatiMinuti, 0)),
+          formatSaldo(r.saldoCumulativoMinuti),
+          formatSaldo(r.saldoCumulativoMinuti),
+        ],
+        {
+          font: 'Helvetica-Bold',
+          fill: '#e5e5e5',
+          segni: [undefined, undefined, undefined, undefined, r.saldoCumulativoMinuti, r.saldoCumulativoMinuti],
+        }
+      );
+    });
+  }
+
   private disegnaProspetto(doc: PDFKit.PDFDocument, dati: SaldiOreMese, meseKey: string): void {
     const intestazioni = intestazioniMesi(dati, meseKey);
     const mesi = intestazioni.length;
@@ -345,7 +464,16 @@ export class SaldiOreExportService {
         const w = colonne[i] as number;
         const segno = stile.segni?.[i];
         doc.fillColor(stile.colore ?? (segno === undefined ? '#000000' : coloreSegno(segno)));
-        doc.text(t, x + P_PAD, y + P_PAD + 1, {
+        // Un valore piu' largo della colonna ("+283h 24m" in grassetto) pdfkit
+        // lo manderebbe a capo sullo spazio, fuori dalla cella: si rimpicciolisce
+        // il carattere della sola cella. Il nome resta com'e', coi puntini
+        let size = P_FONT;
+        doc.fontSize(size);
+        while (i > 0 && size > 5 && doc.widthOfString(t) > w - P_PAD * 2) {
+          size -= 0.5;
+          doc.fontSize(size);
+        }
+        doc.text(t, x + P_PAD, y + P_PAD + 1 + (P_FONT - size) / 2, {
           width: w - P_PAD * 2,
           align: i === 0 ? 'left' : 'right',
           lineBreak: false,

@@ -2642,6 +2642,22 @@ mesi senza ore dovute con l'asterisco e la nota. Il PDF non cambia.
 
 ---
 
+### Report Saldi Ore: una pagina per dipendente nel PDF (28 Settembre 2026)
+
+Il PDF del Report Saldi Ore ha ora, dopo il prospetto, **una pagina A4 verticale per ogni
+dipendente**, con lo stesso contenuto dei fogli per dipendente dell'Excel. Ogni pagina ha il
+nome come titolo e una riga per mese da gennaio al mese scelto: % lavoro, ore dovute, ore
+effettuate, differenza e saldo progressivo, più la riga TOTALE. Le ore sono in `137h 46m`,
+differenza e saldo verdi o rossi, i mesi senza ore dovute con l'asterisco. L'ultimo saldo
+progressivo coincide col saldo cumulativo del report (`disegnaDipendenti`).
+
+**Correzione nel prospetto del PDF:** un valore più largo della colonna del mese (47pt), per
+esempio un totale in grassetto come `+283h 24m`, veniva mandato a capo da pdfkit sullo spazio e
+usciva dalla cella, nonostante `lineBreak: false`. Ora quella sola cella riduce il carattere
+finché il testo ci sta (minimo 5pt). La colonna del nome resta invariata, con i puntini.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
