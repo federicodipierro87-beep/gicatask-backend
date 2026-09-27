@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { AttivitaService } from '../services/attivita.service.js';
 import { ExportService } from '../services/export.service.js';
+import { SaldiOreService } from '../services/saldiOre.service.js';
 import type { GruppoReport, ReportFilters } from '../services/export.service.js';
 import { nomeUtente } from '../utils/nomeUtente.js';
 import type { JwtPayload } from '../types/index.js';
@@ -68,6 +69,7 @@ export function periodoPerNomeFile(startDate?: string, endDate?: string): string
 export async function attivitaRoutes(fastify: FastifyInstance) {
   const service = new AttivitaService(fastify.prisma);
   const exportService = new ExportService();
+  const saldiOreService = new SaldiOreService(fastify.prisma);
 
   // Get activities for current user (dipendente) or all (responsabile)
   fastify.get('/', {
@@ -365,6 +367,27 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="${filename}"`)
       .send(excelBuffer);
+  });
+
+  // Report Saldi Ore del mese (responsabile only)
+  fastify.get('/saldi-ore', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const user = request.user as JwtPayload;
+
+    if (user.ruolo !== 'RESPONSABILE') {
+      return reply.status(403).send({ error: 'Non autorizzato' });
+    }
+
+    const { mese } = request.query as { mese?: string };
+
+    try {
+      const righe = await saldiOreService.getMese(mese ?? '');
+      return reply.send(righe);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Errore';
+      return reply.status(400).send({ error: message });
+    }
   });
 
   // Statistics endpoint (responsabile only)

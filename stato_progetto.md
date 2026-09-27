@@ -2359,6 +2359,39 @@ manda più.
 
 ---
 
+### Report Saldi Ore (27 Settembre 2026)
+
+La pagina **Report** (`/responsabile/report`) ha ora due schede: **Report Attività** (quello di
+sempre) e **Report Saldi Ore**. Le due schede restano entrambe montate e si nascondono con
+`hidden`: passando da una all'altra i filtri del Report Attività non si perdono.
+
+Il Report Saldi Ore si sfoglia **per mese** col `MonthNavigator` e ha una riga per dipendente con
+una riga di totale in fondo:
+
+| Colonna | Calcolo |
+|---|---|
+| Dipendente | cognome e nome |
+| Ore dovute | **0 per ora**: arriveranno da una tabella dedicata |
+| Ore effettuate | somma di `durata_minuti` del mese, **solo lavoro** (`assenza_id IS NULL`) |
+| Differenza | effettuate − dovute: positiva = il dipendente è a credito |
+| Saldo cumulativo | somma delle differenze **da gennaio** al mese scelto; si azzera a ogni anno |
+
+Differenza e saldo sono verdi se positivi e rossi se negativi.
+
+- **Backend:** `GET /api/attivita/saldi-ore?mese=YYYY-MM`, solo responsabile, logica in
+  `saldiOre.service.ts`. Due `groupBy` sullo stesso filtro, uno sul mese e uno da gennaio. Un mese
+  malformato dà un 400.
+- **Chi compare:** tutti i dipendenti attivi, anche a zero ore, perché con le ore dovute un mese
+  vuoto è un saldo negativo. Responsabili e utenti disattivati compaiono solo se hanno ore di
+  lavoro nell'anno. Ordine: ruolo, cognome, nome, come nelle tendine.
+- **Le assenze sono escluse** dalle ore effettuate, comprese quelle da giornata piena (Vacanza,
+  Malattia): toccherà alle ore dovute tenerne conto. Il *Recupero ore* non richiede un caso a
+  parte: quel giorno non ci sono ore di lavoro e il saldo scende da solo.
+- **Ore dovute:** l'unico punto da riscrivere è `minutiDovuti(utenteId, anno, mese)` in
+  `saldiOre.service.ts`. Il saldo cumulativo la somma già mese per mese.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
@@ -2483,6 +2516,7 @@ frontend/
 │   │       ├── ClienteDetailPage.tsx
 │   │       ├── UtentiPage.tsx
 │   │       ├── ReportPage.tsx
+│   │       ├── SaldiOreReport.tsx
 │   │       ├── AssegnaAttivitaPage.tsx
 │   │       ├── BackupPage.tsx
 │   │       ├── ImportPage.tsx
