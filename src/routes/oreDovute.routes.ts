@@ -1,9 +1,19 @@
 import { FastifyInstance } from 'fastify';
 import { OreDovuteService, annoValido } from '../services/oreDovute.service.js';
 import type { MeseOreDovute } from '../services/oreDovute.service.js';
+import { OreDovuteExportService } from '../services/oreDovuteExport.service.js';
+
+const FORMATI = {
+  pdf: { contentType: 'application/pdf', estensione: 'pdf' },
+  excel: {
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    estensione: 'xlsx',
+  },
+} as const;
 
 export async function oreDovuteRoutes(fastify: FastifyInstance) {
   const service = new OreDovuteService(fastify.prisma);
+  const exportService = new OreDovuteExportService();
 
   // Ore dovute dei dodici mesi di un anno (responsabile only)
   fastify.get<{ Params: { anno: string } }>('/:anno', {
@@ -15,6 +25,33 @@ export async function oreDovuteRoutes(fastify: FastifyInstance) {
     }
 
     return reply.send(await service.getAnno(anno));
+  });
+
+  // Export PDF/Excel dei dati salvati di un anno (responsabile only). L'anno e'
+  // validato prima di finire nel nome del file, nell'header Content-Disposition
+  fastify.get<{ Params: { anno: string; formato: string } }>('/:anno/export/:formato', {
+    preHandler: [fastify.requireRole('RESPONSABILE')],
+  }, async (request, reply) => {
+    const anno = Number(request.params.anno);
+    if (!annoValido(anno)) {
+      return reply.status(400).send({ error: 'Anno non valido' });
+    }
+
+    const formato = request.params.formato;
+    if (formato !== 'pdf' && formato !== 'excel') {
+      return reply.status(404).send({ error: 'Formato non supportato' });
+    }
+
+    const dati = await service.getAnno(anno);
+    const buffer = formato === 'pdf'
+      ? await exportService.generaPdf(dati, anno)
+      : await exportService.generaExcel(dati, anno);
+    const cfg = FORMATI[formato];
+
+    return reply
+      .header('Content-Type', cfg.contentType)
+      .header('Content-Disposition', `attachment; filename="ore-dovute-${anno}.${cfg.estensione}"`)
+      .send(buffer);
   });
 
   // Salva le ore dovute di un anno (responsabile only)

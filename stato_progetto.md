@@ -2524,6 +2524,25 @@ precedenti.
 
 ---
 
+### Ore dovute: export PDF ed Excel (28 Settembre 2026)
+
+In fondo alla pagina **Ore dovute** ci sono i pulsanti **Esporta Excel** ed **Esporta PDF** per
+l'anno mostrato. I file si chiamano `ore-dovute-2026.pdf` / `.xlsx`.
+
+- Contenuto: i 12 mesi a tempo pieno (quelli non impostati in arancione, con la scritta "non
+  impostato"), la **somma dei mesi**, le **ore annue** e l'esito del controllo incrociato, con
+  gli stessi messaggi della pagina.
+- **PDF** A4 verticale, tabella centrata a due colonne, ore in `ore:minuti`.
+- **Excel**: per ogni mese le ore in `ore:minuti` come testo e in **ore decimali** come numero
+  (172:12 = 172,20), così si possono usare nei calcoli.
+- **L'export legge i dati salvati**, non i campi. Con modifiche non salvate i pulsanti sono
+  disattivati e compare "Salva le modifiche per esportare": il file corrisponde sempre a quello
+  che si vede.
+- Backend: `GET /api/ore-dovute/:anno/export/pdf|excel`, solo responsabile, in
+  `oreDovuteExport.service.ts`. L'anno viene validato prima di finire nel nome del file.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
