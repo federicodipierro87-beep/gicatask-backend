@@ -2658,6 +2658,17 @@ finché il testo ci sta (minimo 5pt). La colonna del nome resta invariata, con i
 
 ---
 
+### Ore dovute: una pagina per dipendente nel PDF (28 Settembre 2026)
+
+Il PDF della pagina **Ore dovute** ha ora, dopo il prospetto, **una pagina A4 verticale per ogni
+dipendente**. Il titolo è il nome, e c'è una riga per ciascuno dei 12 mesi con **ore a tempo
+pieno**, **% lavoro** in vigore quel mese e **ore dovute**, più la riga TOTALE. I mesi non
+impostati sono in arancione, con "non impostato" e `-` nelle ore dovute. Il totale coincide con
+quello del prospetto (`disegnaDipendenti` in `oreDovuteExport.service.ts`, sugli stessi dati di
+`getProspetto`). L'Excel non cambia: ha già il foglio *Per dipendente*.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.

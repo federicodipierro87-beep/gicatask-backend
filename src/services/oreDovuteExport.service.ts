@@ -129,6 +129,18 @@ const P_FONT_NOTA = 6.5;
 const P_PAD = 3;
 const P_MIN_ROW = 15;
 
+/**
+ * Pagina per dipendente, A4 verticale: 545pt di tabella. Dodici righe al
+ * massimo, quindi una pagina basta sempre.
+ */
+const D_COLUMNS: { header: string; width: number }[] = [
+  { header: 'Mese', width: 160 },
+  { header: 'Ore a tempo pieno', width: 130 },
+  { header: '% lavoro', width: 100 },
+  { header: 'Ore dovute', width: 155 },
+];
+const D_TABLE_WIDTH = D_COLUMNS.reduce((tot, col) => tot + col.width, 0);
+
 export class OreDovuteExportService {
   async generaPdf(dati: OreDovuteAnno, prospetto: RigaProspetto[], anno: number): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -210,12 +222,97 @@ export class OreDovuteExportService {
       }
 
       this.disegnaProspetto(doc, dati, prospetto, anno);
+      this.disegnaDipendenti(doc, dati, prospetto, anno);
 
       doc.end();
     });
   }
 
   /** Pagine orizzontali con una riga per dipendente e una colonna per mese. */
+  /**
+   * Una pagina per dipendente dopo il prospetto: per ogni mese le ore a tempo
+   * pieno, la percentuale in vigore e le ore dovute che ne risultano.
+   */
+  private disegnaDipendenti(
+    doc: PDFKit.PDFDocument,
+    dati: OreDovuteAnno,
+    righe: RigaProspetto[],
+    anno: number
+  ): void {
+    const riga = (
+      y: number,
+      testi: string[],
+      stile: { font?: string; fill?: string; colore?: string; colori?: (string | undefined)[] } = {}
+    ): number => {
+      if (stile.fill) doc.rect(PDF_MARGIN, y, D_TABLE_WIDTH, ROW_HEIGHT).fill(stile.fill);
+      doc.font(stile.font ?? 'Helvetica').fontSize(FONT_SIZE);
+
+      let x = PDF_MARGIN;
+      D_COLUMNS.forEach((col, i) => {
+        doc.fillColor(stile.colore ?? stile.colori?.[i] ?? '#000000');
+        doc.text(testi[i] ?? '', x + CELL_PAD_X, y + CELL_PAD_Y, {
+          width: col.width - CELL_PAD_X * 2,
+          align: i === 0 ? 'left' : 'right',
+          lineBreak: false,
+        });
+        x += col.width;
+      });
+
+      doc.lineWidth(0.5).strokeColor(GRID_COLOR);
+      x = PDF_MARGIN;
+      D_COLUMNS.forEach((col) => {
+        doc.rect(x, y, col.width, ROW_HEIGHT).stroke();
+        x += col.width;
+      });
+      return y + ROW_HEIGHT;
+    };
+
+    righe.forEach((r) => {
+      doc.addPage({ size: 'A4', margin: PDF_MARGIN });
+
+      doc.font('Helvetica-Bold').fontSize(14).fillColor('#000000');
+      doc.text(r.utenteNome, PDF_MARGIN, PDF_MARGIN, { width: D_TABLE_WIDTH, align: 'center' });
+      doc.font('Helvetica').fontSize(10).fillColor('#333333');
+      doc.text(`Ore dovute ${anno}`, { width: D_TABLE_WIDTH, align: 'center' });
+      doc.fontSize(8).fillColor('#666666');
+      doc.text('Ore a tempo pieno del mese x percentuale di lavoro in vigore nel mese.', {
+        width: D_TABLE_WIDTH,
+        align: 'center',
+      });
+      doc.moveDown(0.8);
+
+      let y = riga(doc.y, D_COLUMNS.map((col) => col.header), {
+        font: 'Helvetica-Bold',
+        fill: '#333333',
+        colore: '#ffffff',
+      });
+
+      dati.mesi.forEach((m, i) => {
+        const impostato = m.minuti !== null;
+        const dovuti = r.minuti[i];
+        y = riga(
+          y,
+          [
+            NOMI_MESI[m.mese - 1] ?? String(m.mese),
+            impostato ? formatOre(m.minuti as number) : 'non impostato',
+            `${r.percentuali[i] ?? 100}%`,
+            dovuti == null ? '-' : formatOre(dovuti),
+          ],
+          {
+            fill: i % 2 === 0 ? '#f5f5f5' : undefined,
+            colori: impostato ? undefined : [AMBRA, AMBRA, undefined, AMBRA],
+          }
+        );
+      });
+
+      riga(
+        y,
+        ['TOTALE', formatOre(riepilogo(dati).sommaMesi), '', formatOre(r.totale)],
+        { font: 'Helvetica-Bold', fill: '#e5e5e5' }
+      );
+    });
+  }
+
   private disegnaProspetto(
     doc: PDFKit.PDFDocument,
     dati: OreDovuteAnno,
