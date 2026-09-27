@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { AttivitaService } from '../services/attivita.service.js';
 import { ExportService } from '../services/export.service.js';
 import { SaldiOreService } from '../services/saldiOre.service.js';
+import { SaldiOreExportService } from '../services/saldiOreExport.service.js';
 import type { GruppoReport, ReportFilters } from '../services/export.service.js';
 import { nomeUtente } from '../utils/nomeUtente.js';
 import type { JwtPayload } from '../types/index.js';
@@ -70,6 +71,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
   const service = new AttivitaService(fastify.prisma);
   const exportService = new ExportService();
   const saldiOreService = new SaldiOreService(fastify.prisma);
+  const saldiOreExportService = new SaldiOreExportService();
 
   // Get activities for current user (dipendente) or all (responsabile)
   fastify.get('/', {
@@ -389,6 +391,50 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: message });
     }
   });
+
+  // Export del Report Saldi Ore (responsabile only). `getMese` valida il mese
+  // prima che finisca nel nome del file, quindi nell'header Content-Disposition
+  const FORMATI_SALDI_ORE = {
+    pdf: {
+      contentType: 'application/pdf',
+      estensione: 'pdf',
+      genera: saldiOreExportService.generaPdf.bind(saldiOreExportService),
+    },
+    excel: {
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      estensione: 'xlsx',
+      genera: saldiOreExportService.generaExcel.bind(saldiOreExportService),
+    },
+  } as const;
+
+  for (const [formato, cfg] of Object.entries(FORMATI_SALDI_ORE)) {
+    fastify.get(`/saldi-ore/export/${formato}`, {
+      preHandler: [fastify.authenticate],
+    }, async (request, reply) => {
+      const user = request.user as JwtPayload;
+
+      if (user.ruolo !== 'RESPONSABILE') {
+        return reply.status(403).send({ error: 'Non autorizzato' });
+      }
+
+      const { mese } = request.query as { mese?: string };
+
+      let dati;
+      try {
+        dati = await saldiOreService.getMese(mese ?? '');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Errore';
+        return reply.status(400).send({ error: message });
+      }
+
+      const buffer = await cfg.genera(dati, mese as string);
+
+      return reply
+        .header('Content-Type', cfg.contentType)
+        .header('Content-Disposition', `attachment; filename="saldi-ore-${mese}.${cfg.estensione}"`)
+        .send(buffer);
+    });
+  }
 
   // Statistics endpoint (responsabile only)
   fastify.get('/stats', {

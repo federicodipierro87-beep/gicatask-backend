@@ -2464,6 +2464,26 @@ Saldi Ore usa solo i mesi.
 
 ---
 
+### Report Saldi Ore: export PDF ed Excel (28 Settembre 2026)
+
+Nella scheda **Report Saldi Ore** ci sono i pulsanti **Esporta Excel** ed **Esporta PDF**, come nel
+Report Attività. Esportano il mese mostrato. Il file si chiama `saldi-ore-2026-09.pdf` / `.xlsx`.
+
+- **PDF** (A4 verticale, stesso stile del Report Gica): titolo, mese, una riga di spiegazione del
+  calcolo e, se ci sono, l'avviso dei mesi senza ore dovute. La tabella ha le stesse colonne della
+  pagina, con la percentuale accanto al nome quando non è 100, e una riga TOTALE. Le ore sono nel
+  formato della pagina (`144h 19m`). Differenza e saldo sono in verde se positivi e in rosso se
+  negativi, con il `+` sui crediti.
+- **Excel**: ha le stesse informazioni, più una colonna *% lavoro*. **Le ore sono numeri
+  decimali** (8h 30m = 8,50) e non durate di Excel, perché col formato `[h]:mm` i saldi negativi
+  uscirebbero come `####`. Così restano anche sommabili. Differenza e saldo hanno un formato
+  numerico con `+`, verde e rosso.
+- Backend: `GET /api/attivita/saldi-ore/export/pdf|excel?mese=YYYY-MM`, solo responsabile, in
+  `saldiOreExport.service.ts`. I dati sono quelli di `SaldiOreService.getMese`, quindi pagina ed
+  export non possono divergere. Il mese viene validato prima di finire nel nome del file.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
