@@ -2607,6 +2607,23 @@ Prospetto gen–<mese>**.
 
 ---
 
+### Ore dovute: prospetto per dipendente nella pagina (28 Settembre 2026)
+
+Sotto il modulo dei mesi, la pagina **Ore dovute** ha una seconda card a tutta larghezza,
+**Prospetto per dipendente**, con la stessa griglia degli export: una riga per dipendente, i 12
+mesi e il Totale, più la riga Totale in fondo.
+
+- Ore in `ore:minuti`, `–` per i mesi non impostati (intestazione in arancione). Sotto il nome
+  compare la percentuale quando non è 100% tutto l'anno ("gen-giu 80%, lug-dic 60%").
+  `descriviPercentuali` è una copia di quella dell'export PDF. La colonna del nome resta ferma
+  mentre la tabella scorre.
+- **Si calcola dai dati salvati**, come gli export. Dopo un salvataggio si ricarica da solo. Con
+  modifiche in sospeso la card lo segnala ("salva per aggiornarlo").
+- Backend: nuovo `GET /api/ore-dovute/:anno/prospetto` (solo responsabile), che restituisce
+  `OreDovuteService.getProspetto`: è lo stesso calcolo del prospetto negli export.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.

@@ -27,6 +27,19 @@ export async function oreDovuteRoutes(fastify: FastifyInstance) {
     return reply.send(await service.getAnno(anno));
   });
 
+  // Ore dovute di ciascun dipendente mese per mese, dai dati salvati
+  // (responsabile only). Stesso calcolo del prospetto negli export
+  fastify.get<{ Params: { anno: string } }>('/:anno/prospetto', {
+    preHandler: [fastify.requireRole('RESPONSABILE')],
+  }, async (request, reply) => {
+    const anno = Number(request.params.anno);
+    if (!annoValido(anno)) {
+      return reply.status(400).send({ error: 'Anno non valido' });
+    }
+
+    return reply.send(await service.getProspetto(anno));
+  });
+
   // Export PDF/Excel dei dati salvati di un anno (responsabile only). L'anno e'
   // validato prima di finire nel nome del file, nell'header Content-Disposition
   fastify.get<{ Params: { anno: string; formato: string } }>('/:anno/export/:formato', {
