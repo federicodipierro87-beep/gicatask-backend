@@ -2434,10 +2434,33 @@ Le **ore dovute** del Report Saldi Ore non valgono più zero. Si calcolano così
 - **Le assenze non riducono le ore dovute.** Restano escluse dalle ore effettuate, quindi un
   giorno di Vacanza o Malattia fa scendere il saldo. Questa scelta sostituisce l'ipotesi della
   voce precedente, secondo cui le assenze sarebbero state scalate dalle ore dovute.
-- Il controllo incrociato con le **ore annuali** da inserire a mano non c'è ancora: per ora la
-  pagina mostra solo il totale dei 12 mesi.
+- Il controllo incrociato con le **ore annuali** è arrivato con la voce successiva.
 - Backup: `oreDovuteMesi` entra nel dump, nel ripristino e nel reset delle sequence. I backup
   precedenti restano ripristinabili e gli utenti riprendono `percentuale_lavoro` = 100.
+
+---
+
+### Ore dovute: controllo incrociato con le ore annue (28 Settembre 2026)
+
+Nella pagina **Ore dovute** c'è un campo nuovo, **Ore annue**, sopra i dodici mesi. Si compila a
+mano a inizio anno, con le ore di un tempo pieno e lo stesso formato dei mesi. In fondo alla
+pagina il controllo confronta le ore annue con la somma dei mesi:
+
+- ✓ verde se coincidono;
+- in giallo *"Mancano X per arrivare alle ore annue"* se i mesi non ci arrivano, oppure *"La
+  somma dei mesi supera le ore annue di X"* se le superano;
+- se le ore annue non sono impostate, un invito a inserirle.
+
+**È un avviso, non un vincolo:** il salvataggio resta sempre possibile, perché i mesi si possono
+inserire anche un po' alla volta. **Le ore annue non entrano nel calcolo del saldo**: il Report
+Saldi Ore usa solo i mesi.
+
+- Schema (solo aggiunte): tabella nuova `ore_dovute_anni` (`anno` unico, `minuti`).
+- API: `GET /api/ore-dovute/:anno` ora restituisce `{ mesi, minutiAnnui }` invece dell'array dei
+  mesi. `PUT` accetta `minutiAnnui`: un valore crea o aggiorna, `null` cancella, assente lascia
+  com'è. Mesi e ore annue si salvano nella stessa transazione.
+- Nei campi si possono scrivere fino a 4 cifre di ore (`2132:00`), per far stare il totale annuo.
+- Backup: `oreDovuteAnni` entra nel dump, nel ripristino e nel reset delle sequence.
 
 ---
 

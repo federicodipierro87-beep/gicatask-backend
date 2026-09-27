@@ -231,6 +231,18 @@ model OreDovuteMese {
   @@map("ore_dovute_mesi")
 }
 
+/// Ore annue a tempo pieno, inserite a mano a inizio anno: servono da
+/// controllo incrociato con la somma dei dodici mesi di `ore_dovute_mesi`.
+/// Non entrano nel calcolo del saldo.
+model OreDovuteAnno {
+  id        Int      @id @default(autoincrement())
+  anno      Int      @unique
+  minuti    Int
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ore_dovute_anni")
+}
+
 model BackupLog {
   id         Int         @id @default(autoincrement())
   filename   String

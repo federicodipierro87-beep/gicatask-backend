@@ -18,7 +18,10 @@ export async function oreDovuteRoutes(fastify: FastifyInstance) {
   });
 
   // Salva le ore dovute di un anno (responsabile only)
-  fastify.put<{ Params: { anno: string }; Body: { mesi: MeseOreDovute[] } }>('/:anno', {
+  fastify.put<{
+    Params: { anno: string };
+    Body: { mesi: MeseOreDovute[]; minutiAnnui?: number | null };
+  }>('/:anno', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
     schema: {
       body: {
@@ -37,6 +40,7 @@ export async function oreDovuteRoutes(fastify: FastifyInstance) {
               },
             },
           },
+          minutiAnnui: { type: ['integer', 'null'] },
         },
       },
     },
@@ -47,7 +51,7 @@ export async function oreDovuteRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      return reply.send(await service.salvaAnno(anno, request.body.mesi));
+      return reply.send(await service.salvaAnno(anno, request.body.mesi, request.body.minutiAnnui));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Errore';
       return reply.status(400).send({ error: message });
