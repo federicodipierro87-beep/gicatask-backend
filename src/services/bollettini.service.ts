@@ -411,13 +411,11 @@ export class BollettiniService {
     const intestazione = risolviFasce(input.fasce, 'Orari');
 
     // Le ore della riga si calcolano qui e non si prendono dal client: il
-    // totale stampato sul documento firmato deve tornare con gli orari
+    // totale stampato sul documento firmato deve tornare con gli orari.
+    // Gli orari sono facoltativi: una riga senza fasce vale 0 ore
     const squadre = input.squadre
       ? input.squadre.map((s, i) => {
           const { fasce, minuti } = risolviFasce(s, `Operai, riga ${i + 1}`);
-          if (minuti === 0) {
-            throw new Error(`Operai, riga ${i + 1}: indica almeno una fascia oraria`);
-          }
           return {
             ...fasce,
             numeroOperai: s.numeroOperai,

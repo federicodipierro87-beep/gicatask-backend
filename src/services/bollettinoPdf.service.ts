@@ -338,7 +338,11 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
       'Operai',
       'Ore',
       b.squadre.map((s) => ({
-        descrizione: `${s.numeroOperai} ${s.numeroOperai === 1 ? 'operaio' : 'operai'} · ${fasceTesto(s)}`,
+        // Gli orari sono facoltativi: senza, resta il solo numero di operai
+        descrizione: [
+          `${s.numeroOperai} ${s.numeroOperai === 1 ? 'operaio' : 'operai'}`,
+          fasceTesto(s),
+        ].filter(Boolean).join(' · '),
         quantita: s.ore,
       })),
       y,

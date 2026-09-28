@@ -2802,6 +2802,21 @@ futuro il riepilogo non c'è.
   prospetto. `formatOre` della pagina ora gestisce i negativi: un totale con le assenze può
   esserlo per via dei Recupero ore.
 
+### Bollettino: orari solo nelle righe degli operai, e facoltativi (28 Settembre 2026)
+
+Nel form **Nuovo Bollettino** non ci sono più le fasce Mattino/Pomeriggio in testa, tra Data e
+Cliente. Gli orari restano solo nel riquadro **Operai**. In ogni riga vengono prima le fasce e poi
+**N. operai**, e sono **facoltativi**: una riga senza orari vale 0 ore. Una fascia iniziata va
+comunque completata con inizio e fine diversi.
+
+- Frontend: `BollettinoFormPage` non manda più `fasce` (in `CreateBollettinoInput` è diventato
+  opzionale). `SquadreSelector` perde `segueIntestazione`/`fasceIntestazione`: il "+" aggiunge una
+  riga con orari vuoti. `problemaRiga` non chiede più almeno una fascia. Le ore della riga compaiono
+  solo se ci sono orari. `FasceOrarieInput` mostra "(opzionale)" anche nella versione compatta.
+- Backend: `create()` non rifiuta più una squadra senza fasce (ore = 0). Le fasce di testata
+  restano accettate per i client vecchi. Nel PDF, una riga operai senza orari mostra solo
+  "N operai", senza il separatore.
+
 ---
 
 ## Progetto Completato
