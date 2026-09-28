@@ -2933,6 +2933,69 @@ sulla pagina corrente (o sull'ultima, se quella si è svuotata).
 
 Frontend: nuovo componente `Pagination.tsx`, con l'hook `usePagination(items, pageSize, resetKey)`.
 
+### Import: vecchi lavori da prima di GicaTask (28 Settembre 2026)
+
+La pagina **Import** ha una seconda sezione, *Importa vecchi lavori*, che carica le attività
+registrate nel vecchio foglio Excel (`import_vecchi_lavori.xlsx`, foglio `2026`, gennaio–agosto:
+958 righe). Ogni riga del foglio diventa un'attività. Le colonne si riconoscono dall'intestazione,
+non dalla posizione, e si leggono tutti i fogli che la contengono:
+
+| Colonna del vecchio foglio | Campo di `attivita` |
+|---|---|
+| DATA | `dataRiferimento` |
+| EFFETTUATO DA | `utenteId` (abbinamento scelto dal responsabile) |
+| Mattina inizio / fine | `oraInizioMattino` / `oraFineMattino` |
+| Pomeriggio inizio / fine | `oraInizioPomeriggio` / `oraFinePomeriggio` |
+| hh:mm, Tot ore | non usate: `durataMinuti` si ricalcola dalle fasce |
+| ATTIVITA' SVOLTA | `tipoAttivitaId` (esistente, nuovo o nessuno) |
+| CLIENTE | `clienteId` (esistente, nuovo o nessuno) |
+| DESCRIZIONE ATTIVITÀ, Trasporto, Luogo montaggio | `note`, una riga ciascuna (`Trasporto: …`, `Luogo montaggio: …`) |
+
+`cantiereId` resta vuoto: il foglio non ha cantieri, e *Luogo montaggio* è testo libero.
+
+**Due passi, nessuno stato sul server.** `POST /api/import/vecchi-lavori/analisi` legge il file e
+restituisce, per dipendenti, clienti e tipi, i valori raggruppati per chiave normalizzata
+(minuscole, senza accenti, spazi e punteggiatura: "Er Noleggio", "ER Noleggio " e "ER Noleggio"
+sono una voce sola) con un abbinamento proposto. Il responsabile lo rivede nella pagina, poi
+`POST /api/import/vecchi-lavori/importa` riceve **di nuovo il file** più il campo `mappatura`
+(JSON) e crea tutto in una transazione, con `createMany`. Solo RESPONSABILE.
+
+**Scelte per voce.** Dipendente: un utente esistente oppure *Non importare queste righe*; il
+dipendente non si crea dall'import (va creato in Utenti, eventualmente disattivato). Cliente e
+tipo: esistente, *Crea nuovo* (nome modificabile), *Nessuno*, oppure non importare. Le righe senza
+cliente (518 su 958) sono lavori interni e sono proposte su **GiCa** (creato se manca). Le voci nuove
+con lo stesso nome a meno di maiuscole diventano una sola, e se esiste già un cliente/tipo con
+quel nome si riusa. Un cliente o tipo lasciato a *Nessuno* finisce nelle note, per non perdere il
+valore del foglio.
+
+**Abbinamenti proposti.** Uguaglianza della chiave, poi prefisso, poi una lettera di differenza
+(Levenshtein ≤ 1: "Richy"/"Ricky", "Trasporto"/"Trasporti"). Per i dipendenti il prefisso vale anche
+a metà parola, per i soprannomi ("Benj" → "Benjamin"); per clienti e tipi solo a parola intera,
+altrimenti "Lea" diventerebbe "Leandro". Una voce senza corrispondenza è proposta come nuova; se
+è a una lettera da una voce più frequente dello stesso file ne prende il nome, così "Trasporto" e
+"Trasporti" diventano un solo tipo.
+
+**Fasce orarie.** Ore come orario Excel, testo `HH:MM` o `HH.MM` ("16.30" c'era). Con il solo
+inizio del mattino e la sola fine del pomeriggio (tredici giornate senza pausa) la giornata
+diventa **una fascia mattino unica**, 07:30–18:00: così la durata è giusta, e il Tot ore del foglio
+lo conferma. Una mezza fascia orfana è ignorata con un avviso. Su tutto il file la durata
+ricalcolata coincide con il Tot ore, tranne le righe 738 (Tot ore sbagliato) e 801–802
+(`#VALUE!`).
+
+**Giorni già presenti.** Se un dipendente ha già attività nel portale in un giorno, i suoi vecchi
+lavori di quel giorno **non si caricano**, e quelle esistenti non si toccano: il portale vince sul
+foglio, senza sovrapporre né sostituire. Il controllo è per dipendente e giorno, non per orari. Così
+anche ricaricare lo stesso file non duplica nulla, e la pagina dice in anticipo quante righe cadono
+in giorni già presenti. Dentro il file, invece, più righe dello stesso giorno sono normali; solo tre
+coppie hanno anche gli stessi orari (165/167 identiche, 229/230 e 470/477 con descrizioni diverse):
+la seconda riga è saltata e segnalata negli avvisi, perché conterebbe due volte le stesse ore.
+
+**Righe scartate.** Senza data valida, senza dipendente o senza nessuna fascia completa. Nel file
+sono solo le tre righe del riepilogo in fondo al foglio (961–963).
+
+Backend: nuovo `importStorico.service.ts`. Frontend: nuovo `ImportVecchiLavori.tsx`, montato in
+fondo a `ImportPage`.
+
 ---
 
 ## Progetto Completato
@@ -2967,7 +3030,7 @@ backend/
 │   │   ├── utenti.routes.ts   # CRUD utenti
 │   │   ├── attivita.routes.ts # CRUD attività + export
 │   │   ├── backup.routes.ts   # Backup/ripristino
-│   │   ├── import.routes.ts   # Import massivo Excel
+│   │   ├── import.routes.ts   # Import massivo Excel + vecchi lavori
 │   │   ├── bollettini.routes.ts # CRUD bollettini + PDF
 │   │   ├── vociBollettino.routes.ts # Anagrafiche mezzi/materiali/trasporti
 │   │   ├── calendarioEventi.routes.ts # CRUD eventi + export Excel
@@ -2991,6 +3054,7 @@ backend/
 │   │   ├── dreamVeicoli.service.ts  # CRUD veicoli Dream
 │   │   ├── export.service.ts    # Generazione PDF/Excel
 │   │   ├── import.service.ts    # Import massivo da Excel
+│   │   ├── importStorico.service.ts # Import vecchi lavori (foglio pre-GicaTask)
 │   │   ├── scheduler.service.ts # Cron: backup 2:00, allegati orfani 2:30
 │   │   ├── seed.service.ts      # Tipi assenza di default + pulizia generici
 │   │   ├── tipiAssenza.service.ts  # CRUD tipi assenza
@@ -3069,6 +3133,7 @@ frontend/
 │   │       ├── AssegnaAttivitaPage.tsx
 │   │       ├── BackupPage.tsx
 │   │       ├── ImportPage.tsx
+│   │       ├── ImportVecchiLavori.tsx # Sezione vecchi lavori della pagina Import
 │   │       ├── CantieriPage.tsx      # Gestione cantieri
 │   │       ├── TipiAttivitaPage.tsx  # Gestione tipi attività
 │   │       ├── TipiAssenzaPage.tsx   # Gestione tipi assenza
