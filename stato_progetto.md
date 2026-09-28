@@ -2922,6 +2922,17 @@ di cessazione. Un errore del server compare nel riquadro rosso della pagina.
 Gli altri `confirm()` del portale hanno lo stesso punto debole, ma per ora nessuno li ha
 segnalati.
 
+### Dettaglio Attività a pagine da 30 (28 Settembre 2026)
+
+Nella **Dashboard** e nel **Report Attività** del responsabile la tabella *Dettaglio Attività*
+mostra 30 righe per pagina, con *«*, *‹ Prec.*, *Succ. ›*, *»* e l'indicazione "1–30 di N".
+Sotto le 30 righe la barra non compare. La paginazione è solo lato client: l'API restituisce
+ancora tutte le attività del periodo, e contatori, riepiloghi ed export restano sull'intero
+risultato. Si torna alla prima pagina cambiando mese o filtri; dopo un'eliminazione si resta
+sulla pagina corrente (o sull'ultima, se quella si è svuotata).
+
+Frontend: nuovo componente `Pagination.tsx`, con l'hook `usePagination(items, pageSize, resetKey)`.
+
 ---
 
 ## Progetto Completato
@@ -3028,6 +3039,7 @@ frontend/
 │   │   ├── DipendenteLayout.tsx
 │   │   ├── ResponsabileLayout.tsx
 │   │   ├── AllegatiUploader.tsx   # Foto/PDF, ridimensiona e carica su R2
+│   │   ├── Pagination.tsx     # Paginazione lato client + hook usePagination
 │   │   ├── CalendarioEventiGrid.tsx # Griglia annuale scorrevole
 │   │   ├── CampoData.tsx          # Input data, condiviso Calendario/Dream
 │   │   ├── DateTimeInput.tsx      # Input data/ora con picker e default
