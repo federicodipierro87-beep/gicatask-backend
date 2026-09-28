@@ -2786,6 +2786,24 @@ Attività:
 
 ---
 
+### Ore dovute: riepilogo del periodo trascorso nella pagina (28 Settembre 2026)
+
+Nella pagina **Ore dovute**, sotto la tabella della vista **Dipendente** (card del prospetto), c'è
+il **Riepilogo gennaio-<mese corrente> <anno>**, lo stesso in fondo agli export: totale ore
+(assenze comprese), ore dovute, ore di lavoro (solo se diverse) e saldo ore, verde o rosso. Una
+nota ricorda che il saldo coincide con il saldo cumulativo del Report Saldi Ore. Per un anno
+futuro il riepilogo non c'è.
+
+- Backend: nuovo `GET /api/ore-dovute/:anno/riepilogo` (solo responsabile). Restituisce
+  `{ etichetta, righe: [{ utenteId, totaleMinuti, dovutiMinuti, lavoroMinuti }] }`, oppure
+  `null` per un anno futuro, dalla stessa `riepiloghiPeriodo()` degli export.
+- Frontend: il riepilogo si carica **a parte** dal prospetto. Se la chiamata fallisce, la vista
+  Dipendente resta usabile senza il riepilogo. Si ricarica dopo ogni salvataggio, come il
+  prospetto. `formatOre` della pagina ora gestisce i negativi: un totale con le assenze può
+  esserlo per via dei Recupero ore.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.

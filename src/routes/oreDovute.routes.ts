@@ -87,6 +87,25 @@ export async function oreDovuteRoutes(fastify: FastifyInstance) {
     return reply.send(await service.getProspetto(anno));
   });
 
+  // Riepilogo del periodo trascorso per dipendente (responsabile only): lo
+  // stesso delle pagine per dipendente degli export. `null` per un anno futuro
+  fastify.get<{ Params: { anno: string } }>('/:anno/riepilogo', {
+    preHandler: [fastify.requireRole('RESPONSABILE')],
+  }, async (request, reply) => {
+    const anno = Number(request.params.anno);
+    if (!annoValido(anno)) {
+      return reply.status(400).send({ error: 'Anno non valido' });
+    }
+
+    const riepiloghi = await riepiloghiPeriodo(anno);
+    if (!riepiloghi) return reply.send(null);
+
+    return reply.send({
+      etichetta: riepiloghi.etichetta,
+      righe: [...riepiloghi.perUtente.entries()].map(([utenteId, ore]) => ({ utenteId, ...ore })),
+    });
+  });
+
   // Export PDF/Excel dei dati salvati di un anno (responsabile only). L'anno e'
   // validato prima di finire nel nome del file, nell'header Content-Disposition
   fastify.get<{ Params: { anno: string; formato: string } }>('/:anno/export/:formato', {
