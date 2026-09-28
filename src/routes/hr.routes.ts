@@ -16,6 +16,7 @@ const schedaSchema = {
     cognomeNome: { type: 'string', minLength: 1 },
     impostaFonte: { type: ['boolean', 'null'] },
     statoCivile: testoNullable,
+    fotoId: { type: ['number', 'null'] },
     figli: {
       type: 'array',
       maxItems: 30,
@@ -140,7 +141,10 @@ export async function hrRoutes(fastify: FastifyInstance) {
     if (ids.length === 0) return reply.status(400).send({ error: 'Nessun dipendente selezionato' });
 
     const schede = await service.getByIds(ids);
-    const fotoIds = schede.flatMap((s) => s.formazioni.flatMap((f) => f.foto.map((foto) => foto.id)));
+    const fotoIds = schede.flatMap((s) => [
+      ...(s.fotoId ? [s.fotoId] : []),
+      ...s.formazioni.flatMap((f) => f.foto.map((foto) => foto.id)),
+    ]);
     const immagini = await allegatiService.immaginiPerPdf(fotoIds);
 
     const pdf = await pdfService.generaSchede(schede, immagini);

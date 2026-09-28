@@ -398,9 +398,13 @@ export class BackupService {
       }
 
       // I backup creati prima della sezione HR non hanno queste tabelle
+      // Ciclo schede -> foto -> formazioni -> schede: le schede nascono senza
+      // foto, che si ricollega dopo gli allegati
       const schedeHr = backupData.tables.schedeHr ?? [];
       if (schedeHr.length > 0) {
-        await tx.schedaHr.createMany({ data: schedeHr });
+        await tx.schedaHr.createMany({
+          data: schedeHr.map(({ fotoId: _fotoId, ...scheda }: any) => scheda),
+        });
         stats.schedeHr = schedeHr.length;
       }
 
@@ -420,6 +424,12 @@ export class BackupService {
       if (allegatiHr.length > 0) {
         await tx.allegatoHr.createMany({ data: allegatiHr });
         stats.allegatiHr = allegatiHr.length;
+      }
+
+      for (const scheda of schedeHr) {
+        if (scheda.fotoId) {
+          await tx.schedaHr.update({ where: { id: scheda.id }, data: { fotoId: scheda.fotoId } });
+        }
       }
 
       // Reset sequences for PostgreSQL

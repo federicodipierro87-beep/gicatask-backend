@@ -553,9 +553,12 @@ model SchedaHr {
   emergenzaNome      String?      @map("emergenza_nome")
   emergenzaTelefono  String?      @map("emergenza_telefono")
   dataCessazione     DateTime?    @map("data_cessazione") @db.Date
+  // Foto del dipendente: un AllegatoHr come le foto dei tesserini
+  fotoId             Int?         @unique @map("foto_id")
   createdAt          DateTime     @default(now()) @map("created_at")
   updatedAt          DateTime     @updatedAt @map("updated_at")
 
+  foto       AllegatoHr?    @relation("FotoScheda", fields: [fotoId], references: [id], onDelete: SetNull)
   figli      FiglioHr[]
   formazioni FormazioneHr[]
 
@@ -602,6 +605,9 @@ model AllegatoHr {
   createdAt    DateTime @default(now()) @map("created_at")
 
   formazione FormazioneHr? @relation(fields: [formazioneId], references: [id], onDelete: SetNull)
+  // Valorizzata se e' la foto di una scheda: allora non e' orfana anche con
+  // formazioneId NULL
+  schedaFoto SchedaHr?     @relation("FotoScheda")
 
   @@index([formazioneId])
   @@index([createdAt])

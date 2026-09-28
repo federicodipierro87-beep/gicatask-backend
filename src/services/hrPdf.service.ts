@@ -38,6 +38,10 @@ const THUMB_W = 150;
 const THUMB_H = 95;
 const THUMB_GAP = 8;
 
+// Foto del dipendente, proporzioni da fototessera
+const FOTO_W = 64;
+const FOTO_H = 80;
+
 interface Cella {
   etichetta: string;
   valore: string;
@@ -45,7 +49,7 @@ interface Cella {
 
 export class HrPdfService {
   /**
-   * `immagini` sono i byte delle foto dei tesserini gia' letti da R2, per id
+   * `immagini` sono i byte delle foto (dipendente e tesserini) gia' letti da R2, per id
    * dell'allegato. Una foto che manca (PDF, HEIC, lettura fallita) finisce
    * nella scheda solo col nome del file.
    */
@@ -71,19 +75,38 @@ export class HrPdfService {
     doc.addPage();
     let y = MARGIN;
 
+    // Foto del dipendente in alto a destra, formato tessera. Il testo
+    // dell'intestazione le lascia spazio
+    const foto = scheda.fotoId ? immagini.get(scheda.fotoId) : undefined;
+    const testoW = foto ? SCHEDA_W - FOTO_W - 12 : SCHEDA_W;
+
+    if (foto) {
+      try {
+        doc.image(foto, MARGIN + SCHEDA_W - FOTO_W, y, {
+          fit: [FOTO_W, FOTO_H],
+          align: 'center',
+          valign: 'center',
+        });
+      } catch {
+        // Byte che pdfkit non sa decodificare: resta il riquadro vuoto
+      }
+      doc.lineWidth(0.5).strokeColor(GRID_COLOR).rect(MARGIN + SCHEDA_W - FOTO_W, y, FOTO_W, FOTO_H).stroke();
+    }
+
     doc.font('Helvetica-Bold').fontSize(14).fillColor('#000000');
-    doc.text('Scheda anagrafica dipendente', MARGIN, y, { width: SCHEDA_W });
+    doc.text('Scheda anagrafica dipendente', MARGIN, y, { width: testoW });
     y = doc.y + 1;
     doc.font('Helvetica').fontSize(10).fillColor('#333333');
     doc.text(
       scheda.numeroPersonale ? `${scheda.cognomeNome}  -  N. ${scheda.numeroPersonale}` : scheda.cognomeNome,
       MARGIN,
       y,
-      { width: SCHEDA_W - 150 }
+      { width: testoW }
     );
+    y = doc.y + 2;
     doc.fontSize(7.5).fillColor('#777777');
-    doc.text(`Stampata il ${oggi()}`, MARGIN, y + 2, { width: SCHEDA_W, align: 'right' });
-    y = doc.y + 8;
+    doc.text(`Stampata il ${oggi()}`, MARGIN, y, { width: testoW });
+    y = Math.max(doc.y, foto ? MARGIN + FOTO_H : 0) + 8;
 
     // Ripiego per le schede con molti figli o formazioni: nei casi normali
     // la scheda sta in un foglio

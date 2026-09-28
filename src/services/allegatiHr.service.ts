@@ -9,8 +9,10 @@ import { inflateSync } from 'zlib';
  * bollettino (vedi `allegatiBollettino.service.ts`): byte su R2 nel bucket dei
  * backup, prefisso `hr/`, metadati in `allegati_hr`.
  *
- * Una foto caricata resta orfana finche' la scheda non si salva; una tolta dal
- * form o appartenente a una formazione cancellata torna orfana. In entrambi i
+ * Servono sia per le formazioni sia per la foto del dipendente
+ * (`schede_hr.foto_id`). Una foto caricata resta orfana finche' la scheda non
+ * si salva; una tolta dal form, sostituita o appartenente a una formazione o
+ * scheda cancellata torna orfana. In entrambi i
  * casi la cancella `pulisciOrfani`, quindi la scheda non tocca mai R2.
  */
 const MIME_AMMESSI = [
@@ -184,7 +186,7 @@ export class AllegatiHrService {
     const limite = new Date(Date.now() - oreMax * 60 * 60 * 1000);
 
     const orfani = await this.prisma.allegatoHr.findMany({
-      where: { formazioneId: null, createdAt: { lt: limite } },
+      where: { formazioneId: null, schedaFoto: { is: null }, createdAt: { lt: limite } },
       select: { id: true, chiave: true },
     });
 

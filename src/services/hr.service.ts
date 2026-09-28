@@ -57,20 +57,22 @@ export type SchedaHrInput = {
   cognomeNome: string;
   impostaFonte?: boolean | null;
   statoCivile?: StatoCivile | null;
+  // Foto del dipendente, gia' caricata con POST /api/hr/allegati
+  fotoId?: number | null;
   figli?: FiglioInput[];
   formazioni?: FormazioneInput[];
 } & Partial<Record<CampoTesto, string | null>> &
   Partial<Record<CampoData, string | null>>;
 
+const SELECT_ALLEGATO = { id: true, nomeFile: true, mimeType: true, dimensione: true } as const;
+
 export const SCHEDA_INCLUDE = {
+  foto: { select: SELECT_ALLEGATO },
   figli: { orderBy: { id: 'asc' } },
   formazioni: {
     orderBy: { id: 'asc' },
     include: {
-      foto: {
-        orderBy: { id: 'asc' },
-        select: { id: true, nomeFile: true, mimeType: true, dimensione: true },
-      },
+      foto: { orderBy: { id: 'asc' }, select: SELECT_ALLEGATO },
     },
   },
 } satisfies Prisma.SchedaHrInclude;
@@ -145,6 +147,7 @@ export class HrService {
         data: { ...dati, figli: { create: figli } },
       });
 
+      await this.salvaFoto(tx, scheda.id, input.fotoId ?? null);
       await this.salvaFormazioni(tx, scheda.id, input.formazioni ?? []);
 
       return tx.schedaHr.findUniqueOrThrow({ where: { id: scheda.id }, include: SCHEDA_INCLUDE });
@@ -166,10 +169,39 @@ export class HrService {
         data: { ...dati, figli: { create: figli } },
       });
 
+      await this.salvaFoto(tx, id, input.fotoId ?? null);
       await this.salvaFormazioni(tx, id, input.formazioni ?? []);
 
       return tx.schedaHr.findUniqueOrThrow({ where: { id }, include: SCHEDA_INCLUDE });
     });
+  }
+
+  /**
+   * La foto del dipendente. Si accetta solo un allegato orfano o la foto gia'
+   * di questa scheda; un id diverso si ignora e la foto resta quella di prima.
+   * La foto sostituita o tolta torna orfana e la cancella la pulizia notturna.
+   */
+  private async salvaFoto(
+    tx: Prisma.TransactionClient,
+    schedaId: number,
+    fotoId: number | null
+  ): Promise<void> {
+    if (fotoId === null) {
+      await tx.schedaHr.update({ where: { id: schedaId }, data: { fotoId: null } });
+      return;
+    }
+
+    const valida = await tx.allegatoHr.findFirst({
+      where: {
+        id: fotoId,
+        OR: [{ formazioneId: null, schedaFoto: { is: null } }, { schedaFoto: { is: { id: schedaId } } }],
+      },
+      select: { id: true },
+    });
+
+    if (valida) {
+      await tx.schedaHr.update({ where: { id: schedaId }, data: { fotoId } });
+    }
   }
 
   /**
@@ -222,7 +254,7 @@ export class HrService {
         await tx.allegatoHr.updateMany({
           where: {
             id: { in: allegatiIds },
-            OR: [{ formazioneId: null }, { formazione: { schedaId } }],
+            OR: [{ formazioneId: null, schedaFoto: { is: null } }, { formazione: { schedaId } }],
           },
           data: { formazioneId },
         });

@@ -2836,7 +2836,8 @@ di emergenza. Solo *Cognome e nome* è obbligatorio.
   apre in una nuova scheda.
 
 La scheda HR è **indipendente da `utenti`**: nel personale ci sono anche persone che non entrano
-mai nel portale. Salario e grado di occupazione sono testo libero ("28.50/h", "80%").
+mai nel portale. Il salario è testo libero ("28.50/h"); il grado di occupazione è una lista
+(vedi sotto).
 
 **Stampe.** Nell'elenco si spuntano i dipendenti (una casella per riga, più "seleziona tutti").
 Finiscono in stampa solo quelli spuntati *e visibili*: cambiando sezione la selezione si azzera.
@@ -2879,6 +2880,35 @@ Finiscono in stampa solo quelli spuntati *e visibili*: cambiando sezione la sele
   `rimuovi`, `apri`, `etichetta`, `aiuto` e `maxFile`, che di default valgono come per il
   bollettino. Nelle formazioni `rimuovi={null}`: la foto si toglie solo dalla lista, e il server
   la scollega al salvataggio.
+
+### HR: foto del dipendente, cancellazione della cessazione, grado a lista (28 Settembre 2026)
+
+- **Foto del dipendente.** Sta in cima a *Dati personali* nella scheda, con l'anteprima e i
+  pulsanti *Scegli foto*, *Scatta foto* e *Rimuovi*. Viene ridimensionata nel browser come le
+  altre foto. Nella scheda stampata compare in alto a destra, in formato tessera (64x80 pt), e
+  la scheda resta comunque in un foglio.
+- **Data di cessazione.** Accanto al campo c'è **Cancella data**, per correggere un inserimento
+  sbagliato. Salvando, il dipendente torna fra gli attivi.
+- **Grado occupazione.** È una tendina con 10%, 20%, ... 100%. Il valore resta testo in
+  colonna, quindi non cambia lo schema. Un valore scritto a mano prima della modifica compare
+  come opzione in più, e non si perde aprendo la scheda.
+
+- Backend: `schede_hr.foto_id` (unico, FK verso `allegati_hr`, `onDelete: SetNull`). La foto è
+  un `AllegatoHr` come i tesserini e si carica con lo stesso `POST /api/hr/allegati`. La scheda
+  la riceve come `fotoId`; si accetta solo un allegato orfano o la foto già della scheda. La
+  foto sostituita o tolta, e quella di una scheda cancellata, tornano orfane. Perciò la pulizia
+  notturna ora considera orfano un allegato con `formazioneId` NULL **e** senza scheda che lo usi
+  come foto (`schedaFoto: { is: null }`). Una foto del dipendente non può essere collegata come
+  tesserino, né un tesserino come foto.
+- **`preparaDb.ts`.** Aggiunge in anticipo `foto_id` e l'indice unico `schede_hr_foto_id_key`.
+  Su una `schede_hr` già popolata, infatti, `prisma db push` rifiuta il vincolo di unicità senza
+  `--accept-data-loss`, anche con la colonna nuova e tutta NULL: il push allo start fallirebbe e
+  il container non partirebbe. Il problema è stato verificato su un DB di prova con righe, e la
+  sequenza preparaDb + push ora passa. Al push resta solo la FK, che non chiede conferme.
+- **Backup.** C'è un ciclo schede → foto → formazioni → schede. Nel ripristino le schede nascono
+  senza `fotoId`, che si ricollega dopo gli allegati.
+- Frontend: nuovo componente `FotoDipendente`. L'anteprima passa da un blob perché il file vuole
+  il token Bearer. `ridimensiona` è ora esportata da `AllegatiUploader`.
 
 ---
 

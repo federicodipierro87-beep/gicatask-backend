@@ -50,8 +50,26 @@ async function main(): Promise<void> {
   }
 }
 
+/**
+ * La foto del dipendente ha aggiunto `schede_hr.foto_id` con un vincolo di
+ * unicita'. Su una tabella gia' popolata `prisma db push` rifiuta di creare il
+ * vincolo senza `--accept-data-loss`, anche se la colonna e' nuova e tutta
+ * NULL: il push fallirebbe e il container non partirebbe. Creando qui colonna
+ * e indice, col nome che userebbe Prisma, al push resta solo la chiave esterna,
+ * che non chiede conferme. Ai deploy successivi e' innocuo.
+ */
+async function preparaFotoSchedeHr(): Promise<void> {
+  if (!(await tabellaEsiste('schede_hr'))) return;
+
+  await prisma.$executeRaw`ALTER TABLE schede_hr ADD COLUMN IF NOT EXISTS foto_id INTEGER`;
+  await prisma.$executeRaw`
+    CREATE UNIQUE INDEX IF NOT EXISTS schede_hr_foto_id_key ON schede_hr (foto_id)
+  `;
+}
+
 try {
   await main();
+  await preparaFotoSchedeHr();
 } catch (errore) {
   console.error('[prepara-db] Errore:', errore);
   process.exitCode = 1;
