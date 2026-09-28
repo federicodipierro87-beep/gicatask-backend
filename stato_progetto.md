@@ -2910,6 +2910,18 @@ Finiscono in stampa solo quelli spuntati *e visibili*: cambiando sezione la sele
 - Frontend: nuovo componente `FotoDipendente`. L'anteprima passa da un blob perché il file vuole
   il token Bearer. `ridimensiona` è ora esportata da `AllegatiUploader`.
 
+### HR: il pulsante Elimina della scheda non faceva nulla (28 Settembre 2026)
+
+Aprendo una scheda HR, **Elimina** non faceva niente. Nei log di Railway non arrivava nessuna
+`DELETE /api/hr/:id`: la richiesta non partiva mai. Il pulsante chiedeva conferma con il
+`confirm()` nativo, e un browser che blocca le finestre di dialogo gli fa restituire subito
+`false` senza mostrare nulla. Ora la conferma è una finestra `Modal` dentro la pagina, con
+*Annulla*/*Elimina*. Ricorda anche che per un dipendente che ha lasciato l'azienda basta la data
+di cessazione. Un errore del server compare nel riquadro rosso della pagina.
+
+Gli altri `confirm()` del portale hanno lo stesso punto debole, ma per ora nessuno li ha
+segnalati.
+
 ---
 
 ## Progetto Completato
