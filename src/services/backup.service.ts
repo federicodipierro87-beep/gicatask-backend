@@ -33,6 +33,11 @@ interface BackupData {
     oreDovuteMesi?: any[];
     oreDovuteAnni?: any[];
     percentualiLavoro?: any[];
+    // Sezione HR: come per i bollettini, delle foto solo i metadati
+    schedeHr?: any[];
+    figliHr?: any[];
+    formazioniHr?: any[];
+    allegatiHr?: any[];
   };
 }
 
@@ -103,6 +108,10 @@ export class BackupService {
           oreDovuteMesi: await this.prisma.oreDovuteMese.findMany(),
           oreDovuteAnni: await this.prisma.oreDovuteAnno.findMany(),
           percentualiLavoro: await this.prisma.percentualeLavoro.findMany(),
+          schedeHr: await this.prisma.schedaHr.findMany(),
+          figliHr: await this.prisma.figlioHr.findMany(),
+          formazioniHr: await this.prisma.formazioneHr.findMany(),
+          allegatiHr: await this.prisma.allegatoHr.findMany(),
         },
       };
 
@@ -248,6 +257,11 @@ export class BackupService {
       await tx.configurazione.deleteMany();
       await tx.oreDovuteMese.deleteMany();
       await tx.oreDovuteAnno.deleteMany();
+      // Indipendenti dal resto; fra loro, dalle foto verso la scheda
+      await tx.allegatoHr.deleteMany();
+      await tx.formazioneHr.deleteMany();
+      await tx.figlioHr.deleteMany();
+      await tx.schedaHr.deleteMany();
 
       // Restore data (in order of dependencies)
       if (backupData.tables.utenti.length > 0) {
@@ -383,6 +397,31 @@ export class BackupService {
         stats.percentualiLavoro = percentualiLavoro.length;
       }
 
+      // I backup creati prima della sezione HR non hanno queste tabelle
+      const schedeHr = backupData.tables.schedeHr ?? [];
+      if (schedeHr.length > 0) {
+        await tx.schedaHr.createMany({ data: schedeHr });
+        stats.schedeHr = schedeHr.length;
+      }
+
+      const figliHr = backupData.tables.figliHr ?? [];
+      if (figliHr.length > 0) {
+        await tx.figlioHr.createMany({ data: figliHr });
+        stats.figliHr = figliHr.length;
+      }
+
+      const formazioniHr = backupData.tables.formazioniHr ?? [];
+      if (formazioniHr.length > 0) {
+        await tx.formazioneHr.createMany({ data: formazioniHr });
+        stats.formazioniHr = formazioniHr.length;
+      }
+
+      const allegatiHr = backupData.tables.allegatiHr ?? [];
+      if (allegatiHr.length > 0) {
+        await tx.allegatoHr.createMany({ data: allegatiHr });
+        stats.allegatiHr = allegatiHr.length;
+      }
+
       // Reset sequences for PostgreSQL
       const tables = [
         'utenti',
@@ -407,6 +446,10 @@ export class BackupService {
         'ore_dovute_mesi',
         'ore_dovute_anni',
         'percentuali_lavoro',
+        'schede_hr',
+        'figli_hr',
+        'formazioni_hr',
+        'allegati_hr',
       ];
       for (const table of tables) {
         try {

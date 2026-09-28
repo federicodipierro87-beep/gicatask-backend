@@ -506,3 +506,104 @@ model AllegatoBollettino {
   @@index([createdAt])
   @@map("allegati_bollettino")
 }
+
+enum StatoCivile {
+  CELIBE
+  NUBILE
+  CONIUGATO
+  SEPARATO
+  DIVORZIATO
+}
+
+/// Scheda anagrafica HR di un dipendente. Indipendente da `utenti`: nel
+/// personale ci sono anche persone che non entrano mai nel portale. Quasi
+/// tutto e' facoltativo perche' la scheda si compila a piu' riprese.
+/// Con `dataCessazione` valorizzata il dipendente passa fra gli uscenti.
+/// Salario e grado di occupazione sono testo: "28.50/h", "80%".
+model SchedaHr {
+  id                 Int          @id @default(autoincrement())
+  numeroPersonale    String?      @map("numero_personale")
+  cognomeNome        String       @map("cognome_nome")
+  indirizzo          String?
+  luogo              String?
+  dataNascita        DateTime?    @map("data_nascita") @db.Date
+  luogoNascita       String?      @map("luogo_nascita")
+  telefono           String?
+  numeroAvs          String?      @map("numero_avs")
+  impostaFonte       Boolean?     @map("imposta_fonte")
+  tipoPermesso       String?      @map("tipo_permesso")
+  scadenzaPermesso   DateTime?    @map("scadenza_permesso") @db.Date
+  codiceFiscale      String?      @map("codice_fiscale")
+  numeroSimic        String?      @map("numero_simic")
+  cassaMalati        String?      @map("cassa_malati")
+  statoCivile        StatoCivile? @map("stato_civile")
+  nazionalita        String?
+  coniugatoDal       DateTime?    @map("coniugato_dal") @db.Date
+  coniugeCognomeNome String?      @map("coniuge_cognome_nome")
+  coniugeDataNascita DateTime?    @map("coniuge_data_nascita") @db.Date
+  assegnoFigli       String?      @map("assegno_figli")
+  padreCognomeNome   String?      @map("padre_cognome_nome")
+  madreCognomeNome   String?      @map("madre_cognome_nome")
+  dataAssunzione     DateTime?    @map("data_assunzione") @db.Date
+  tipoSalario        String?      @map("tipo_salario")
+  salario            String?
+  gradoOccupazione   String?      @map("grado_occupazione")
+  iban               String?
+  email              String?
+  emergenzaNome      String?      @map("emergenza_nome")
+  emergenzaTelefono  String?      @map("emergenza_telefono")
+  dataCessazione     DateTime?    @map("data_cessazione") @db.Date
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  figli      FiglioHr[]
+  formazioni FormazioneHr[]
+
+  @@map("schede_hr")
+}
+
+model FiglioHr {
+  id          Int       @id @default(autoincrement())
+  schedaId    Int       @map("scheda_id")
+  cognomeNome String    @map("cognome_nome")
+  dataNascita DateTime? @map("data_nascita") @db.Date
+
+  scheda SchedaHr @relation(fields: [schedaId], references: [id], onDelete: Cascade)
+
+  @@index([schedaId])
+  @@map("figli_hr")
+}
+
+model FormazioneHr {
+  id       Int    @id @default(autoincrement())
+  schedaId Int    @map("scheda_id")
+  nome     String
+
+  scheda SchedaHr     @relation(fields: [schedaId], references: [id], onDelete: Cascade)
+  foto   AllegatoHr[]
+
+  @@index([schedaId])
+  @@map("formazioni_hr")
+}
+
+/// Foto dei tesserini delle formazioni. Come per i bollettini, in tabella solo
+/// i metadati e i byte su R2, prefisso `hr/`. NULL in `formazioneId` fra
+/// l'upload e il salvataggio della scheda; gli orfani li pulisce lo scheduler.
+/// `caricatoDaId` senza relazione: la tabella resta indipendente da `utenti`
+/// e il ripristino del backup non deve rispettare un ordine in piu'.
+model AllegatoHr {
+  id           Int      @id @default(autoincrement())
+  formazioneId Int?     @map("formazione_id")
+  caricatoDaId Int      @map("caricato_da")
+  chiave       String   @unique
+  nomeFile     String   @map("nome_file")
+  mimeType     String   @map("mime_type")
+  dimensione   Int
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  formazione FormazioneHr? @relation(fields: [formazioneId], references: [id], onDelete: SetNull)
+
+  @@index([formazioneId])
+  @@index([createdAt])
+  @@map("allegati_hr")
+}

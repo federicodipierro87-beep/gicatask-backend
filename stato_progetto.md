@@ -6,7 +6,7 @@
 
 GicaTask è un portale per la gestione delle attività di una ditta di logistica. Permette ai dipendenti di registrare le proprie attività lavorative e ai responsabili di gestire clienti, utenti e visualizzare report.
 
-Attorno al nucleo iniziale si sono aggiunti nel tempo quattro moduli, ognuno con la sua anagrafica e il suo export:
+Attorno al nucleo iniziale si sono aggiunti nel tempo cinque moduli, ognuno con la sua anagrafica e il suo export:
 
 | Modulo | A cosa serve | Export |
 |---|---|---|
@@ -14,8 +14,9 @@ Attorno al nucleo iniziale si sono aggiunti nel tempo quattro moduli, ognuno con
 | **Bollettini** | Giornale lavori con firme e cumulativo per cantiere | PDF |
 | **Calendario eventi** | Griglia annuale con i festivi del Ticino | Excel |
 | **Dream** | Noleggi veicoli con quota 70/30 o 100 | PDF A4 verticale |
+| **HR** | Schede anagrafiche del personale, attivi e uscenti | PDF: scheda A4 (un foglio a testa), riepilogo A4/A3 orizzontale |
 
-I moduli *Bollettini* e *Dream* non sono visibili a tutti: i primi dipendono dal flag `abilitatoBollettini` sull'utente, il secondo è riservato al ruolo `RESPONSABILE` — **tutti e diciassette gli endpoint** delle tre route Dream, letture comprese.
+I moduli *Bollettini* e *Dream* non sono visibili a tutti: i primi dipendono dal flag `abilitatoBollettini` sull'utente, il secondo è riservato al ruolo `RESPONSABILE` — **tutti e diciassette gli endpoint** delle tre route Dream, letture comprese. Anche *HR* è solo del responsabile, letture comprese.
 
 ## Repository
 
@@ -2817,6 +2818,68 @@ comunque completata con inizio e fine diversi.
   restano accettate per i client vecchi. Nel PDF, una riga operai senza orari mostra solo
   "N operai", senza il separatore.
 
+### HR: schede anagrafiche dei dipendenti (28 Settembre 2026)
+
+Nuova tab **HR** nella barra dell'area responsabile (`/responsabile/hr`). Contiene le schede
+anagrafiche del personale, divise in due sezioni: **Attivi** e **Uscenti**. Un dipendente passa
+fra gli uscenti appena la scheda ha una **data di cessazione**, anche se futura. Se la data si
+cancella, torna fra gli attivi.
+
+La scheda (`/responsabile/hr/nuova`, `/responsabile/hr/:id`) ha tutti i campi richiesti, divisi
+in sezioni: Dati personali, Documenti e assicurazioni, Famiglia, Impiego, Formazioni e Contatto
+di emergenza. Solo *Cognome e nome* è obbligatorio.
+- *Imposte alla fonte* si sceglie fra SI e NO.
+- *Stato civile* si sceglie fra celibe, nubile, coniugato, separato e divorziato.
+- I **figli** (nome e data di nascita) si aggiungono con "+ Aggiungi figlio".
+- Le **formazioni** si aggiungono con "+ Aggiungi formazione". Ognuna ha fino a 4 foto del
+  tesserino (o PDF), caricate come gli allegati del bollettino. Cliccando sul nome la foto si
+  apre in una nuova scheda.
+
+La scheda HR è **indipendente da `utenti`**: nel personale ci sono anche persone che non entrano
+mai nel portale. Salario e grado di occupazione sono testo libero ("28.50/h", "80%").
+
+**Stampe.** Nell'elenco si spuntano i dipendenti (una casella per riga, più "seleziona tutti").
+Finiscono in stampa solo quelli spuntati *e visibili*: cambiando sezione la selezione si azzera.
+- **Stampa schede**: PDF A4 verticale con una scheda per foglio, su due colonne. Le foto JPEG e
+  PNG dei tesserini sono stampate come miniature. Degli altri file (PDF, HEIC, WebP) compare solo
+  il nome. Se una scheda ha molti figli o formazioni, prosegue su un secondo foglio con
+  l'intestazione "(continua)". Dalla scheda aperta c'è anche **Stampa scheda** per un solo
+  dipendente.
+- **Stampa riepilogo**: si scelgono le voci con le caselle, raggruppate per sezione, più un titolo
+  facoltativo. Ne esce una tabella con una riga per dipendente. Fino a 8 colonne è un A4
+  orizzontale, oltre un A3. La scelta delle voci resta memorizzata nel browser (localStorage).
+
+- Backend: modelli `SchedaHr`, `FiglioHr`, `FormazioneHr` e `AllegatoHr` (tabelle `schede_hr`,
+  `figli_hr`, `formazioni_hr`, `allegati_hr`), più l'enum `StatoCivile`. Route `/api/hr`, **tutte
+  solo responsabile, letture comprese**: un hook `preHandler` sull'intero plugin.
+  - `GET /campi`: il catalogo delle voci, che vive in `utils/hrCampi.ts`. È l'unica fonte per le
+    sezioni della scheda stampata, le colonne del riepilogo (col loro `peso`, cioè la larghezza
+    relativa) e le caselle del frontend.
+  - `GET /`, `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`.
+  - `POST /allegati` (multipart) e `GET /allegati/:id/file`.
+  - `GET /stampa/schede?ids=` e `GET /stampa/riepilogo?ids=&campi=&titolo=`.
+- **Foto dei tesserini.** Stanno su R2, nel bucket dei backup, con prefisso `hr/`. In tabella ci
+  sono solo i metadati. Il flusso è quello del bollettino: la foto nasce orfana
+  (`formazioneId` NULL) e si collega al salvataggio della scheda. Al salvataggio le formazioni
+  si aggiornano **per id**, non si riscrivono. Una formazione tolta si cancella e le sue foto
+  tornano orfane (`onDelete: SetNull`); lo stesso vale per una foto tolta dal form. Le orfane
+  oltre le 24 ore le cancella lo scheduler delle 2:30, dopo gli allegati dei bollettini: la
+  scheda non tocca mai R2 direttamente. Si collegano solo le foto orfane o già della stessa
+  scheda, così un id preso da un'altra scheda non la svuota.
+- **PNG e pdfkit.** pdfkit decomprime i PNG con trasparenza in modo asincrono. Un PNG corrotto
+  lancia un errore zlib che nessun try/catch intercetta, e **abbatte il processo** (verificato).
+  Per questo `immaginiPerPdf()` decomprime prima i dati IDAT con `inflateSync` (`pngValido()`),
+  dove l'errore si intercetta, e scarta il file se non è valido.
+- `AllegatoHr.caricatoDaId` non ha relazione con `utenti`: le tabelle HR restano indipendenti e il
+  ripristino del backup non deve rispettare un ordine in più.
+- Backup: le quattro tabelle entrano nel dump (`schedeHr`, `figliHr`, `formazioniHr`,
+  `allegatiHr`) e nel ripristino, che accetta anche i backup precedenti, dove mancano.
+- Frontend: `HrPage` (elenco, sezioni, selezione, modale del riepilogo) e `HrSchedaPage` (form).
+  `hrApi` sta in `client.ts`. `AllegatiUploader` è stato generalizzato con le prop `carica`,
+  `rimuovi`, `apri`, `etichetta`, `aiuto` e `maxFile`, che di default valgono come per il
+  bollettino. Nelle formazioni `rimuovi={null}`: la foto si toglie solo dalla lista, e il server
+  la scollega al salvataggio.
+
 ---
 
 ## Progetto Completato
@@ -2880,6 +2943,9 @@ backend/
 │   │   ├── tipiAssenza.service.ts  # CRUD tipi assenza
 │   │   ├── tipiAttivita.service.ts # CRUD tipi attività
 │   │   ├── utenti.service.ts    # CRUD utenti
+│   │   ├── hr.service.ts        # Schede HR: figli e formazioni
+│   │   ├── allegatiHr.service.ts # Foto tesserini su R2 (prefisso hr/)
+│   │   ├── hrPdf.service.ts     # Scheda (un foglio) e riepilogo HR
 │   │   └── vociBollettino.service.ts # Anagrafica polimorfa voci
 │   ├── utils/
 │   │   ├── password.ts        # Hash/verifica password
@@ -2887,7 +2953,8 @@ backend/
 │   │   ├── assenze.ts         # Durata e segno delle assenze (punto unico)
 │   │   ├── festivita.ts       # Festivi Ticino e giorni non lavorativi
 │   │   ├── nomeUtente.ts      # Cognome Nome, col trim sul nome vuoto
-│   │   └── bollettiniAccess.ts # Guardia flag bollettini (condivisa)
+│   │   ├── bollettiniAccess.ts # Guardia flag bollettini (condivisa)
+│   │   └── hrCampi.ts         # Catalogo voci HR (scheda, riepilogo, caselle)
 │   └── types/index.ts         # Tipi TypeScript
 ├── stato_progetto.md          # Questo file: storia di ENTRAMBI i repo
 └── package.json
@@ -2956,7 +3023,9 @@ frontend/
 │   │       ├── CalendarioEventiPage.tsx   # Form, elenco, griglia ed export
 │   │       ├── DreamNoleggiPage.tsx       # Form, elenco, totali ed export PDF
 │   │       ├── DreamVeicoliPage.tsx       # Anagrafica veicoli Dream
-│   │       └── DreamClientiPage.tsx       # Anagrafica clienti Dream
+│   │       ├── DreamClientiPage.tsx       # Anagrafica clienti Dream
+│   │       ├── HrPage.tsx                 # Schede HR: attivi/uscenti, stampe
+│   │       └── HrSchedaPage.tsx           # Form della scheda HR
 │   ├── utils/
 │   │   ├── festivita.ts       # Pasqua e festivi Ticino (copia del backend)
 │   │   ├── nomeUtente.ts      # Cognome Nome (copia del backend)
