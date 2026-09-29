@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 29 Settembre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 30 Settembre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -26,7 +26,7 @@ I moduli *Bollettini* e *Dream* non sono visibili a tutti: i primi dipendono dal
 ## URL di Produzione
 
 - **Backend (Railway):** https://web-production-fde54.up.railway.app
-- **Frontend (Netlify):** https://gicatask.netlify.app
+- **Frontend (Netlify):** https://task.gica.ch (dal 30 Settembre 2026; resta attivo anche https://gicatask.netlify.app)
 
 **Come si ritrovano i due progetti.** I nomi su Railway sono generati a caso e nessuno dice
 "GicaTask", quindi vanno annotati qui o si ricercano a tentoni:
@@ -3039,6 +3039,23 @@ delle pagine Saldi Ore e Ore dovute. Restano *Totale ore (mese)*, *Totale ore do
 quando nel periodo ci sono assenze, il saldo non è più la differenza fra le due righe sopra.
 Le voci del 28 Settembre che descrivono la riga valgono per la situazione di allora.
 
+### Dominio task.gica.ch (30 Settembre 2026)
+
+Il frontend risponde su **https://task.gica.ch**. Anche **https://gicatask.netlify.app** continua a
+funzionare, senza redirect.
+
+- **DNS:** `gica.ch` è gestito da **Wix** (`ns2`/`ns3.wixdns.net`). Il record è un CNAME
+  `task` → `gicatask.netlify.app`.
+- **Netlify:** `task.gica.ch` è il *custom domain* del sito `gicatask`. Il certificato Let's Encrypt
+  si è chiesto con `netlify api provisionSiteTLSCertificate` ed è stato emesso in circa due minuti.
+- **Backend:** `CORS_ORIGIN` ora accetta più origini separate da virgola (`src/config/index.ts`).
+  Su Railway vale `https://task.gica.ch,https://gicatask.netlify.app`. Ordine obbligato: prima il
+  deploy del codice, poi la variabile. Col codice vecchio la stringa con la virgola sarebbe stata
+  un'unica origine, che non corrisponde a nessuna, e il login si sarebbe rotto.
+- Il cookie del token resta di terze parti (frontend e backend su domini diversi), come prima.
+  Per renderlo di prima parte servirebbe anche un sottodominio per il backend, per esempio
+  `api.gica.ch` su Railway.
+
 ---
 
 ## Progetto Completato
@@ -3206,7 +3223,8 @@ frontend/
 DATABASE_URL=postgresql://...
 JWT_SECRET=<stringa-segreta>
 NODE_ENV=production
-FRONTEND_URL=https://gicatask.netlify.app
+# Origini ammesse dal CORS, separate da virgola
+CORS_ORIGIN=https://task.gica.ch,https://gicatask.netlify.app
 
 # Cloudflare R2 (opzionali). Stesso bucket per i backup e per gli allegati dei
 # bollettini, che stanno sotto il prefisso allegati/. Senza queste, la POST
