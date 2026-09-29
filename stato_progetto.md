@@ -3030,6 +3030,15 @@ toglierle farebbe perdere dati, e `prisma db push` rifiuterebbe di partire. All'
 colonne. Una data senza stato diventa *Coniugato*. Gira anche dopo un ripristino, perché i backup
 precedenti hanno solo le colonne vecchie; il backup ora comprende `statiCiviliHr`.
 
+### Tolta la riga "Ore di lavoro (senza assenze)" dai riepiloghi ore (29 Settembre 2026)
+
+La riga **Ore di lavoro (senza assenze)** non c'è più nei riepiloghi ore per dipendente: negli
+export PDF ed Excel del Report Attività, del Report Saldi Ore e delle Ore dovute, e nei riepiloghi
+delle pagine Saldi Ore e Ore dovute. Restano *Totale ore (mese)*, *Totale ore dovute* e *Saldo ore*.
+**Il calcolo non cambia:** il saldo resta *ore di lavoro − ore dovute*, senza le assenze. Quindi,
+quando nel periodo ci sono assenze, il saldo non è più la differenza fra le due righe sopra.
+Le voci del 28 Settembre che descrivono la riga valgono per la situazione di allora.
+
 ---
 
 ## Progetto Completato

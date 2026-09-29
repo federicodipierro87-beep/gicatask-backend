@@ -78,8 +78,7 @@ const NOMI_MESI = [
 /**
  * Le righe finali della tabella, in ordine. Il saldo si fa sulle sole ore di
  * lavoro, come il Report Saldi Ore, mentre il totale ore mese comprende le
- * assenze: quando le due cifre differiscono c'e' anche la riga delle ore di
- * lavoro, altrimenti il saldo non si potrebbe verificare a occhio.
+ * assenze. Le ore di lavoro senza assenze non hanno una riga propria.
  */
 function righeTotali(gruppo: GruppoReport): { etichetta: string; minuti: number | null; nota?: string }[] {
   const totale = gruppo.attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
@@ -110,9 +109,6 @@ function righeTotali(gruppo: GruppoReport): { etichetta: string; minuti: number 
     : undefined;
 
   righe.push({ etichetta: 'TOTALE ORE DOVUTE', minuti: dovute.minuti, nota });
-  if (lavoro !== totale) {
-    righe.push({ etichetta: 'ORE DI LAVORO (SENZA ASSENZE)', minuti: lavoro });
-  }
   righe.push({ etichetta: 'SALDO ORE', minuti: lavoro - dovute.minuti });
   return righe;
 }
