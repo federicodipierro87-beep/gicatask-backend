@@ -7,6 +7,7 @@ import authPlugin from './plugins/auth.js';
 import { registerRoutes } from './routes/index.js';
 import { initScheduler } from './services/scheduler.service.js';
 import { seedTipiAssenza, removeCantieriGenerici } from './services/seed.service.js';
+import { migraStatoCivileHr } from './services/hr.service.js';
 
 async function buildApp() {
   const fastify = Fastify({
@@ -75,6 +76,9 @@ async function start() {
 
     // One-off cleanup: remove the legacy generic cantieri
     await removeCantieriGenerici(app.prisma);
+
+    // Stato civile HR: dalle colonne della scheda alla tabella stati_civili_hr
+    await migraStatoCivileHr(app.prisma);
 
     // Initialize scheduler for automatic backups
     initScheduler(app.prisma);

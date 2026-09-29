@@ -3002,6 +3002,34 @@ Nel form del bollettino la sezione degli operai e delle ore (`SquadreSelector`) 
 dopo *Attività svolte*, prima di Mezzi, Materiali e Trasporti. È solo uno spostamento: dati e API
 non cambiano. Nel PDF quel blocco era già stampato dopo le attività.
 
+### Scheda HR: data di entrata, più stati civili e nuovo ordine della stampa (29 Settembre 2026)
+
+**Stampa della scheda.** *Stampata il (data)* passa dall'intestazione al fondo del foglio, a
+sinistra, su ogni pagina della scheda. Il testo sta sotto il margine inferiore, quindi il margine
+si azzera solo mentre si scrive: altrimenti pdfkit aprirebbe una pagina nuova. Nei *Dati personali*
+*Cognome e nome* e *Numero personale* si scambiano di posto. In *Documenti e assicurazioni* la
+colonna di sinistra contiene Numero AVS, Tipo permesso, Scadenza permesso e Codice fiscale; quella
+di destra Imposte alla fonte, Data di entrata, Numero SIMIC e Cassa malati. La griglia ha due campi
+per riga, quindi le colonne dipendono dall'ordine di `CAMPI_HR`, che alterna sinistra e destra. Il
+form della scheda segue lo stesso ordine.
+
+**Data di entrata.** Nuovo campo `SchedaHr.dataEntrata` (`data_entrata`), in *Documenti e
+assicurazioni*. Si può scegliere anche come colonna del riepilogo.
+
+**Stato civile su più righe.** Al posto di *Stato civile* + *Coniugato dal* c'è un elenco: ogni riga
+ha *Stato civile* (la lista di prima) e *Dal* (data), e il **+** sotto aggiunge un'altra riga, per chi
+si è sposato più volte. Il form ha sempre almeno una riga; le righe senza stato non si salvano. Nuova
+tabella `stati_civili_hr` (`StatoCivileHr`: `schedaId`, `stato`, `dal`), riscritta per intera a ogni
+salvataggio come i figli. Nella stampa ogni riga diventa *Stato civile | Dal*. Nel riepilogo la
+colonna *Stato civile* elenca tutte le righe ("Coniugato dal …; Divorziato dal …"). La colonna
+*Coniugato dal* non esiste più.
+
+**Migrazione.** Le colonne `stato_civile` e `coniugato_dal` di `schede_hr` restano nello schema:
+toglierle farebbe perdere dati, e `prisma db push` rifiuterebbe di partire. All'avvio
+`migraStatoCivileHr` (in `hr.service.ts`) copia i valori rimasti in `stati_civili_hr` e svuota le due
+colonne. Una data senza stato diventa *Coniugato*. Gira anche dopo un ripristino, perché i backup
+precedenti hanno solo le colonne vecchie; il backup ora comprende `statiCiviliHr`.
+
 ---
 
 ## Progetto Completato

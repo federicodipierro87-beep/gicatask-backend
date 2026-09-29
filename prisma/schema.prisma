@@ -536,6 +536,10 @@ model SchedaHr {
   codiceFiscale      String?      @map("codice_fiscale")
   numeroSimic        String?      @map("numero_simic")
   cassaMalati        String?      @map("cassa_malati")
+  dataEntrata        DateTime?    @map("data_entrata") @db.Date
+  // Colonne dismesse: lo stato civile sta in `stati_civili_hr`, con piu'
+  // righe. All'avvio `migraStatoCivileHr` sposta li' i valori rimasti e le
+  // svuota; restano nello schema perche' toglierle farebbe fallire il push
   statoCivile        StatoCivile? @map("stato_civile")
   nazionalita        String?
   coniugatoDal       DateTime?    @map("coniugato_dal") @db.Date
@@ -558,11 +562,26 @@ model SchedaHr {
   createdAt          DateTime     @default(now()) @map("created_at")
   updatedAt          DateTime     @updatedAt @map("updated_at")
 
-  foto       AllegatoHr?    @relation("FotoScheda", fields: [fotoId], references: [id], onDelete: SetNull)
-  figli      FiglioHr[]
-  formazioni FormazioneHr[]
+  foto        AllegatoHr?     @relation("FotoScheda", fields: [fotoId], references: [id], onDelete: SetNull)
+  statiCivili StatoCivileHr[]
+  figli       FiglioHr[]
+  formazioni  FormazioneHr[]
 
   @@map("schede_hr")
+}
+
+/// Stato civile con la data da cui vale. Piu' righe per chi si e' sposato,
+/// separato o divorziato piu' volte, nell'ordine in cui sono inserite.
+model StatoCivileHr {
+  id       Int         @id @default(autoincrement())
+  schedaId Int         @map("scheda_id")
+  stato    StatoCivile
+  dal      DateTime?   @db.Date
+
+  scheda SchedaHr @relation(fields: [schedaId], references: [id], onDelete: Cascade)
+
+  @@index([schedaId])
+  @@map("stati_civili_hr")
 }
 
 model FiglioHr {

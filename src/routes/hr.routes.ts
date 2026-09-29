@@ -15,7 +15,15 @@ const schedaSchema = {
   properties: {
     cognomeNome: { type: 'string', minLength: 1 },
     impostaFonte: { type: ['boolean', 'null'] },
-    statoCivile: testoNullable,
+    statiCivili: {
+      type: 'array',
+      maxItems: 20,
+      items: {
+        type: 'object',
+        required: ['stato'],
+        properties: { stato: { type: 'string' }, dal: testoNullable },
+      },
+    },
     fotoId: { type: ['number', 'null'] },
     figli: {
       type: 'array',

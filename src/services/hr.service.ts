@@ -32,7 +32,7 @@ const CAMPI_TESTO = [
 const CAMPI_DATA = [
   'dataNascita',
   'scadenzaPermesso',
-  'coniugatoDal',
+  'dataEntrata',
   'coniugeDataNascita',
   'dataAssunzione',
   'dataCessazione',
@@ -40,6 +40,11 @@ const CAMPI_DATA = [
 
 type CampoTesto = (typeof CAMPI_TESTO)[number];
 type CampoData = (typeof CAMPI_DATA)[number];
+
+export interface StatoCivileInput {
+  stato: StatoCivile;
+  dal?: string | null;
+}
 
 export interface FiglioInput {
   cognomeNome: string;
@@ -56,7 +61,7 @@ export interface FormazioneInput {
 export type SchedaHrInput = {
   cognomeNome: string;
   impostaFonte?: boolean | null;
-  statoCivile?: StatoCivile | null;
+  statiCivili?: StatoCivileInput[];
   // Foto del dipendente, gia' caricata con POST /api/hr/allegati
   fotoId?: number | null;
   figli?: FiglioInput[];
@@ -68,6 +73,7 @@ const SELECT_ALLEGATO = { id: true, nomeFile: true, mimeType: true, dimensione: 
 
 export const SCHEDA_INCLUDE = {
   foto: { select: SELECT_ALLEGATO },
+  statiCivili: { orderBy: { id: 'asc' } },
   figli: { orderBy: { id: 'asc' } },
   formazioni: {
     orderBy: { id: 'asc' },
@@ -116,20 +122,24 @@ export class HrService {
     const cognomeNome = testo(input.cognomeNome);
     if (!cognomeNome) throw new Error('Cognome e nome obbligatori');
 
-    if (input.statoCivile && !STATI_CIVILI.includes(input.statoCivile)) {
-      throw new Error('Stato civile non valido');
-    }
-
     const dati: Record<string, unknown> = {
       cognomeNome,
       impostaFonte: input.impostaFonte ?? null,
-      statoCivile: input.statoCivile || null,
     };
 
     for (const campo of CAMPI_TESTO) dati[campo] = testo(input[campo]);
     for (const campo of CAMPI_DATA) dati[campo] = data(input[campo]);
 
-    return dati as Omit<Prisma.SchedaHrUncheckedCreateInput, 'figli' | 'formazioni'>;
+    return dati as Omit<Prisma.SchedaHrUncheckedCreateInput, 'statiCivili' | 'figli' | 'formazioni'>;
+  }
+
+  // Una riga senza stato e' una riga lasciata vuota nel form
+  private datiStatiCivili(stati: StatoCivileInput[] = []) {
+    const compilati = stati.filter((s) => s.stato);
+    if (compilati.some((s) => !STATI_CIVILI.includes(s.stato))) {
+      throw new Error('Stato civile non valido');
+    }
+    return compilati.map((s) => ({ stato: s.stato, dal: data(s.dal) }));
   }
 
   private datiFigli(figli: FiglioInput[] = []) {
@@ -140,11 +150,12 @@ export class HrService {
 
   async create(input: SchedaHrInput): Promise<SchedaHrCompleta> {
     const dati = this.datiScheda(input);
+    const statiCivili = this.datiStatiCivili(input.statiCivili);
     const figli = this.datiFigli(input.figli);
 
     return this.prisma.$transaction(async (tx) => {
       const scheda = await tx.schedaHr.create({
-        data: { ...dati, figli: { create: figli } },
+        data: { ...dati, statiCivili: { create: statiCivili }, figli: { create: figli } },
       });
 
       await this.salvaFoto(tx, scheda.id, input.fotoId ?? null);
@@ -156,17 +167,19 @@ export class HrService {
 
   async update(id: number, input: SchedaHrInput): Promise<SchedaHrCompleta> {
     const dati = this.datiScheda(input);
+    const statiCivili = this.datiStatiCivili(input.statiCivili);
     const figli = this.datiFigli(input.figli);
 
     return this.prisma.$transaction(async (tx) => {
       const esistente = await tx.schedaHr.findUnique({ where: { id }, select: { id: true } });
       if (!esistente) throw new Error('Scheda non trovata');
 
-      // I figli non hanno nulla appeso: si riscrivono per intero
+      // Stati civili e figli non hanno nulla appeso: si riscrivono per intero
+      await tx.statoCivileHr.deleteMany({ where: { schedaId: id } });
       await tx.figlioHr.deleteMany({ where: { schedaId: id } });
       await tx.schedaHr.update({
         where: { id },
-        data: { ...dati, figli: { create: figli } },
+        data: { ...dati, statiCivili: { create: statiCivili }, figli: { create: figli } },
       });
 
       await this.salvaFoto(tx, id, input.fotoId ?? null);
@@ -264,5 +277,38 @@ export class HrService {
 
   async delete(id: number): Promise<void> {
     await this.prisma.schedaHr.delete({ where: { id } });
+  }
+}
+
+/**
+ * Lo stato civile era un solo valore sulla scheda (`statoCivile` +
+ * `coniugatoDal`), ora e' un elenco in `stati_civili_hr`. Sposta nella tabella
+ * nuova i valori ancora sulle colonne vecchie e le svuota. Gira all'avvio e
+ * dopo un ripristino, perche' i backup precedenti hanno solo le colonne
+ * vecchie; a migrazione fatta non trova nulla.
+ */
+export async function migraStatoCivileHr(prisma: PrismaClient): Promise<void> {
+  try {
+    const vecchie = await prisma.schedaHr.findMany({
+      where: { OR: [{ statoCivile: { not: null } }, { coniugatoDal: { not: null } }] },
+      select: { id: true, statoCivile: true, coniugatoDal: true, _count: { select: { statiCivili: true } } },
+    });
+    if (vecchie.length === 0) return;
+
+    await prisma.$transaction(async (tx) => {
+      for (const s of vecchie) {
+        // Una data "coniugato dal" senza stato vuol dire comunque coniugato
+        if (s._count.statiCivili === 0) {
+          await tx.statoCivileHr.create({
+            data: { schedaId: s.id, stato: s.statoCivile ?? 'CONIUGATO', dal: s.coniugatoDal },
+          });
+        }
+        await tx.schedaHr.update({ where: { id: s.id }, data: { statoCivile: null, coniugatoDal: null } });
+      }
+    });
+
+    console.log(`[Migrazione] stato civile HR: ${vecchie.length} schede spostate su stati_civili_hr`);
+  } catch (error) {
+    console.error('[Migrazione] Impossibile spostare lo stato civile HR:', error);
   }
 }

@@ -31,8 +31,8 @@ const t = (v: string | null | undefined) => v ?? '';
 
 export const CAMPI_HR: CampoHr[] = [
   // Dati personali
-  { chiave: 'numeroPersonale', etichetta: 'Numero personale', sezione: 'Dati personali', peso: 0.8, valore: (s) => t(s.numeroPersonale) },
   { chiave: 'cognomeNome', etichetta: 'Cognome e nome', sezione: 'Dati personali', peso: 1.6, valore: (s) => s.cognomeNome },
+  { chiave: 'numeroPersonale', etichetta: 'Numero personale', sezione: 'Dati personali', peso: 0.8, valore: (s) => t(s.numeroPersonale) },
   { chiave: 'indirizzo', etichetta: 'Indirizzo', sezione: 'Dati personali', peso: 1.6, valore: (s) => t(s.indirizzo) },
   { chiave: 'luogo', etichetta: 'Luogo', sezione: 'Dati personali', peso: 1.1, valore: (s) => t(s.luogo) },
   { chiave: 'dataNascita', etichetta: 'Data di nascita', sezione: 'Dati personali', peso: 0.9, valore: (s) => formatDataHr(s.dataNascita) },
@@ -41,7 +41,9 @@ export const CAMPI_HR: CampoHr[] = [
   { chiave: 'telefono', etichetta: 'Numero di telefono', sezione: 'Dati personali', peso: 1.1, valore: (s) => t(s.telefono) },
   { chiave: 'email', etichetta: 'E-mail', sezione: 'Dati personali', peso: 1.6, valore: (s) => t(s.email) },
 
-  // Documenti e assicurazioni
+  // Documenti e assicurazioni. La scheda stampata ha due campi per riga:
+  // in quest'ordine a sinistra AVS, permesso, scadenza e codice fiscale, a
+  // destra imposte alla fonte, data di entrata, SIMIC e cassa malati
   { chiave: 'numeroAvs', etichetta: 'Numero AVS', sezione: 'Documenti e assicurazioni', peso: 1.2, valore: (s) => t(s.numeroAvs) },
   {
     chiave: 'impostaFonte',
@@ -51,9 +53,10 @@ export const CAMPI_HR: CampoHr[] = [
     valore: (s) => (s.impostaFonte === null ? '' : s.impostaFonte ? 'SI' : 'NO'),
   },
   { chiave: 'tipoPermesso', etichetta: 'Tipo permesso', sezione: 'Documenti e assicurazioni', peso: 0.8, valore: (s) => t(s.tipoPermesso) },
+  { chiave: 'dataEntrata', etichetta: 'Data di entrata', sezione: 'Documenti e assicurazioni', peso: 0.9, valore: (s) => formatDataHr(s.dataEntrata) },
   { chiave: 'scadenzaPermesso', etichetta: 'Scadenza permesso', sezione: 'Documenti e assicurazioni', peso: 0.9, valore: (s) => formatDataHr(s.scadenzaPermesso) },
-  { chiave: 'codiceFiscale', etichetta: 'Codice fiscale', sezione: 'Documenti e assicurazioni', peso: 1.3, valore: (s) => t(s.codiceFiscale) },
   { chiave: 'numeroSimic', etichetta: 'Numero SIMIC', sezione: 'Documenti e assicurazioni', peso: 1, valore: (s) => t(s.numeroSimic) },
+  { chiave: 'codiceFiscale', etichetta: 'Codice fiscale', sezione: 'Documenti e assicurazioni', peso: 1.3, valore: (s) => t(s.codiceFiscale) },
   { chiave: 'cassaMalati', etichetta: 'Cassa malati', sezione: 'Documenti e assicurazioni', peso: 1.1, valore: (s) => t(s.cassaMalati) },
 
   // Famiglia
@@ -61,10 +64,12 @@ export const CAMPI_HR: CampoHr[] = [
     chiave: 'statoCivile',
     etichetta: 'Stato civile',
     sezione: 'Famiglia',
-    peso: 0.9,
-    valore: (s) => (s.statoCivile ? ETICHETTE_STATO_CIVILE[s.statoCivile] : ''),
+    peso: 1.1,
+    valore: (s) =>
+      s.statiCivili
+        .map((c) => (c.dal ? `${ETICHETTE_STATO_CIVILE[c.stato]} dal ${formatDataHr(c.dal)}` : ETICHETTE_STATO_CIVILE[c.stato]))
+        .join('; '),
   },
-  { chiave: 'coniugatoDal', etichetta: 'Coniugato dal', sezione: 'Famiglia', peso: 0.9, valore: (s) => formatDataHr(s.coniugatoDal) },
   { chiave: 'coniugeCognomeNome', etichetta: 'Cognome e nome coniuge', sezione: 'Famiglia', peso: 1.4, valore: (s) => t(s.coniugeCognomeNome) },
   { chiave: 'coniugeDataNascita', etichetta: 'Data di nascita coniuge', sezione: 'Famiglia', peso: 0.9, valore: (s) => formatDataHr(s.coniugeDataNascita) },
   { chiave: 'assegnoFigli', etichetta: 'Assegno figli', sezione: 'Famiglia', peso: 0.9, valore: (s) => t(s.assegnoFigli) },

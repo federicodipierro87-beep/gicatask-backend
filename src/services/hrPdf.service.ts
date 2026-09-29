@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit';
 import type { SchedaHrCompleta } from './hr.service.js';
-import { CAMPI_HR, formatDataHr } from '../utils/hrCampi.js';
+import { CAMPI_HR, ETICHETTE_STATO_CIVILE, formatDataHr } from '../utils/hrCampi.js';
 
 const MARGIN = 40;
 const GRID_COLOR = '#bbbbbb';
@@ -72,7 +72,21 @@ export class HrPdfService {
     scheda: SchedaHrCompleta,
     immagini: Map<number, Buffer>
   ): void {
-    doc.addPage();
+    const stampata = `Stampata il ${oggi()}`;
+
+    // In fondo a sinistra su ogni foglio della scheda. Sotto il margine
+    // inferiore pdfkit aprirebbe una pagina nuova: il margine si toglie solo
+    // per il tempo della scritta
+    const nuovaPagina = () => {
+      doc.addPage();
+      const margine = doc.page.margins.bottom;
+      doc.page.margins.bottom = 0;
+      doc.font('Helvetica').fontSize(7.5).fillColor('#777777');
+      doc.text(stampata, MARGIN, SCHEDA_BOTTOM + 14, { width: SCHEDA_W, lineBreak: false });
+      doc.page.margins.bottom = margine;
+    };
+
+    nuovaPagina();
     let y = MARGIN;
 
     // Foto del dipendente in alto a destra, formato tessera. Il testo
@@ -103,16 +117,13 @@ export class HrPdfService {
       y,
       { width: testoW }
     );
-    y = doc.y + 2;
-    doc.fontSize(7.5).fillColor('#777777');
-    doc.text(`Stampata il ${oggi()}`, MARGIN, y, { width: testoW });
     y = Math.max(doc.y, foto ? MARGIN + FOTO_H : 0) + 8;
 
     // Ripiego per le schede con molti figli o formazioni: nei casi normali
     // la scheda sta in un foglio
     const spazio = (altezza: number) => {
       if (y + altezza <= SCHEDA_BOTTOM) return;
-      doc.addPage();
+      nuovaPagina();
       y = MARGIN;
       doc.font('Helvetica').fontSize(7.5).fillColor('#777777');
       doc.text(`${scheda.cognomeNome} (continua)`, MARGIN, y, { width: SCHEDA_W });
@@ -171,7 +182,14 @@ export class HrPdfService {
       if (campo.chiave === 'formazioni') continue;
 
       let celle: Cella[];
-      if (campo.chiave !== 'figli') {
+      if (campo.chiave === 'statoCivile') {
+        // Ogni stato civile occupa una riga: lo stato a sinistra, la data a destra
+        const stati = scheda.statiCivili.length > 0 ? scheda.statiCivili : [null];
+        celle = stati.flatMap((c) => [
+          { etichetta: 'Stato civile', valore: c ? ETICHETTE_STATO_CIVILE[c.stato] : '' },
+          { etichetta: 'Dal', valore: c ? formatDataHr(c.dal) : '' },
+        ]);
+      } else if (campo.chiave !== 'figli') {
         celle = [{ etichetta: campo.etichetta, valore: campo.valore(scheda) }];
       } else if (scheda.figli.length === 0) {
         celle = [{ etichetta: 'Figli', valore: '' }];
