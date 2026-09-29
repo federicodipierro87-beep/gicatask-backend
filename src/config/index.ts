@@ -13,7 +13,12 @@ export const config = {
   },
 
   cors: {
-    origin: process.env['CORS_ORIGIN'] ?? 'http://localhost:5173',
+    // Piu' origini separate da virgola: durante un cambio di dominio il
+    // frontend risponde sia sul vecchio indirizzo sia sul nuovo
+    origin: (process.env['CORS_ORIGIN'] ?? 'http://localhost:5173')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
   },
 
   r2: {
