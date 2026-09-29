@@ -26,7 +26,7 @@ I moduli *Bollettini* e *Dream* non sono visibili a tutti: i primi dipendono dal
 ## URL di Produzione
 
 - **Backend (Railway):** https://web-production-fde54.up.railway.app
-- **Frontend (Netlify):** https://task.gica.ch (dal 30 Settembre 2026; resta attivo anche https://gicatask.netlify.app)
+- **Frontend (Netlify):** https://task.gica.ch (dal 30 Settembre 2026; https://gicatask.netlify.app reindirizza qui)
 
 **Come si ritrovano i due progetti.** I nomi su Railway sono generati a caso e nessuno dice
 "GicaTask", quindi vanno annotati qui o si ricercano a tentoni:
@@ -3041,8 +3041,9 @@ Le voci del 28 Settembre che descrivono la riga valgono per la situazione di all
 
 ### Dominio task.gica.ch (30 Settembre 2026)
 
-Il frontend risponde su **https://task.gica.ch**. Anche **https://gicatask.netlify.app** continua a
-funzionare, senza redirect.
+Il frontend risponde su **https://task.gica.ch**. **https://gicatask.netlify.app** porta al dominio
+nuovo con un redirect 301, percorso compreso. La regola sta in `netlify.toml` del frontend, prima
+di quella della SPA, perché Netlify applica la prima regola che corrisponde.
 
 - **DNS:** `gica.ch` è gestito da **Wix** (`ns2`/`ns3.wixdns.net`). Il record è un CNAME
   `task` → `gicatask.netlify.app`.
