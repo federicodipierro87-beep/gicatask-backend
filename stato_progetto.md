@@ -2996,6 +2996,12 @@ sono solo le tre righe del riepilogo in fondo al foglio (961–963).
 Backend: nuovo `importStorico.service.ts`. Frontend: nuovo `ImportVecchiLavori.tsx`, montato in
 fondo a `ImportPage`.
 
+### Bollettino: operai e ore subito dopo le attività (29 Settembre 2026)
+
+Nel form del bollettino la sezione degli operai e delle ore (`SquadreSelector`) ora viene subito
+dopo *Attività svolte*, prima di Mezzi, Materiali e Trasporti. È solo uno spostamento: dati e API
+non cambiano. Nel PDF quel blocco era già stampato dopo le attività.
+
 ---
 
 ## Progetto Completato
