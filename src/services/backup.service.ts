@@ -2,7 +2,7 @@ import { PrismaClient, TipoBackup, StatoBackup } from '@prisma/client';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
 import { seedTipiAssenza } from './seed.service.js';
-import { migraStatoCivileHr } from './hr.service.js';
+import { migraGradoOccupazioneHr, migraStatoCivileHr } from './hr.service.js';
 
 interface BackupData {
   version: string;
@@ -37,6 +37,7 @@ interface BackupData {
     // Sezione HR: come per i bollettini, delle foto solo i metadati
     schedeHr?: any[];
     statiCiviliHr?: any[];
+    gradiOccupazioneHr?: any[];
     figliHr?: any[];
     formazioniHr?: any[];
     allegatiHr?: any[];
@@ -112,6 +113,7 @@ export class BackupService {
           percentualiLavoro: await this.prisma.percentualeLavoro.findMany(),
           schedeHr: await this.prisma.schedaHr.findMany(),
           statiCiviliHr: await this.prisma.statoCivileHr.findMany(),
+          gradiOccupazioneHr: await this.prisma.gradoOccupazioneHr.findMany(),
           figliHr: await this.prisma.figlioHr.findMany(),
           formazioniHr: await this.prisma.formazioneHr.findMany(),
           allegatiHr: await this.prisma.allegatoHr.findMany(),
@@ -264,6 +266,7 @@ export class BackupService {
       await tx.allegatoHr.deleteMany();
       await tx.formazioneHr.deleteMany();
       await tx.statoCivileHr.deleteMany();
+      await tx.gradoOccupazioneHr.deleteMany();
       await tx.figlioHr.deleteMany();
       await tx.schedaHr.deleteMany();
 
@@ -420,6 +423,13 @@ export class BackupService {
         stats.statiCiviliHr = statiCiviliHr.length;
       }
 
+      // Lo stesso per il grado di occupazione, con migraGradoOccupazioneHr
+      const gradiOccupazioneHr = backupData.tables.gradiOccupazioneHr ?? [];
+      if (gradiOccupazioneHr.length > 0) {
+        await tx.gradoOccupazioneHr.createMany({ data: gradiOccupazioneHr });
+        stats.gradiOccupazioneHr = gradiOccupazioneHr.length;
+      }
+
       const figliHr = backupData.tables.figliHr ?? [];
       if (figliHr.length > 0) {
         await tx.figlioHr.createMany({ data: figliHr });
@@ -470,6 +480,7 @@ export class BackupService {
         'percentuali_lavoro',
         'schede_hr',
         'stati_civili_hr',
+        'gradi_occupazione_hr',
         'figli_hr',
         'formazioni_hr',
         'allegati_hr',
@@ -488,6 +499,7 @@ export class BackupService {
     // Backups predating the absence feature leave tipi_assenza empty
     await seedTipiAssenza(this.prisma);
     await migraStatoCivileHr(this.prisma);
+    await migraGradoOccupazioneHr(this.prisma);
 
     return { restored: true, stats };
   }

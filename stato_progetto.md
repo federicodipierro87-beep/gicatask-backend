@@ -3057,6 +3057,24 @@ di quella della SPA, perché Netlify applica la prima regola che corrisponde.
   Per renderlo di prima parte servirebbe anche un sottodominio per il backend, per esempio
   `api.gica.ch` su Railway.
 
+### Scheda HR: grado di occupazione su più righe (30 Settembre 2026)
+
+Il grado di occupazione può cambiare nel tempo, quindi ora funziona come lo stato civile: ogni riga
+ha *Grado occupazione* (la tendina 10%–100%) e *Dal* (data), e il **+** sotto aggiunge un'altra
+riga. Il form ha sempre almeno una riga; le righe senza grado non si salvano. Nuova tabella
+`gradi_occupazione_hr` (`GradoOccupazioneHr`: `schedaId`, `grado` testo, `dal`), riscritta per
+intera a ogni salvataggio. Nella stampa ogni riga diventa *Grado occupazione | Dal*. Nel riepilogo
+la colonna *Grado occupazione* elenca tutte le righe ("100% dal …; 80% dal …").
+
+**Nuovo ordine di *Impiego*.** Una riga *grado | dal* occupa tutta la larghezza e deve partire da
+sinistra nella griglia a due colonne della stampa. Perciò in `CAMPI_HR`, e nel form, l'ordine è
+Data di assunzione, Tipo di salario, Salario, Numero IBAN, i gradi e infine Data di cessazione.
+
+**Migrazione.** La colonna `schede_hr.grado_occupazione` resta nello schema, come quelle dello stato
+civile. All'avvio e dopo un ripristino `migraGradoOccupazioneHr` (in `hr.service.ts`) copia il
+valore rimasto in `gradi_occupazione_hr`, senza data, e svuota la colonna. Il backup ora comprende
+`gradiOccupazioneHr`.
+
 ---
 
 ## Progetto Completato

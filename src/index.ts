@@ -7,7 +7,7 @@ import authPlugin from './plugins/auth.js';
 import { registerRoutes } from './routes/index.js';
 import { initScheduler } from './services/scheduler.service.js';
 import { seedTipiAssenza, removeCantieriGenerici } from './services/seed.service.js';
-import { migraStatoCivileHr } from './services/hr.service.js';
+import { migraGradoOccupazioneHr, migraStatoCivileHr } from './services/hr.service.js';
 
 async function buildApp() {
   const fastify = Fastify({
@@ -79,6 +79,8 @@ async function start() {
 
     // Stato civile HR: dalle colonne della scheda alla tabella stati_civili_hr
     await migraStatoCivileHr(app.prisma);
+    // Grado di occupazione HR: dalla colonna della scheda a gradi_occupazione_hr
+    await migraGradoOccupazioneHr(app.prisma);
 
     // Initialize scheduler for automatic backups
     initScheduler(app.prisma);

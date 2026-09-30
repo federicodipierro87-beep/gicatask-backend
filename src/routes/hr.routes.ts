@@ -24,6 +24,15 @@ const schedaSchema = {
         properties: { stato: { type: 'string' }, dal: testoNullable },
       },
     },
+    gradiOccupazione: {
+      type: 'array',
+      maxItems: 30,
+      items: {
+        type: 'object',
+        required: ['grado'],
+        properties: { grado: { type: 'string' }, dal: testoNullable },
+      },
+    },
     fotoId: { type: ['number', 'null'] },
     figli: {
       type: 'array',

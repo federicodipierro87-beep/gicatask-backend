@@ -519,7 +519,8 @@ enum StatoCivile {
 /// personale ci sono anche persone che non entrano mai nel portale. Quasi
 /// tutto e' facoltativo perche' la scheda si compila a piu' riprese.
 /// Con `dataCessazione` valorizzata il dipendente passa fra gli uscenti.
-/// Salario e grado di occupazione sono testo: "28.50/h", "80%".
+/// Il salario e' testo: "28.50/h". Il grado di occupazione sta in
+/// `gradi_occupazione_hr`, con piu' righe.
 model SchedaHr {
   id                 Int          @id @default(autoincrement())
   numeroPersonale    String?      @map("numero_personale")
@@ -551,6 +552,8 @@ model SchedaHr {
   dataAssunzione     DateTime?    @map("data_assunzione") @db.Date
   tipoSalario        String?      @map("tipo_salario")
   salario            String?
+  // Colonna dismessa: il grado sta in `gradi_occupazione_hr`, con piu'
+  // righe. All'avvio `migraGradoOccupazioneHr` sposta li' i valori rimasti
   gradoOccupazione   String?      @map("grado_occupazione")
   iban               String?
   email              String?
@@ -562,10 +565,11 @@ model SchedaHr {
   createdAt          DateTime     @default(now()) @map("created_at")
   updatedAt          DateTime     @updatedAt @map("updated_at")
 
-  foto        AllegatoHr?     @relation("FotoScheda", fields: [fotoId], references: [id], onDelete: SetNull)
-  statiCivili StatoCivileHr[]
-  figli       FiglioHr[]
-  formazioni  FormazioneHr[]
+  foto             AllegatoHr?          @relation("FotoScheda", fields: [fotoId], references: [id], onDelete: SetNull)
+  statiCivili      StatoCivileHr[]
+  gradiOccupazione GradoOccupazioneHr[]
+  figli            FiglioHr[]
+  formazioni       FormazioneHr[]
 
   @@map("schede_hr")
 }
@@ -582,6 +586,20 @@ model StatoCivileHr {
 
   @@index([schedaId])
   @@map("stati_civili_hr")
+}
+
+/// Grado di occupazione con la data da cui vale ("80%" dal ...). Piu' righe
+/// quando la percentuale cambia nel tempo, nell'ordine in cui sono inserite.
+model GradoOccupazioneHr {
+  id       Int       @id @default(autoincrement())
+  schedaId Int       @map("scheda_id")
+  grado    String
+  dal      DateTime? @db.Date
+
+  scheda SchedaHr @relation(fields: [schedaId], references: [id], onDelete: Cascade)
+
+  @@index([schedaId])
+  @@map("gradi_occupazione_hr")
 }
 
 model FiglioHr {

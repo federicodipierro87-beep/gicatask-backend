@@ -189,6 +189,13 @@ export class HrPdfService {
           { etichetta: 'Stato civile', valore: c ? ETICHETTE_STATO_CIVILE[c.stato] : '' },
           { etichetta: 'Dal', valore: c ? formatDataHr(c.dal) : '' },
         ]);
+      } else if (campo.chiave === 'gradoOccupazione') {
+        // Come lo stato civile: il grado a sinistra, la data a destra
+        const gradi = scheda.gradiOccupazione.length > 0 ? scheda.gradiOccupazione : [null];
+        celle = gradi.flatMap((g) => [
+          { etichetta: 'Grado occupazione', valore: g?.grado ?? '' },
+          { etichetta: 'Dal', valore: g ? formatDataHr(g.dal) : '' },
+        ]);
       } else if (campo.chiave !== 'figli') {
         celle = [{ etichetta: campo.etichetta, valore: campo.valore(scheda) }];
       } else if (scheda.figli.length === 0) {

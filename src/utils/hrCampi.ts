@@ -86,12 +86,20 @@ export const CAMPI_HR: CampoHr[] = [
   { chiave: 'padreCognomeNome', etichetta: 'Cognome e nome del padre', sezione: 'Famiglia', peso: 1.4, valore: (s) => t(s.padreCognomeNome) },
   { chiave: 'madreCognomeNome', etichetta: 'Cognome e nome (da nubile) della madre', sezione: 'Famiglia', peso: 1.4, valore: (s) => t(s.madreCognomeNome) },
 
-  // Impiego
+  // Impiego. Nella scheda stampata ogni grado di occupazione occupa una riga
+  // intera (grado | dal), quindi deve cadere a sinistra: e' il quinto campo
   { chiave: 'dataAssunzione', etichetta: 'Data di assunzione', sezione: 'Impiego', peso: 0.9, valore: (s) => formatDataHr(s.dataAssunzione) },
   { chiave: 'tipoSalario', etichetta: 'Tipo di salario', sezione: 'Impiego', peso: 0.9, valore: (s) => t(s.tipoSalario) },
   { chiave: 'salario', etichetta: 'Salario', sezione: 'Impiego', peso: 0.8, valore: (s) => t(s.salario) },
-  { chiave: 'gradoOccupazione', etichetta: 'Grado occupazione', sezione: 'Impiego', peso: 0.8, valore: (s) => t(s.gradoOccupazione) },
   { chiave: 'iban', etichetta: 'Numero IBAN', sezione: 'Impiego', peso: 1.8, valore: (s) => t(s.iban) },
+  {
+    chiave: 'gradoOccupazione',
+    etichetta: 'Grado occupazione',
+    sezione: 'Impiego',
+    peso: 1.1,
+    valore: (s) =>
+      s.gradiOccupazione.map((g) => (g.dal ? `${g.grado} dal ${formatDataHr(g.dal)}` : g.grado)).join('; '),
+  },
   { chiave: 'dataCessazione', etichetta: 'Data di cessazione', sezione: 'Impiego', peso: 0.9, valore: (s) => formatDataHr(s.dataCessazione) },
 
   // Formazioni: nella scheda hanno una sezione propria con le foto, qui
