@@ -3082,6 +3082,29 @@ La tabella di `/responsabile/hr` mostra ora, in quest'ordine, *Cognome e nome*, 
 *Scad. permesso* / *Cessazione*. La ricerca trova ancora per numero di personale. Solo frontend (`HrPage.tsx`): l'API
 restituiva già tutti i campi della scheda.
 
+### Archivio bollettini: colonna "Num Bollettino" al posto di "Cantiere" (1 Ottobre 2026)
+
+Nella tabella di `/responsabile/bollettini` tolta la colonna *Cantiere* e aggiunta *Num Bollettino*
+dopo *Allegati*. Il numero è l'`id` del bollettino, lo stesso stampato sul PDF ("Bollettino n.") e
+nel nome del file. Il filtro per cantiere resta. Solo frontend (`BollettiniArchivioPage.tsx`).
+
+### Archivio bollettini: flag "Fatturato", bollettini attivi e fatturati (1 Ottobre 2026)
+
+Nel menu *Bollettino* la voce *Archivio* diventa **Bollettini attivi** (`/responsabile/bollettini`)
+e si aggiunge **Bollettini fatturati** (`/responsabile/bollettini/fatturati`). Sono la stessa
+pagina (`BollettiniArchivioPage`, prop `fatturati`). Una colonna **Fatturato** con una spunta,
+prima di *Azioni*: spuntandola il bollettino sparisce dagli attivi e compare fra i fatturati.
+Togliendo la spunta dai fatturati torna fra gli attivi, per correggere un errore. Il `title` della
+spunta mostra la data in cui è stata messa.
+
+**Backend.** Due colonne nuove su `bollettini`: `fatturato Boolean @default(false)` e
+`fatturato_at` (nullable). Vengono create da `prisma db push` allo start, e i bollettini esistenti
+partono tutti come non fatturati. `GET /api/bollettini` accetta `?fatturato=true|false`: senza il
+parametro restituisce tutto come prima, quindi l'elenco del dipendente e i cumulativi PDF non
+cambiano. I cumulativi comprendono anche i fatturati. Nuova rotta
+`PATCH /api/bollettini/:id/fatturato` con body `{ fatturato: boolean }`, ammessa solo con
+`requireRole('RESPONSABILE')` e il flag bollettini.
+
 ---
 
 ## Progetto Completato

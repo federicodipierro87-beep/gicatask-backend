@@ -302,12 +302,13 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
 
     const user = request.user as JwtPayload;
-    const { utenteId, clienteId, cantiereId, startDate, endDate } = request.query as {
+    const { utenteId, clienteId, cantiereId, startDate, endDate, fatturato } = request.query as {
       utenteId?: string;
       clienteId?: string;
       cantiereId?: string;
       startDate?: string;
       endDate?: string;
+      fatturato?: string;
     };
 
     const bollettini = await service.getAll({
@@ -319,6 +320,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
       cantiereId: cantiereId ? parseInt(cantiereId, 10) : undefined,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
+      fatturato: fatturato === 'true' ? true : fatturato === 'false' ? false : undefined,
     });
 
     return reply.send(bollettini);
@@ -441,6 +443,32 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     request.log.info({ bollettinoId: id, stato: esito.stato }, 'reinvio mail bollettino');
 
     return reply.send(esito);
+  });
+
+  // Flag "Fatturato" (solo responsabile): sposta il bollettino fra attivi e
+  // fatturati nell'archivio. Il bollettino resta firmato e immutato
+  fastify.patch<{ Params: { id: string }; Body: { fatturato: boolean } }>('/:id/fatturato', {
+    preHandler: [fastify.requireRole('RESPONSABILE')],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['fatturato'],
+        properties: { fatturato: { type: 'boolean' } },
+      },
+    },
+  }, async (request, reply) => {
+    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+
+    const trovato = await service.setFatturato(
+      parseInt(request.params.id, 10),
+      request.body.fatturato
+    );
+
+    if (!trovato) {
+      return reply.status(404).send({ error: 'Bollettino non trovato' });
+    }
+
+    return reply.send({ success: true });
   });
 
   // Eliminazione (solo responsabile, e solo se abilitato)

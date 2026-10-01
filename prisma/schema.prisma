@@ -384,6 +384,11 @@ model Bollettino {
   emailMessageId    String?   @map("email_message_id")
   emailErrore       String?   @map("email_errore") @db.Text
 
+  // Messo dal responsabile nell'archivio: separa i bollettini attivi da quelli
+  // gia' fatturati. Si puo' togliere, nel caso di una spunta sbagliata
+  fatturato   Boolean   @default(false)
+  fatturatoAt DateTime? @map("fatturato_at")
+
   createdById Int      @map("created_by")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

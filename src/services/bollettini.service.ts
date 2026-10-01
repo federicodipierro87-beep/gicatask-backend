@@ -66,6 +66,8 @@ export interface BollettinoFilters {
   cantiereId?: number;
   startDate?: Date;
   endDate?: Date;
+  // Assente: tutti, come prima del flag (elenco del dipendente, cumulativi)
+  fatturato?: boolean;
 }
 
 /**
@@ -98,6 +100,8 @@ const listSelect = {
   emailStato: true,
   emailInviataAt: true,
   emailErrore: true,
+  fatturato: true,
+  fatturatoAt: true,
   createdAt: true,
   utente: { select: { id: true, nome: true, cognome: true } },
   cantieri: {
@@ -228,6 +232,7 @@ export class BollettiniService {
 
     return {
       ...(filters.utenteId ? { utenteId: filters.utenteId } : {}),
+      ...(filters.fatturato !== undefined ? { fatturato: filters.fatturato } : {}),
       ...(and.length ? { AND: and } : {}),
       ...(filters.startDate || filters.endDate
         ? {
@@ -588,6 +593,15 @@ export class BollettiniService {
         };
       })
     );
+  }
+
+  /** Restituisce false se il bollettino non esiste. */
+  async setFatturato(id: number, fatturato: boolean): Promise<boolean> {
+    const { count } = await this.prisma.bollettino.updateMany({
+      where: { id },
+      data: { fatturato, fatturatoAt: fatturato ? new Date() : null },
+    });
+    return count > 0;
   }
 
   async delete(id: number): Promise<void> {
