@@ -272,6 +272,33 @@ model BackupLog {
   @@map("backup_logs")
 }
 
+/// Registro delle operazioni fatte dagli utenti (pannello Log del responsabile).
+/// Nessuna chiave esterna verso `utenti`: il nome e' copiato al momento
+/// dell'operazione, cosi' la riga resta leggibile anche se l'utente cambia nome
+/// e il ripristino di un backup, che svuota `utenti`, non tocca il registro.
+/// Per lo stesso motivo la tabella non entra nei backup.
+model LogOperazione {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now()) @map("created_at")
+  utenteId    Int?     @map("utente_id")
+  utenteNome  String?  @map("utente_nome")
+  ruolo       String?
+  area        String
+  azione      String
+  descrizione String
+  metodo      String
+  percorso    String
+  stato       Int
+  esito       Boolean
+  errore      String?  @db.Text
+  dettaglio   Json?
+  ip          String?
+
+  @@index([createdAt])
+  @@index([utenteId])
+  @@map("log_operazioni")
+}
+
 enum TipoBackup {
   AUTOMATICO
   MANUALE

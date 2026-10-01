@@ -4,6 +4,7 @@ import cookie from '@fastify/cookie';
 import { config } from './config/index.js';
 import prismaPlugin from './plugins/prisma.js';
 import authPlugin from './plugins/auth.js';
+import logOperazioniPlugin from './plugins/logOperazioni.js';
 import { registerRoutes } from './routes/index.js';
 import { initScheduler } from './services/scheduler.service.js';
 import { seedTipiAssenza, removeCantieriGenerici } from './services/seed.service.js';
@@ -31,6 +32,9 @@ async function buildApp() {
 
   // Register auth plugin
   await fastify.register(authPlugin);
+
+  // Prima delle rotte: i suoi hook globali devono valere per tutte
+  await fastify.register(logOperazioniPlugin);
 
   // Register routes
   await fastify.register(registerRoutes);

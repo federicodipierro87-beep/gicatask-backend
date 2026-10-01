@@ -3,15 +3,19 @@ import { PrismaClient } from '@prisma/client';
 import { BackupService } from './backup.service.js';
 import { AllegatiBollettinoService } from './allegatiBollettino.service.js';
 import { AllegatiHrService } from './allegatiHr.service.js';
+import { LogOperazioniService } from './logOperazioni.service.js';
 
 const BACKUP_RETENTION_DAYS = 7;
 /** Chi carica una foto e abbandona il form lascia un oggetto senza padre. */
 const ALLEGATI_ORFANI_ORE = 24;
+/** Il pannello Log conserva un anno di operazioni. */
+const LOG_RETENTION_DAYS = 365;
 
 export function initScheduler(prisma: PrismaClient) {
   const backupService = new BackupService(prisma);
   const allegatiService = new AllegatiBollettinoService(prisma);
   const allegatiHrService = new AllegatiHrService(prisma);
+  const logService = new LogOperazioniService(prisma);
 
   // Daily backup at 2:00 AM + cleanup old backups
   cron.schedule('0 2 * * *', async () => {
@@ -48,6 +52,13 @@ export function initScheduler(prisma: PrismaClient) {
       console.log(`[Scheduler] Orphaned HR photos cleanup completed: ${rimossi} deleted`);
     } catch (error) {
       console.error('[Scheduler] HR photo cleanup failed:', error instanceof Error ? error.message : error);
+    }
+
+    try {
+      const rimossi = await logService.pulisci(LOG_RETENTION_DAYS);
+      console.log(`[Scheduler] Operation log cleanup completed: ${rimossi} entries older than ${LOG_RETENTION_DAYS} days deleted`);
+    } catch (error) {
+      console.error('[Scheduler] Operation log cleanup failed:', error instanceof Error ? error.message : error);
     }
   }, {
     timezone: 'Europe/Rome',

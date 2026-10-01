@@ -18,6 +18,8 @@ Attorno al nucleo iniziale si sono aggiunti nel tempo cinque moduli, ognuno con 
 
 I moduli *Bollettini* e *Dream* non sono visibili a tutti: i primi dipendono dal flag `abilitatoBollettini` sull'utente, il secondo è riservato al ruolo `RESPONSABILE` — **tutti e diciassette gli endpoint** delle tre route Dream, letture comprese. Anche *HR* è solo del responsabile, letture comprese.
 
+Il responsabile ha anche un pannello **Log** (*Impostazioni → Log*) con le operazioni di tutti gli utenti, sé compreso.
+
 ## Repository
 
 - **Backend:** https://github.com/federicodipierro87-beep/gicatask-backend
@@ -3192,6 +3194,65 @@ che modificano un'attività: `AssegnaAttivitaPage`, `AttivitaFormPage` e `Assenz
 service salva la nota vuota come `null` (`input.note || null`), così il database non accumula
 stringhe vuote accanto ai `NULL`. In creazione non cambia nulla.
 
+### Pannello Log delle operazioni (1 Ottobre 2026)
+
+Nuova voce **Log** nel menu *Impostazioni* (`/responsabile/log`), solo per il responsabile. Elenca
+chi ha fatto cosa e quando, amministratore compreso, come un classico registro di audit.
+
+**Cosa si registra.** Accessi (riusciti e falliti, col motivo) e uscite; ogni creazione, modifica,
+eliminazione, disattivazione e riattivazione in tutte le aree; backup e ripristini, import, invio
+dei bollettini per e-mail, export e download di PDF/Excel/allegati. **Non** si registrano le
+semplici consultazioni (aprire una pagina, caricare un elenco): riempirebbero il registro senza
+dire nulla. Anche le operazioni rifiutate entrano nel log, col codice e il messaggio d'errore
+(es. un dipendente che chiama una rotta da responsabile: 403 *Permessi insufficienti*).
+
+**Cosa si vede.** Data e ora, utente (con "(admin)" per il responsabile), area, tipo di operazione
+come badge colorato, descrizione con il nome dell'elemento ("Modifica attività: Verdi Luigi,
+01.10.2026", "Disattivazione cliente: Rossi SA") ed esito; le righe non riuscite sono in rosso col
+motivo. Cliccando una riga si apre il dettaglio:
+- **modifiche**: tabella *Campo / Prima / Dopo* dei soli campi cambiati, con i riferimenti
+  risolti (il cliente per nome, non per id) e la durata in ore;
+- **creazioni ed eliminazioni**: i dati del record, così un'attività cancellata resta leggibile;
+- **export**: i filtri usati; **altre operazioni** (backup, import, mail): i dati inviati.
+
+Filtri: periodo (default ultimi 7 giorni), utente, area, tipo di operazione, esito e ricerca
+libera su descrizione, utente ed errore. Paginazione **lato server** a 50 righe, pulsante
+*Aggiorna* e aggiornamento automatico ogni 30 secondi a scelta. Su telefono l'elenco diventa una
+lista di schede invece della tabella.
+
+**Come funziona.**
+- Tabella `log_operazioni` (`LogOperazione`), puramente additiva: il `db push` all'avvio non chiede
+  `--accept-data-loss` (provato su Postgres 18 locale, dallo schema precedente con dati).
+  **Nessuna chiave esterna verso `utenti`**: nome e ruolo sono copiati al momento
+  dell'operazione. Così la riga resta leggibile se l'utente cambia nome, e il ripristino di un
+  backup, che svuota `utenti`, non tocca il registro. Per lo stesso motivo il log **non entra nei
+  backup** e sopravvive a un ripristino, che a sua volta vi resta registrato.
+- `plugins/logOperazioni.ts` registra tre hook **globali**, prima delle rotte: nessuna rotta è
+  stata toccata. `preHandler` legge il record prima dell'operazione (gira prima dei preHandler di
+  rotta, quindi prima dell'autenticazione, ma solo se la richiesta porta un token); `onSend`
+  estrae l'id creato o il messaggio d'errore dalla risposta; `onResponse` rilegge il record,
+  calcola le differenze e scrive la riga. Un errore del registro finisce nel log di Fastify e **non
+  fa mai fallire l'operazione registrata**.
+- Il **catalogo** in `logOperazioni.service.ts` associa a ogni `METODO rotta` area, tipo, testo e
+  modello Prisma. Una scrittura assente dal catalogo viene registrata lo stesso come *Altro* con
+  metodo e percorso; una lettura invece entra solo se è nel catalogo.
+- L'utente viene da `request.user`, oppure dal token per le rotte che non autenticano (logout), o
+  dal corpo per il login. Una richiesta senza utente (token assente o scaduto) non viene registrata.
+- Non entrano mai nel registro: hash e password, firme base64, `createdAt`/`updatedAt`. I testi
+  oltre 300 caratteri vengono troncati. I messaggi d'errore di auth, in inglese, vengono tradotti
+  al momento della scrittura.
+- Eliminare clienti, cantieri, tipi, utenti, veicoli e voci in realtà li disattiva: nel log
+  compaiono come *Disattivazione*, senza i dati del record.
+- Pulizia notturna alle 2:30 (`LOG_RETENTION_DAYS = 365`): si conserva un anno.
+- API: `GET /api/log` (filtri `dal`, `al` come istanti ISO calcolati dal browser sulla mezzanotte
+  locale, `utenti`, `aree`, `azioni` separati da virgola, `esito=ok|errore`, `q`, `pagina`,
+  `perPagina` fino a 200) e `GET /api/log/filtri` (utenti e aree presenti nel registro). Entrambe
+  `requireRole('RESPONSABILE')`.
+
+Provato in locale (backend e frontend contro un Postgres temporaneo, browser headless) su accesso
+fallito e riuscito, creazione, modifica (orari del pomeriggio e nota tolti), errore di
+validazione, 403, export, eliminazione e uscita, su desktop e su telefono.
+
 ---
 
 ## Progetto Completato
@@ -3213,6 +3274,7 @@ backend/
 │   ├── config/index.ts        # Configurazione ambiente
 │   ├── plugins/
 │   │   ├── auth.ts            # Guardie ruolo; legge Bearer, poi il cookie
+│   │   ├── logOperazioni.ts   # Hook globali che scrivono il pannello Log
 │   │   └── prisma.ts          # Plugin Prisma per Fastify
 │   ├── scripts/
 │   │   └── preparaDb.ts       # Ripara i dati prima del push dello schema
@@ -3226,6 +3288,7 @@ backend/
 │   │   ├── utenti.routes.ts   # CRUD utenti
 │   │   ├── attivita.routes.ts # CRUD attività + export
 │   │   ├── backup.routes.ts   # Backup/ripristino
+│   │   ├── log.routes.ts      # Lettura del pannello Log (solo responsabile)
 │   │   ├── import.routes.ts   # Import massivo Excel + vecchi lavori
 │   │   ├── bollettini.routes.ts # CRUD bollettini + PDF
 │   │   ├── vociBollettino.routes.ts # Anagrafiche mezzi/materiali/trasporti
@@ -3251,7 +3314,8 @@ backend/
 │   │   ├── export.service.ts    # Generazione PDF/Excel
 │   │   ├── import.service.ts    # Import massivo da Excel
 │   │   ├── importStorico.service.ts # Import vecchi lavori (foglio pre-GicaTask)
-│   │   ├── scheduler.service.ts # Cron: backup 2:00, allegati orfani 2:30
+│   │   ├── logOperazioni.service.ts # Catalogo operazioni, etichette, differenze
+│   │   ├── scheduler.service.ts # Cron: backup 2:00, allegati orfani e log > 1 anno 2:30
 │   │   ├── seed.service.ts      # Tipi assenza di default + pulizia generici
 │   │   ├── tipiAssenza.service.ts  # CRUD tipi assenza
 │   │   ├── tipiAttivita.service.ts # CRUD tipi attività
@@ -3308,7 +3372,7 @@ frontend/
 │   │   ├── MultiSelect.tsx        # Elenco a spunta, chiusura al click fuori
 │   │   ├── SignaturePad.tsx       # Firma su canvas (pointer events, no librerie)
 │   │   ├── VociSelector.tsx       # Selezione voci con quantità
-│   │   └── Modal.tsx
+│   │   └── Modal.tsx              # Prop maxWidth per i contenuti tabellari
 │   ├── pages/
 │   │   ├── Login.tsx
 │   │   ├── DipendenteDashboard.tsx
@@ -3328,6 +3392,7 @@ frontend/
 │   │       ├── OreDovutePage.tsx
 │   │       ├── AssegnaAttivitaPage.tsx
 │   │       ├── BackupPage.tsx
+│   │       ├── LogPage.tsx               # Pannello Log: filtri, elenco, dettaglio
 │   │       ├── ImportPage.tsx
 │   │       ├── ImportVecchiLavori.tsx # Sezione vecchi lavori della pagina Import
 │   │       ├── CantieriPage.tsx      # Gestione cantieri
@@ -3421,6 +3486,8 @@ VITE_API_URL=https://web-production-fde54.up.railway.app
 11. **Nessun vincolo semantico in `createBodySchema` sui campi facoltativi.** `format: 'email'` *è* disponibile (`@fastify/ajv-compiler` carica `ajv-formats` di default), ma usarlo sul campo e-mail del bollettino genererebbe un **400 prima dell'handler**: bollettino non salvato e due firme perse per un typo su un campo che è facoltativo. In più `ajv-formats` lì è una dipendenza *transitiva*, non dichiarata, e un bump di Fastify potrebbe togliere la validazione in silenzio. La regola generale: lo schema tutela il server (tipi e lunghezze massime), la semantica si valuta **dopo** il salvataggio, nel codice, dove il fallimento può diventare un avviso invece che un errore.
 
 12. **I pannelli a tendina stanno fuori dal `<nav>`.** La barra ha `overflow-x-auto` per scorrere su schermi stretti, e quello crea un contenitore di scorrimento che **ritaglia** i figli in posizione assoluta: una tendina messa dentro la nav verrebbe tagliata invece di uscirne. *Impostazioni* e *Bollettino* sono fratelli della nav, non figli.
+
+13. **Una rotta nuova va aggiunta al catalogo del Log.** Gli hook di `plugins/logOperazioni.ts` sono globali, quindi una scrittura nuova finisce comunque nel registro, ma come *Altro* con metodo e percorso. Per avere area, descrizione e il nome dell'elemento, va aggiunta a `CATALOGO` in `logOperazioni.service.ts`. Se lavora su un modello nuovo, anche a `MODELLI` con la sua etichetta. Un campo con dati sensibili o voluminosi va aggiunto a `CAMPI_ESCLUSI`.
 
 ---
 
