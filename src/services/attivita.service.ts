@@ -266,7 +266,7 @@ export class AttivitaService {
         ...(input.cantiereId !== undefined ? { cantiereId: input.cantiereId ?? null } : {}),
         ...(input.tipoAttivitaId !== undefined ? { tipoAttivitaId: input.tipoAttivitaId || null } : {}),
         ...(input.assenzaId !== undefined ? { assenzaId: input.assenzaId ?? null } : {}),
-        ...(input.note !== undefined ? { note: input.note } : {}),
+        ...(input.note !== undefined ? { note: input.note || null } : {}),
       },
     });
   }

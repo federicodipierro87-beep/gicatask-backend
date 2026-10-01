@@ -3184,6 +3184,14 @@ Corretto sia in `AssegnaAttivitaPage` (responsabile) sia in `AttivitaFormPage` (
 avevano lo stesso difetto. Le regole non cambiano: senza assenza serve almeno una fascia completa.
 Solo frontend.
 
+### Note: in modifica si possono cancellare (1 Ottobre 2026)
+
+Stesso difetto degli orari: il payload mandava `note.trim() || undefined`, quindi una nota svuotata
+non arrivava al `PUT` e restava salvata. In modifica ora si manda la stringa vuota, nei tre form
+che modificano un'attività: `AssegnaAttivitaPage`, `AttivitaFormPage` e `AssenzaFormPage`. Il
+service salva la nota vuota come `null` (`input.note || null`), così il database non accumula
+stringhe vuote accanto ai `NULL`. In creazione non cambia nulla.
+
 ---
 
 ## Progetto Completato
