@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 30 Settembre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 1 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -3074,6 +3074,13 @@ Data di assunzione, Tipo di salario, Salario, Numero IBAN, i gradi e infine Data
 civile. All'avvio e dopo un ripristino `migraGradoOccupazioneHr` (in `hr.service.ts`) copia il
 valore rimasto in `gradi_occupazione_hr`, senza data, e svuota la colonna. Il backup ora comprende
 `gradiOccupazioneHr`.
+
+### HR: nuove colonne dell'elenco (1 Ottobre 2026)
+
+La tabella di `/responsabile/hr` mostra ora, in quest'ordine, *Cognome e nome*, *Indirizzo*,
+*Luogo* e *Numero AVS* (più la spunta e "Apri"). Tolte *N.*, *Telefono*, *Assunzione* e
+*Scad. permesso* / *Cessazione*. La ricerca trova ancora per numero di personale. Solo frontend (`HrPage.tsx`): l'API
+restituiva già tutti i campi della scheda.
 
 ---
 
