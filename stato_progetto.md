@@ -3167,6 +3167,23 @@ cambio di tab smontava il componente e azzerava mese e filtri. Ora il componente
 cambiando tab restano periodo, cliente, cantiere e dipendente, e si ricarica solo l'elenco. URL e
 voci di menu sono invariati. Solo frontend (`App.tsx`, `BollettiniArchivioPage.tsx`).
 
+### Orari: Canc svuota il campo e la modifica salva l'orario tolto (1 Ottobre 2026)
+
+Aprendo un'attività dalla dashboard (matita), il responsabile non riusciva a togliere un orario
+inserito dal dipendente. I problemi erano due:
+
+- **Il campo.** Il campo orario nativo cancella un segmento alla volta: Canc toglieva le ore e
+  lasciava i minuti, con un valore a metà a video. Ora in `DateTimeInput` **Canc e Backspace
+  svuotano l'intero orario**. Vale per tutti i campi orario dell'app, bollettini compresi.
+- **Il salvataggio.** Il payload mandava `oraX || undefined`, e il `PUT /api/attivita/:id` tratta
+  `undefined` come "campo non toccato": l'orario svuotato restava nel database. In modifica ora si
+  manda la stringa vuota, che il service salva come `null` e di cui tiene conto nel calcolo della
+  durata. In creazione resta `undefined`, perché lo schema del `POST` rifiuterebbe `""`.
+
+Corretto sia in `AssegnaAttivitaPage` (responsabile) sia in `AttivitaFormPage` (dipendente), che
+avevano lo stesso difetto. Le regole non cambiano: senza assenza serve almeno una fascia completa.
+Solo frontend.
+
 ---
 
 ## Progetto Completato
