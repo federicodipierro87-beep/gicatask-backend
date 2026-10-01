@@ -1012,9 +1012,10 @@ accontenti del solo `requireRole('RESPONSABILE')`.
 | GET | `/api/bollettini/:id/pdf` | autenticato + flag |
 | GET | `/api/bollettini/cantiere/:id/pdf` | RESPONSABILE + flag (cumulativo) |
 | GET | `/api/bollettini/cliente/:id/pdf` | RESPONSABILE + flag (cumulativo, dal 17/09/2026) |
+| PATCH | `/api/bollettini/:id/fatturato` | RESPONSABILE + flag (dal 01/10/2026) |
 
-Pagine: `/dipendente/bollettini`, `/dipendente/bollettini/nuovo`, `/responsabile/bollettini`,
-`/responsabile/mezzi|materiali|trasporti`.
+Pagine: `/dipendente/bollettini`, `/dipendente/bollettini/nuovo`, `/responsabile/bollettini`
+(attivi), `/responsabile/bollettini/fatturati` (dal 01/10/2026), `/responsabile/mezzi|materiali|trasporti`.
 
 #### Menu
 
@@ -3105,6 +3106,14 @@ cambiano. I cumulativi comprendono anche i fatturati. Nuova rotta
 `PATCH /api/bollettini/:id/fatturato` con body `{ fatturato: boolean }`, ammessa solo con
 `requireRole('RESPONSABILE')` e il flag bollettini.
 
+"Solo amministratore", nella richiesta, vuol dire il ruolo Responsabile: non esiste un ruolo admin
+separato.
+
+**Deploy.** Prima il backend (`1811c8f`), poi il frontend (`187c84a`), entrambi su `master` e
+`main`. Fra i due push si è atteso che la rotta `PATCH` rispondesse 401 invece di 404: segno che
+Railway aveva finito, e quindi che `db push` aveva creato le colonne. Il frontend è stato verificato
+cercando "Bollettini fatturati" nel bundle pubblicato su task.gica.ch.
+
 ---
 
 ## Progetto Completato
@@ -3246,7 +3255,7 @@ frontend/
 │   │       ├── CantieriPage.tsx      # Gestione cantieri
 │   │       ├── TipiAttivitaPage.tsx  # Gestione tipi attività
 │   │       ├── TipiAssenzaPage.tsx   # Gestione tipi assenza
-│   │       ├── BollettiniArchivioPage.tsx # Archivio + cumulativo
+│   │       ├── BollettiniArchivioPage.tsx # Bollettini attivi / fatturati + cumulativo
 │   │       ├── VociBollettinoPage.tsx     # Un file per mezzi/materiali/trasporti
 │   │       ├── CalendarioEventiPage.tsx   # Form, elenco, griglia ed export
 │   │       ├── DreamNoleggiPage.tsx       # Form, elenco, totali ed export PDF
