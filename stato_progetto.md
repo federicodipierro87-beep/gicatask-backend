@@ -3186,6 +3186,8 @@ Corretto sia in `AssegnaAttivitaPage` (responsabile) sia in `AttivitaFormPage` (
 avevano lo stesso difetto. Le regole non cambiano: senza assenza serve almeno una fascia completa.
 Solo frontend.
 
+Deploy: frontend `40ff101`, documentazione `7105cbf`.
+
 ### Note: in modifica si possono cancellare (1 Ottobre 2026)
 
 Stesso difetto degli orari: il payload mandava `note.trim() || undefined`, quindi una nota svuotata
@@ -3193,6 +3195,9 @@ non arrivava al `PUT` e restava salvata. In modifica ora si manda la stringa vuo
 che modificano un'attività: `AssegnaAttivitaPage`, `AttivitaFormPage` e `AssenzaFormPage`. Il
 service salva la nota vuota come `null` (`input.note || null`), così il database non accumula
 stringhe vuote accanto ai `NULL`. In creazione non cambia nulla.
+
+Deploy: prima il backend `1a62c09`, poi il frontend `6322a3d`. Con il solo frontend la nota svuotata
+sarebbe stata salvata come stringa vuota, comunque mostrata come assente.
 
 ### Pannello Log delle operazioni (1 Ottobre 2026)
 
@@ -3252,6 +3257,9 @@ lista di schede invece della tabella.
 Provato in locale (backend e frontend contro un Postgres temporaneo, browser headless) su accesso
 fallito e riuscito, creazione, modifica (orari del pomeriggio e nota tolti), errore di
 validazione, 403, export, eliminazione e uscita, su desktop e su telefono.
+
+Deploy: prima il backend `5d7957b`, poi il frontend `408d089`. Su Railway il `db push` ha creato la
+tabella senza errori e `GET /api/log` risponde 401 senza token, come previsto.
 
 ---
 
