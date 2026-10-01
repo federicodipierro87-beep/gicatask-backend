@@ -3154,6 +3154,19 @@ start fallisce, l'errore viene solo loggato e l'archivio mostra l'id come ripieg
 - lanciata una seconda volta non cambia nulla;
 - 6 create in parallelo ricevono numeri consecutivi senza doppioni.
 
+### Archivio bollettini: tab "attivi / fatturati" nella pagina (1 Ottobre 2026)
+
+In cima alla pagina dell'archivio ci sono ora due tab, **Bollettini attivi** e **Bollettini
+fatturati**, oltre alle voci del menu *Bollettino*. Servono a passare più in fretta da un elenco
+all'altro.
+
+Le due rotte sono diventate una sola, `/responsabile/bollettini/:stato?`: segmento assente per gli
+attivi, `fatturati` per i fatturati, mentre un valore diverso rimanda agli attivi. La pagina ricava
+il tab da `useParams` e non riceve più la prop `fatturati`. Con due rotte e due `key` diverse, il
+cambio di tab smontava il componente e azzerava mese e filtri. Ora il componente resta montato:
+cambiando tab restano periodo, cliente, cantiere e dipendente, e si ricarica solo l'elenco. URL e
+voci di menu sono invariati. Solo frontend (`App.tsx`, `BollettiniArchivioPage.tsx`).
+
 ---
 
 ## Progetto Completato
