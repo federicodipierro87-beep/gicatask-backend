@@ -60,6 +60,61 @@ export interface CreateBollettinoInput {
   createdById: number;
 }
 
+// Chiave arbitraria dell'advisory lock che serializza la numerazione: due
+// salvataggi contemporanei leggerebbero lo stesso massimo
+const LOCK_NUMERAZIONE = 7150001;
+
+/** Anno solare in Svizzera: a Capodanno l'UTC resta indietro di un'ora. */
+function annoCorrente(): number {
+  return Number(
+    new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Zurich', year: 'numeric' }).format(new Date())
+  );
+}
+
+async function bloccaNumerazione(tx: Prisma.TransactionClient): Promise<void> {
+  // Rilasciato da solo alla fine della transazione
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LOCK_NUMERAZIONE}::bigint)`;
+}
+
+/**
+ * Numera i bollettini che non hanno ancora un numero, anno per anno in ordine
+ * di id, proseguendo dal massimo gia' assegnato. Va chiamata col lock preso.
+ */
+async function assegnaNumeriMancanti(tx: Prisma.TransactionClient): Promise<number> {
+  return tx.$executeRaw`
+    WITH mancanti AS (
+      SELECT id,
+             EXTRACT(YEAR FROM (created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Zurich')::int AS a
+      FROM bollettini
+      WHERE numero IS NULL
+    ),
+    numerati AS (
+      SELECT m.id, m.a,
+             COALESCE((SELECT MAX(b.numero) FROM bollettini b WHERE b.anno = m.a), 0)
+               + ROW_NUMBER() OVER (PARTITION BY m.a ORDER BY m.id) AS n
+      FROM mancanti m
+    )
+    UPDATE bollettini SET anno = numerati.a, numero = numerati.n
+    FROM numerati
+    WHERE bollettini.id = numerati.id
+  `;
+}
+
+/**
+ * All'avvio: numera i bollettini precedenti alla numerazione e quelli
+ * ripristinati da un backup che non la aveva. Innocua quando non manca nulla.
+ */
+export async function numeraBollettiniMancanti(prisma: PrismaClient): Promise<void> {
+  const numerati = await prisma.$transaction(async (tx) => {
+    await bloccaNumerazione(tx);
+    return assegnaNumeriMancanti(tx);
+  });
+
+  if (numerati > 0) {
+    console.log(`[Bollettini] Numerati ${numerati} bollettini senza numero`);
+  }
+}
+
 export interface BollettinoFilters {
   utenteId?: number;
   clienteId?: number;
@@ -100,6 +155,8 @@ const listSelect = {
   emailStato: true,
   emailInviataAt: true,
   emailErrore: true,
+  anno: true,
+  numero: true,
   fatturato: true,
   fatturatoAt: true,
   createdAt: true,
@@ -461,49 +518,66 @@ export class BollettiniService {
         })
       : [];
 
-    const bollettino = await this.prisma.bollettino.create({
-      data: {
-        utenteId: input.utenteId,
-        clienteId: destinazione.clienteId,
-        cantiereId: destinazione.cantieri[0]?.id ?? null,
-        dataRiferimento: input.dataRiferimento,
-        attivita: input.attivita.trim(),
-        numeroOperai,
-        // Con le ore per squadra o per collaboratore l'ora "per operaio" non
-        // esiste piu': vale 0 e il totale sta in `oreTotali`
-        ore: oreTotali !== null ? 0 : input.ore,
-        oreTotali,
-        ...intestazione.fasce,
-        materialiTesto,
-        clienteNome: destinazione.clienteNome,
-        cantiereNome: destinazione.cantieri.length
-          ? destinazione.cantieri.map((c) => c.nome).join(', ')
-          : null,
-        firmaOperatoreNome: input.firmaOperatoreNome.trim(),
-        firmaOperatoreImg: input.firmaOperatoreImg,
-        firmaCommittenteNome: input.firmaCommittenteNome.trim(),
-        firmaCommittenteImg: input.firmaCommittenteImg,
-        emailDestinatario: input.emailDestinatario ?? null,
-        emailStato: input.emailStato ?? null,
-        createdById: input.createdById,
-        righe: { create: righe },
-        cantieri: {
-          create: destinazione.cantieri.map((c) => ({
-            cantiere: { connect: { id: c.id } },
-            nome: c.nome,
-          })),
+    // Numero e salvataggio nella stessa transazione: se la create fallisce il
+    // numero non resta bruciato
+    const bollettino = await this.prisma.$transaction(async (tx) => {
+      await bloccaNumerazione(tx);
+      // Un bollettino salvato dalla versione precedente durante il deploy non
+      // ha numero: prende il suo prima del nuovo
+      await assegnaNumeriMancanti(tx);
+
+      const anno = annoCorrente();
+      const { _max } = await tx.bollettino.aggregate({
+        where: { anno },
+        _max: { numero: true },
+      });
+
+      return tx.bollettino.create({
+        data: {
+          anno,
+          numero: (_max.numero ?? 0) + 1,
+          utenteId: input.utenteId,
+          clienteId: destinazione.clienteId,
+          cantiereId: destinazione.cantieri[0]?.id ?? null,
+          dataRiferimento: input.dataRiferimento,
+          attivita: input.attivita.trim(),
+          numeroOperai,
+          // Con le ore per squadra o per collaboratore l'ora "per operaio" non
+          // esiste piu': vale 0 e il totale sta in `oreTotali`
+          ore: oreTotali !== null ? 0 : input.ore,
+          oreTotali,
+          ...intestazione.fasce,
+          materialiTesto,
+          clienteNome: destinazione.clienteNome,
+          cantiereNome: destinazione.cantieri.length
+            ? destinazione.cantieri.map((c) => c.nome).join(', ')
+            : null,
+          firmaOperatoreNome: input.firmaOperatoreNome.trim(),
+          firmaOperatoreImg: input.firmaOperatoreImg,
+          firmaCommittenteNome: input.firmaCommittenteNome.trim(),
+          firmaCommittenteImg: input.firmaCommittenteImg,
+          emailDestinatario: input.emailDestinatario ?? null,
+          emailStato: input.emailStato ?? null,
+          createdById: input.createdById,
+          righe: { create: righe },
+          cantieri: {
+            create: destinazione.cantieri.map((c) => ({
+              cantiere: { connect: { id: c.id } },
+              nome: c.nome,
+            })),
+          },
+          collaboratori: {
+            create: (collaboratori ?? []).map((c) => ({
+              utente: { connect: { id: c.utenteId } },
+              nome: c.nome,
+              ore: c.ore,
+            })),
+          },
+          squadre: { create: squadre ?? [] },
+          allegati: { connect: allegati.map((a) => ({ id: a.id })) },
         },
-        collaboratori: {
-          create: (collaboratori ?? []).map((c) => ({
-            utente: { connect: { id: c.utenteId } },
-            nome: c.nome,
-            ore: c.ore,
-          })),
-        },
-        squadre: { create: squadre ?? [] },
-        allegati: { connect: allegati.map((a) => ({ id: a.id })) },
-      },
-      select: { id: true },
+        select: { id: true },
+      });
     });
 
     return bollettino;

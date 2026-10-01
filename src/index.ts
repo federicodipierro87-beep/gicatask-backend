@@ -7,6 +7,7 @@ import authPlugin from './plugins/auth.js';
 import { registerRoutes } from './routes/index.js';
 import { initScheduler } from './services/scheduler.service.js';
 import { seedTipiAssenza, removeCantieriGenerici } from './services/seed.service.js';
+import { numeraBollettiniMancanti } from './services/bollettini.service.js';
 import { migraGradoOccupazioneHr, migraStatoCivileHr } from './services/hr.service.js';
 
 async function buildApp() {
@@ -81,6 +82,14 @@ async function start() {
     await migraStatoCivileHr(app.prisma);
     // Grado di occupazione HR: dalla colonna della scheda a gradi_occupazione_hr
     await migraGradoOccupazioneHr(app.prisma);
+
+    // Numero "numero-anno" ai bollettini che non lo hanno ancora. Un errore
+    // qui non deve fermare il server: senza numero l'archivio mostra l'id
+    try {
+      await numeraBollettiniMancanti(app.prisma);
+    } catch (error) {
+      app.log.error({ err: error }, 'numerazione bollettini');
+    }
 
     // Initialize scheduler for automatic backups
     initScheduler(app.prisma);

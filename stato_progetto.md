@@ -3114,6 +3114,46 @@ separato.
 Railway aveva finito, e quindi che `db push` aveva creato le colonne. Il frontend è stato verificato
 cercando "Bollettini fatturati" nel bundle pubblicato su task.gica.ch.
 
+### Numero bollettino "numero-anno" (1 Ottobre 2026)
+
+Finora il numero del bollettino era l'`id`: un contatore unico per tutta l'azienda, che non
+ripartiva mai e lasciava buchi. Ora il bollettino ha un **numero da documento** `numero-anno`
+(es. `12-2026`). Il progressivo riparte da 1 ogni anno solare. L'anno è quello di **creazione**,
+non la data del lavoro, calcolato con l'**ora di Zurigo**: un bollettino salvato alle 00:30 del
+1° gennaio è dell'anno nuovo, anche se in UTC è ancora il 31 dicembre. L'`id` non cambia e resta
+nelle URL e nelle API.
+
+Il numero compare:
+- nella colonna *Num Bollettino* dell'archivio;
+- sul PDF ("Bollettino n. 12-2026");
+- nel nome del file, sia nel download che nell'allegato della mail.
+
+**Schema.** `anno Int?` e `numero Int?` su `bollettini`, con `@@index([anno, numero])`.
+**Non `@@unique`:** `prisma db push` lo segnala come possibile perdita di dati, e senza
+`--accept-data-loss` fallisce lo start su Railway. L'errore è emerso solo con una prova su un
+Postgres locale. Le colonne sono nullable solo per i bollettini precedenti.
+
+**Assegnazione.** In `BollettiniService.create` il numero si calcola nella **stessa transazione**
+della create, dopo un `pg_advisory_xact_lock`. Il lock serializza i salvataggi contemporanei, che
+altrimenti leggerebbero lo stesso massimo. Se la create fallisce, il numero non resta bruciato.
+Restano buchi solo eliminando un bollettino, e se si elimina l'ultimo dell'anno il suo numero torna
+libero.
+
+**Bollettini esistenti.** `numeraBollettiniMancanti`, chiamata allo start dopo il `db push`, numera
+quelli senza numero anno per anno, in ordine di id, proseguendo dal massimo già assegnato. Non fa
+nulla se tutti hanno già il numero, e copre anche un ripristino da un backup precedente. Il
+backup esporta i bollettini con `findMany()` senza `select`, quindi le colonne nuove ci entrano da
+sole. La stessa numerazione gira anche dentro ogni create, così un bollettino salvato dalla
+versione vecchia durante il deploy prende il suo numero prima del nuovo. Se la numerazione allo
+start fallisce, l'errore viene solo loggato e l'archivio mostra l'id come ripiego
+(`numeroBollettino()`, presente sia nel backend sia nel frontend).
+
+**Verifica** su un Postgres 18 locale temporaneo, con lo schema precedente e bollettini dal 2025 al
+2026, compreso uno alle 23:30 UTC del 31/12:
+- la numerazione dà `1-2025`, `2-2025`, `3-2025`, `1-2026`, `2-2026`;
+- lanciata una seconda volta non cambia nulla;
+- 6 create in parallelo ricevono numeri consecutivi senza doppioni.
+
 ---
 
 ## Progetto Completato

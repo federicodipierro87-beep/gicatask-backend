@@ -9,6 +9,8 @@ interface RigaPdf {
 
 export interface BollettinoPdf {
   id: number;
+  anno?: number | null;
+  numero?: number | null;
   dataRiferimento: Date;
   attivita: string;
   numeroOperai: number;
@@ -145,8 +147,18 @@ export function sanitizeFilenamePart(value: string): string {
  * divergessero, lo stesso documento arriverebbe al committente con un nome e
  * al responsabile con un altro.
  */
+/**
+ * Numero da documento, "numero-anno". Ripiega sull'id per un bollettino non
+ * ancora numerato, che esiste solo fra il db push e la numerazione all'avvio.
+ */
+export function numeroBollettino(b: { id: number; anno?: number | null; numero?: number | null }): string {
+  return b.numero && b.anno ? `${b.numero}-${b.anno}` : String(b.id);
+}
+
 export function nomeFilePdf(bollettino: {
   id: number;
+  anno?: number | null;
+  numero?: number | null;
   dataRiferimento: Date;
   clienteNome: string;
   cantiereNome: string | null;
@@ -155,7 +167,7 @@ export function nomeFilePdf(bollettino: {
   // Senza cantiere il nome ripiega sul cliente: un file che porta solo id e
   // data sarebbe irriconoscibile in una cartella di download
   const riferimento = sanitizeFilenamePart(bollettino.cantiereNome ?? bollettino.clienteNome);
-  return `bollettino-${bollettino.id}-${riferimento}-${data}.pdf`;
+  return `bollettino-${numeroBollettino(bollettino)}-${riferimento}-${data}.pdf`;
 }
 
 // Al massimo due righe: con piu' cantieri il valore andrebbe a capo sopra la
@@ -266,7 +278,7 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
     width: CONTENT_WIDTH,
     align: 'center',
   });
-  doc.fontSize(9).fillColor('#666').text(`Bollettino n. ${b.id}`, MARGIN, MARGIN + 20, {
+  doc.fontSize(9).fillColor('#666').text(`Bollettino n. ${numeroBollettino(b)}`, MARGIN, MARGIN + 20, {
     width: CONTENT_WIDTH,
     align: 'center',
   });

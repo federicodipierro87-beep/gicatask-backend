@@ -389,6 +389,13 @@ model Bollettino {
   fatturato   Boolean   @default(false)
   fatturatoAt DateTime? @map("fatturato_at")
 
+  // Numero da documento, "numero-anno": progressivo che riparte ogni anno
+  // solare (ora di Zurigo) di creazione. Diverso dall'id, che e' globale e
+  // non riparte mai. Nullable solo per lo start: i bollettini precedenti li
+  // numera `numeraBollettiniMancanti` subito dopo il db push
+  anno   Int?
+  numero Int?
+
   createdById Int      @map("created_by")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -408,6 +415,10 @@ model Bollettino {
   @@index([clienteId, dataRiferimento])
   @@index([cantiereId, dataRiferimento])
   @@index([utenteId, dataRiferimento])
+  // Non @@unique: `db push` lo segnala come possibile perdita di dati e,
+  // senza --accept-data-loss, fallisce lo start. L'unicita' la garantisce
+  // l'advisory lock della numerazione (bollettini.service.ts)
+  @@index([anno, numero])
   @@map("bollettini")
 }
 
