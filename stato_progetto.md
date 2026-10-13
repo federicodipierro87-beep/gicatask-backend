@@ -2830,7 +2830,8 @@ cancella, torna fra gli attivi.
 
 La scheda (`/responsabile/hr/nuova`, `/responsabile/hr/:id`) ha tutti i campi richiesti, divisi
 in sezioni: Dati personali, Documenti e assicurazioni, Famiglia, Impiego, Formazioni e Contatto
-di emergenza. Solo *Cognome e nome* è obbligatorio.
+di emergenza (dal 13 Ottobre anche Documenti personali, prima di Formazioni). Solo *Cognome e
+nome* è obbligatorio.
 - *Imposte alla fonte* si sceglie fra SI e NO.
 - *Stato civile* si sceglie fra celibe, nubile, coniugato, separato e divorziato.
 - I **figli** (nome e data di nascita) si aggiungono con "+ Aggiungi figlio".
@@ -2857,8 +2858,8 @@ Finiscono in stampa solo quelli spuntati *e visibili*: cambiando sezione la sele
   `figli_hr`, `formazioni_hr`, `allegati_hr`), più l'enum `StatoCivile`. Poi aggiunti
   `StatoCivileHr`, `GradoOccupazioneHr`, `LppHr` e `DocumentoHr` (`stati_civili_hr`,
   `gradi_occupazione_hr`, `lpp_hr`, `documenti_hr`), vedi le voci del 29 e 30 Settembre e del
-  13 Ottobre. Route `/api/hr`, **tutte
-  solo responsabile, letture comprese**: un hook `preHandler` sull'intero plugin.
+  13 Ottobre. Route `/api/hr`, **tutte solo responsabile, letture comprese**: un hook
+  `preHandler` sull'intero plugin.
   - `GET /campi`: il catalogo delle voci, che vive in `utils/hrCampi.ts`. È l'unica fonte per le
     sezioni della scheda stampata, le colonne del riepilogo (col loro `peso`, cioè la larghezza
     relativa) e le caselle del frontend.
@@ -3384,8 +3385,8 @@ backend/
 │   │   ├── tipiAssenza.service.ts  # CRUD tipi assenza
 │   │   ├── tipiAttivita.service.ts # CRUD tipi attività
 │   │   ├── utenti.service.ts    # CRUD utenti
-│   │   ├── hr.service.ts        # Schede HR: figli e formazioni
-│   │   ├── allegatiHr.service.ts # Foto tesserini su R2 (prefisso hr/)
+│   │   ├── hr.service.ts        # Schede HR: righe multiple, documenti e formazioni
+│   │   ├── allegatiHr.service.ts # Foto tesserini e documenti su R2 (prefisso hr/)
 │   │   ├── hrPdf.service.ts     # Scheda (un foglio) e riepilogo HR
 │   │   └── vociBollettino.service.ts # Anagrafica polimorfa voci
 │   ├── utils/
@@ -3552,6 +3553,8 @@ VITE_API_URL=https://web-production-fde54.up.railway.app
 12. **I pannelli a tendina stanno fuori dal `<nav>`.** La barra ha `overflow-x-auto` per scorrere su schermi stretti, e quello crea un contenitore di scorrimento che **ritaglia** i figli in posizione assoluta: una tendina messa dentro la nav verrebbe tagliata invece di uscirne. *Impostazioni* e *Bollettino* sono fratelli della nav, non figli.
 
 13. **Una rotta nuova va aggiunta al catalogo del Log.** Gli hook di `plugins/logOperazioni.ts` sono globali, quindi una scrittura nuova finisce comunque nel registro, ma come *Altro* con metodo e percorso. Per avere area, descrizione e il nome dell'elemento, va aggiunta a `CATALOGO` in `logOperazioni.service.ts`. Se lavora su un modello nuovo, anche a `MODELLI` con la sua etichetta. Un campo con dati sensibili o voluminosi va aggiunto a `CAMPI_ESCLUSI`.
+
+14. **Una voce nuova della scheda HR passa da `CAMPI_HR`.** Il catalogo in `utils/hrCampi.ts` decide l'ordine delle sezioni della scheda stampata e le colonne del riepilogo; il form (`HrSchedaPage.tsx`) va allineato a mano. Le voci su più righe (stato civile, grado, LPP) hanno un disegno a coppie nella stampa e devono cadere a sinistra della griglia a due colonne. Un elenco con foto come documenti e formazioni passa da `ELENCHI` / `salvaElenco` in `hr.service.ts` e da `elencoConFoto` nella stampa; un nuovo proprietario degli allegati va aggiunto ad `ALLEGATO_ORFANO`, altrimenti la pulizia notturna cancella i suoi file.
 
 ---
 
