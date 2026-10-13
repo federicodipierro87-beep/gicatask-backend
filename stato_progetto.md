@@ -3283,6 +3283,9 @@ salva la riga che ne ha almeno uno compilato.
 Provato in locale: salvataggio via API (la riga vuota si scarta), form su desktop e telefono,
 stampa della scheda e riepilogo.
 
+Deploy: prima il backend `63e436d`, poi il frontend `60141e5`. Su Railway il `db push` ha creato
+`lpp_hr` senza errori.
+
 ---
 
 ## Progetto Completato
