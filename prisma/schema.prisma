@@ -613,6 +613,7 @@ model SchedaHr {
   gradiOccupazione GradoOccupazioneHr[]
   lpp              LppHr[]
   figli            FiglioHr[]
+  documenti        DocumentoHr[]
   formazioni       FormazioneHr[]
 
   @@map("schede_hr")
@@ -688,14 +689,30 @@ model FormazioneHr {
   @@map("formazioni_hr")
 }
 
-/// Foto dei tesserini delle formazioni. Come per i bollettini, in tabella solo
-/// i metadati e i byte su R2, prefisso `hr/`. NULL in `formazioneId` fra
-/// l'upload e il salvataggio della scheda; gli orfani li pulisce lo scheduler.
+/// Documenti personali (passaporto, permesso, patente...): come le
+/// formazioni, un nome e le foto o scansioni in `allegati_hr`.
+model DocumentoHr {
+  id       Int    @id @default(autoincrement())
+  schedaId Int    @map("scheda_id")
+  nome     String
+
+  scheda SchedaHr     @relation(fields: [schedaId], references: [id], onDelete: Cascade)
+  foto   AllegatoHr[]
+
+  @@index([schedaId])
+  @@map("documenti_hr")
+}
+
+/// Foto dei tesserini delle formazioni e dei documenti personali. Come per i bollettini, in tabella solo
+/// i metadati e i byte su R2, prefisso `hr/`. NULL in `formazioneId` e
+/// `documentoId` fra l'upload e il salvataggio della scheda; gli orfani li
+/// pulisce lo scheduler.
 /// `caricatoDaId` senza relazione: la tabella resta indipendente da `utenti`
 /// e il ripristino del backup non deve rispettare un ordine in piu'.
 model AllegatoHr {
   id           Int      @id @default(autoincrement())
   formazioneId Int?     @map("formazione_id")
+  documentoId  Int?     @map("documento_id")
   caricatoDaId Int      @map("caricato_da")
   chiave       String   @unique
   nomeFile     String   @map("nome_file")
@@ -704,11 +721,13 @@ model AllegatoHr {
   createdAt    DateTime @default(now()) @map("created_at")
 
   formazione FormazioneHr? @relation(fields: [formazioneId], references: [id], onDelete: SetNull)
+  documento  DocumentoHr?  @relation(fields: [documentoId], references: [id], onDelete: SetNull)
   // Valorizzata se e' la foto di una scheda: allora non e' orfana anche con
-  // formazioneId NULL
+  // formazioneId e documentoId NULL
   schedaFoto SchedaHr?     @relation("FotoScheda")
 
   @@index([formazioneId])
+  @@index([documentoId])
   @@index([createdAt])
   @@map("allegati_hr")
 }

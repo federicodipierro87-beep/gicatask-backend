@@ -177,9 +177,15 @@ export class HrPdfService {
       });
     };
 
+    // Le sezioni nell'ordine di CAMPI_HR. Documenti e formazioni hanno un
+    // disegno a parte, con le foto: qui ne resta solo il posto
+    const ELENCHI_CON_FOTO = ['documenti', 'formazioni'];
     const sezioni = new Map<string, Cella[]>();
     for (const campo of CAMPI_HR) {
-      if (campo.chiave === 'formazioni') continue;
+      if (ELENCHI_CON_FOTO.includes(campo.chiave)) {
+        sezioni.set(campo.sezione, []);
+        continue;
+      }
 
       let celle: Cella[];
       if (campo.chiave === 'statoCivile') {
@@ -217,64 +223,70 @@ export class HrPdfService {
       sezioni.set(campo.sezione, [...(sezioni.get(campo.sezione) ?? []), ...celle]);
     }
 
-    // Le formazioni, la parte di altezza variabile, vanno in fondo
-    for (const [nome, celle] of sezioni) griglia(nome, celle);
-
-    // Formazioni a tutta larghezza, con le foto dei tesserini nella riga sotto
+    // Documenti e formazioni a tutta larghezza, con le foto nella riga sotto
     const LARGA_W = SCHEDA_W - COL_LABEL_W;
 
-    if (scheda.formazioni.length === 0) {
-      const vuota = { etichetta: 'Formazioni', valore: '' };
-      const h = altezzaCella(vuota, LARGA_W);
-      titoloSezione('Formazioni', h);
-      disegnaCella(vuota, MARGIN, h, LARGA_W);
-      y += h;
-    }
-
-    scheda.formazioni.forEach((formazione, i) => {
-      const senzaAnteprima = formazione.foto.filter((f) => !immagini.has(f.id));
-      const cella: Cella = {
-        etichetta: `Formazione ${i + 1}`,
-        valore: senzaAnteprima.length > 0
-          ? `${formazione.nome}\nAllegati: ${senzaAnteprima.map((f) => f.nomeFile).join(', ')}`
-          : formazione.nome,
-      };
-      const foto = formazione.foto.filter((f) => immagini.has(f.id));
-      const h = altezzaCella(cella, LARGA_W);
-      const hFoto = foto.length > 0 ? THUMB_H + ROW_PAD * 2 : 0;
-
-      if (i === 0) titoloSezione('Formazioni', h + hFoto);
-      spazio(h + hFoto);
-      disegnaCella(cella, MARGIN, h, LARGA_W);
-      y += h;
-
-      if (foto.length === 0) return;
-
-      const rigaFoto = () =>
-        doc.lineWidth(0.5).strokeColor(GRID_COLOR).rect(MARGIN, y, SCHEDA_W, hFoto).stroke();
-
-      rigaFoto();
-      let x = MARGIN + COL_LABEL_W + ROW_PAD;
-      for (const f of foto) {
-        if (x + THUMB_W > MARGIN + SCHEDA_W) {
-          y += hFoto;
-          spazio(hFoto);
-          rigaFoto();
-          x = MARGIN + COL_LABEL_W + ROW_PAD;
-        }
-        try {
-          doc.image(immagini.get(f.id)!, x, y + ROW_PAD, {
-            fit: [THUMB_W, THUMB_H],
-            align: 'center',
-            valign: 'center',
-          });
-        } catch {
-          // Byte che pdfkit non sa decodificare: resta il riquadro vuoto
-        }
-        x += THUMB_W + THUMB_GAP;
+    const elencoConFoto = (titolo: string, etichettaVoce: string, voci: SchedaHrCompleta['formazioni']) => {
+      if (voci.length === 0) {
+        const vuota = { etichetta: titolo, valore: '' };
+        const h = altezzaCella(vuota, LARGA_W);
+        titoloSezione(titolo, h);
+        disegnaCella(vuota, MARGIN, h, LARGA_W);
+        y += h;
       }
-      y += hFoto;
-    });
+
+      voci.forEach((voce, i) => {
+        const senzaAnteprima = voce.foto.filter((f) => !immagini.has(f.id));
+        const cella: Cella = {
+          etichetta: `${etichettaVoce} ${i + 1}`,
+          valore: senzaAnteprima.length > 0
+            ? `${voce.nome}\nAllegati: ${senzaAnteprima.map((f) => f.nomeFile).join(', ')}`
+            : voce.nome,
+        };
+        const foto = voce.foto.filter((f) => immagini.has(f.id));
+        const h = altezzaCella(cella, LARGA_W);
+        const hFoto = foto.length > 0 ? THUMB_H + ROW_PAD * 2 : 0;
+
+        if (i === 0) titoloSezione(titolo, h + hFoto);
+        spazio(h + hFoto);
+        disegnaCella(cella, MARGIN, h, LARGA_W);
+        y += h;
+
+        if (foto.length === 0) return;
+
+        const rigaFoto = () =>
+          doc.lineWidth(0.5).strokeColor(GRID_COLOR).rect(MARGIN, y, SCHEDA_W, hFoto).stroke();
+
+        rigaFoto();
+        let x = MARGIN + COL_LABEL_W + ROW_PAD;
+        for (const f of foto) {
+          if (x + THUMB_W > MARGIN + SCHEDA_W) {
+            y += hFoto;
+            spazio(hFoto);
+            rigaFoto();
+            x = MARGIN + COL_LABEL_W + ROW_PAD;
+          }
+          try {
+            doc.image(immagini.get(f.id)!, x, y + ROW_PAD, {
+              fit: [THUMB_W, THUMB_H],
+              align: 'center',
+              valign: 'center',
+            });
+          } catch {
+            // Byte che pdfkit non sa decodificare: resta il riquadro vuoto
+          }
+          x += THUMB_W + THUMB_GAP;
+        }
+        y += hFoto;
+      });
+    };
+
+    // Il contatto di emergenza, ultimo in CAMPI_HR, finisce dopo le formazioni
+    for (const [nome, celle] of sezioni) {
+      if (nome === 'Documenti personali') elencoConFoto(nome, 'Documento', scheda.documenti);
+      else if (nome === 'Formazioni') elencoConFoto(nome, 'Formazione', scheda.formazioni);
+      else griglia(nome, celle);
+    }
   }
 
   // -------------------------------------------------------------------------

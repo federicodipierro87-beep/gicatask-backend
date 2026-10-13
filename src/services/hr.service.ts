@@ -61,8 +61,9 @@ export interface FiglioInput {
   dataNascita?: string | null;
 }
 
+// Formazioni e documenti personali hanno la stessa forma: nome e foto
 export interface FormazioneInput {
-  // Assente per le formazioni nuove
+  // Assente per le voci nuove
   id?: number;
   nome: string;
   allegatiIds?: number[];
@@ -77,6 +78,7 @@ export type SchedaHrInput = {
   // Foto del dipendente, gia' caricata con POST /api/hr/allegati
   fotoId?: number | null;
   figli?: FiglioInput[];
+  documenti?: FormazioneInput[];
   formazioni?: FormazioneInput[];
 } & Partial<Record<CampoTesto, string | null>> &
   Partial<Record<CampoData, string | null>>;
@@ -89,6 +91,12 @@ export const SCHEDA_INCLUDE = {
   gradiOccupazione: { orderBy: { id: 'asc' } },
   lpp: { orderBy: { id: 'asc' } },
   figli: { orderBy: { id: 'asc' } },
+  documenti: {
+    orderBy: { id: 'asc' },
+    include: {
+      foto: { orderBy: { id: 'asc' }, select: SELECT_ALLEGATO },
+    },
+  },
   formazioni: {
     orderBy: { id: 'asc' },
     include: {
@@ -98,6 +106,34 @@ export const SCHEDA_INCLUDE = {
 } satisfies Prisma.SchedaHrInclude;
 
 export type SchedaHrCompleta = Prisma.SchedaHrGetPayload<{ include: typeof SCHEDA_INCLUDE }>;
+
+/** Un allegato non ancora appeso a nulla: appena caricato, o tolto dal form. */
+export const ALLEGATO_ORFANO = {
+  formazioneId: null,
+  documentoId: null,
+  schedaFoto: { is: null },
+} satisfies Prisma.AllegatoHrWhereInput;
+
+// Le operazioni che servono a salvaElenco, comuni a formazioni e documenti
+interface TabellaElenco {
+  findMany(args: { where: { schedaId: number }; select: { id: true } }): Promise<{ id: number }[]>;
+  deleteMany(args: { where: { schedaId: number; id: { notIn: number[] } } }): Promise<unknown>;
+  update(args: { where: { id: number }; data: { nome: string } }): Promise<unknown>;
+  create(args: { data: { schedaId: number; nome: string } }): Promise<{ id: number }>;
+}
+
+const ELENCHI = {
+  formazioni: {
+    tabella: (tx: Prisma.TransactionClient) => tx.formazioneHr as unknown as TabellaElenco,
+    campo: 'formazioneId',
+    altroCampo: 'documentoId',
+  },
+  documenti: {
+    tabella: (tx: Prisma.TransactionClient) => tx.documentoHr as unknown as TabellaElenco,
+    campo: 'documentoId',
+    altroCampo: 'formazioneId',
+  },
+} as const;
 
 function testo(valore: string | null | undefined): string | null {
   const pulito = valore?.trim();
@@ -146,7 +182,7 @@ export class HrService {
 
     return dati as Omit<
       Prisma.SchedaHrUncheckedCreateInput,
-      'statiCivili' | 'gradiOccupazione' | 'lpp' | 'figli' | 'formazioni'
+      'statiCivili' | 'gradiOccupazione' | 'lpp' | 'figli' | 'documenti' | 'formazioni'
     >;
   }
 
@@ -198,7 +234,8 @@ export class HrService {
       });
 
       await this.salvaFoto(tx, scheda.id, input.fotoId ?? null);
-      await this.salvaFormazioni(tx, scheda.id, input.formazioni ?? []);
+      await this.salvaElenco(tx, scheda.id, 'documenti', input.documenti ?? []);
+      await this.salvaElenco(tx, scheda.id, 'formazioni', input.formazioni ?? []);
 
       return tx.schedaHr.findUniqueOrThrow({ where: { id: scheda.id }, include: SCHEDA_INCLUDE });
     });
@@ -232,7 +269,8 @@ export class HrService {
       });
 
       await this.salvaFoto(tx, id, input.fotoId ?? null);
-      await this.salvaFormazioni(tx, id, input.formazioni ?? []);
+      await this.salvaElenco(tx, id, 'documenti', input.documenti ?? []);
+      await this.salvaElenco(tx, id, 'formazioni', input.formazioni ?? []);
 
       return tx.schedaHr.findUniqueOrThrow({ where: { id }, include: SCHEDA_INCLUDE });
     });
@@ -256,7 +294,7 @@ export class HrService {
     const valida = await tx.allegatoHr.findFirst({
       where: {
         id: fotoId,
-        OR: [{ formazioneId: null, schedaFoto: { is: null } }, { schedaFoto: { is: { id: schedaId } } }],
+        OR: [ALLEGATO_ORFANO, { schedaFoto: { is: { id: schedaId } } }],
       },
       select: { id: true },
     });
@@ -267,47 +305,46 @@ export class HrService {
   }
 
   /**
-   * Le formazioni invece hanno le foto, quindi si aggiornano per id: quelle
-   * sparite dal form si cancellano, e le loro foto tornano orfane
-   * (onDelete: SetNull) finche' la pulizia notturna non le toglie da R2.
-   * Lo stesso vale per una foto tolta da una formazione che resta.
+   * Formazioni e documenti personali invece hanno le foto, quindi si
+   * aggiornano per id: le voci sparite dal form si cancellano, e le loro foto
+   * tornano orfane (onDelete: SetNull) finche' la pulizia notturna non le
+   * toglie da R2. Lo stesso vale per una foto tolta da una voce che resta.
    */
-  private async salvaFormazioni(
+  private async salvaElenco(
     tx: Prisma.TransactionClient,
     schedaId: number,
-    formazioni: FormazioneInput[]
+    elenco: keyof typeof ELENCHI,
+    voci: FormazioneInput[]
   ): Promise<void> {
-    const esistenti = await tx.formazioneHr.findMany({
-      where: { schedaId },
-      select: { id: true },
-    });
-    const idEsistenti = new Set(esistenti.map((f) => f.id));
+    const { campo, altroCampo } = ELENCHI[elenco];
+    const tabella = ELENCHI[elenco].tabella(tx);
 
-    const valide = formazioni.filter((f) => testo(f.nome));
+    const esistenti = await tabella.findMany({ where: { schedaId }, select: { id: true } });
+    const idEsistenti = new Set(esistenti.map((v) => v.id));
+
+    const valide = voci.filter((v) => testo(v.nome));
     const idTenuti = new Set(
-      valide.map((f) => f.id).filter((fid): fid is number => fid !== undefined && idEsistenti.has(fid))
+      valide.map((v) => v.id).filter((vid): vid is number => vid !== undefined && idEsistenti.has(vid))
     );
 
-    await tx.formazioneHr.deleteMany({
-      where: { schedaId, id: { notIn: [...idTenuti] } },
-    });
+    await tabella.deleteMany({ where: { schedaId, id: { notIn: [...idTenuti] } } });
 
-    for (const formazione of valide) {
-      const nome = testo(formazione.nome)!;
-      let formazioneId: number;
+    for (const voce of valide) {
+      const nome = testo(voce.nome)!;
+      let voceId: number;
 
-      if (formazione.id !== undefined && idTenuti.has(formazione.id)) {
-        formazioneId = formazione.id;
-        await tx.formazioneHr.update({ where: { id: formazioneId }, data: { nome } });
+      if (voce.id !== undefined && idTenuti.has(voce.id)) {
+        voceId = voce.id;
+        await tabella.update({ where: { id: voceId }, data: { nome } });
       } else {
-        formazioneId = (await tx.formazioneHr.create({ data: { schedaId, nome } })).id;
+        voceId = (await tabella.create({ data: { schedaId, nome } })).id;
       }
 
-      const allegatiIds = formazione.allegatiIds ?? [];
+      const allegatiIds = voce.allegatiIds ?? [];
 
       await tx.allegatoHr.updateMany({
-        where: { formazioneId, id: { notIn: allegatiIds } },
-        data: { formazioneId: null },
+        where: { [campo]: voceId, id: { notIn: allegatiIds } },
+        data: { [campo]: null },
       });
 
       // Si collegano solo gli orfani o le foto gia' di questa scheda: un id
@@ -316,9 +353,9 @@ export class HrService {
         await tx.allegatoHr.updateMany({
           where: {
             id: { in: allegatiIds },
-            OR: [{ formazioneId: null, schedaFoto: { is: null } }, { formazione: { schedaId } }],
+            OR: [ALLEGATO_ORFANO, { formazione: { schedaId } }, { documento: { schedaId } }],
           },
-          data: { formazioneId },
+          data: { [campo]: voceId, [altroCampo]: null },
         });
       }
     }

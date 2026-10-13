@@ -3,16 +3,17 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } fro
 import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { inflateSync } from 'zlib';
+import { ALLEGATO_ORFANO } from './hr.service.js';
 
 /**
- * Foto dei tesserini delle formazioni HR. Stesso schema degli allegati del
+ * Foto dei tesserini delle formazioni HR e dei documenti personali. Stesso schema degli allegati del
  * bollettino (vedi `allegatiBollettino.service.ts`): byte su R2 nel bucket dei
  * backup, prefisso `hr/`, metadati in `allegati_hr`.
  *
- * Servono sia per le formazioni sia per la foto del dipendente
+ * Servono per le formazioni, per i documenti e per la foto del dipendente
  * (`schede_hr.foto_id`). Una foto caricata resta orfana finche' la scheda non
- * si salva; una tolta dal form, sostituita o appartenente a una formazione o
- * scheda cancellata torna orfana. In entrambi i
+ * si salva; una tolta dal form, sostituita o appartenente a una formazione,
+ * un documento o una scheda cancellati torna orfana. In entrambi i
  * casi la cancella `pulisciOrfani`, quindi la scheda non tocca mai R2.
  */
 const MIME_AMMESSI = [
@@ -186,7 +187,7 @@ export class AllegatiHrService {
     const limite = new Date(Date.now() - oreMax * 60 * 60 * 1000);
 
     const orfani = await this.prisma.allegatoHr.findMany({
-      where: { formazioneId: null, schedaFoto: { is: null }, createdAt: { lt: limite } },
+      where: { ...ALLEGATO_ORFANO, createdAt: { lt: limite } },
       select: { id: true, chiave: true },
     });
 

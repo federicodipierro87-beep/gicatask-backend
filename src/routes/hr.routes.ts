@@ -9,6 +9,21 @@ import type { JwtPayload } from '../types/index.js';
 
 const testoNullable = { type: ['string', 'null'] };
 
+// Formazioni e documenti personali: nome e foto
+const elencoConFoto = {
+  type: 'array',
+  maxItems: 50,
+  items: {
+    type: 'object',
+    required: ['nome'],
+    properties: {
+      id: { type: 'number' },
+      nome: { type: 'string' },
+      allegatiIds: { type: 'array', maxItems: 10, items: { type: 'number' } },
+    },
+  },
+};
+
 const schedaSchema = {
   type: 'object',
   required: ['cognomeNome'],
@@ -51,19 +66,8 @@ const schedaSchema = {
         properties: { cognomeNome: { type: 'string' }, dataNascita: testoNullable },
       },
     },
-    formazioni: {
-      type: 'array',
-      maxItems: 50,
-      items: {
-        type: 'object',
-        required: ['nome'],
-        properties: {
-          id: { type: 'number' },
-          nome: { type: 'string' },
-          allegatiIds: { type: 'array', maxItems: 10, items: { type: 'number' } },
-        },
-      },
-    },
+    documenti: elencoConFoto,
+    formazioni: elencoConFoto,
   },
 };
 
@@ -168,7 +172,7 @@ export async function hrRoutes(fastify: FastifyInstance) {
     const schede = await service.getByIds(ids);
     const fotoIds = schede.flatMap((s) => [
       ...(s.fotoId ? [s.fotoId] : []),
-      ...s.formazioni.flatMap((f) => f.foto.map((foto) => foto.id)),
+      ...[...s.documenti, ...s.formazioni].flatMap((v) => v.foto.map((foto) => foto.id)),
     ]);
     const immagini = await allegatiService.immaginiPerPdf(fotoIds);
 

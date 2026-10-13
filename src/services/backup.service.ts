@@ -40,6 +40,7 @@ interface BackupData {
     gradiOccupazioneHr?: any[];
     lppHr?: any[];
     figliHr?: any[];
+    documentiHr?: any[];
     formazioniHr?: any[];
     allegatiHr?: any[];
   };
@@ -117,6 +118,7 @@ export class BackupService {
           gradiOccupazioneHr: await this.prisma.gradoOccupazioneHr.findMany(),
           lppHr: await this.prisma.lppHr.findMany(),
           figliHr: await this.prisma.figlioHr.findMany(),
+          documentiHr: await this.prisma.documentoHr.findMany(),
           formazioniHr: await this.prisma.formazioneHr.findMany(),
           allegatiHr: await this.prisma.allegatoHr.findMany(),
         },
@@ -267,6 +269,7 @@ export class BackupService {
       // Indipendenti dal resto; fra loro, dalle foto verso la scheda
       await tx.allegatoHr.deleteMany();
       await tx.formazioneHr.deleteMany();
+      await tx.documentoHr.deleteMany();
       await tx.statoCivileHr.deleteMany();
       await tx.gradoOccupazioneHr.deleteMany();
       await tx.lppHr.deleteMany();
@@ -446,6 +449,14 @@ export class BackupService {
         stats.figliHr = figliHr.length;
       }
 
+      // Prima degli allegati, che vi puntano. I backup precedenti non hanno
+      // la tabella, e i loro allegati non hanno documentoId
+      const documentiHr = backupData.tables.documentiHr ?? [];
+      if (documentiHr.length > 0) {
+        await tx.documentoHr.createMany({ data: documentiHr });
+        stats.documentiHr = documentiHr.length;
+      }
+
       const formazioniHr = backupData.tables.formazioniHr ?? [];
       if (formazioniHr.length > 0) {
         await tx.formazioneHr.createMany({ data: formazioniHr });
@@ -493,6 +504,7 @@ export class BackupService {
         'gradi_occupazione_hr',
         'lpp_hr',
         'figli_hr',
+        'documenti_hr',
         'formazioni_hr',
         'allegati_hr',
       ];

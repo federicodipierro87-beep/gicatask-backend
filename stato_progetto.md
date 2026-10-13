@@ -2855,8 +2855,9 @@ Finiscono in stampa solo quelli spuntati *e visibili*: cambiando sezione la sele
 
 - Backend: modelli `SchedaHr`, `FiglioHr`, `FormazioneHr` e `AllegatoHr` (tabelle `schede_hr`,
   `figli_hr`, `formazioni_hr`, `allegati_hr`), più l'enum `StatoCivile`. Poi aggiunti
-  `StatoCivileHr`, `GradoOccupazioneHr` e `LppHr` (`stati_civili_hr`, `gradi_occupazione_hr`,
-  `lpp_hr`), vedi le voci del 29 e 30 Settembre e del 13 Ottobre. Route `/api/hr`, **tutte
+  `StatoCivileHr`, `GradoOccupazioneHr`, `LppHr` e `DocumentoHr` (`stati_civili_hr`,
+  `gradi_occupazione_hr`, `lpp_hr`, `documenti_hr`), vedi le voci del 29 e 30 Settembre e del
+  13 Ottobre. Route `/api/hr`, **tutte
   solo responsabile, letture comprese**: un hook `preHandler` sull'intero plugin.
   - `GET /campi`: il catalogo delle voci, che vive in `utils/hrCampi.ts`. È l'unica fonte per le
     sezioni della scheda stampata, le colonne del riepilogo (col loro `peso`, cioè la larghezza
@@ -3285,6 +3286,33 @@ stampa della scheda e riepilogo.
 
 Deploy: prima il backend `63e436d`, poi il frontend `60141e5`. Su Railway il `db push` ha creato
 `lpp_hr` senza errori.
+
+### Scheda HR: Documenti personali, e contatto di emergenza in fondo alla stampa (13 Ottobre 2026)
+
+Prima di *Formazioni* c'è la sezione **Documenti personali**, identica: "+ Aggiungi documento",
+e per ogni voce *Documento N* (nome) con fino a 4 foto o PDF (*Foto del documento*), *Rimuovi*.
+
+- Nuova tabella `documenti_hr` (`DocumentoHr`: `schedaId`, `nome`) e nuova colonna
+  `allegati_hr.documento_id`: gli allegati sono gli stessi delle formazioni (R2, prefisso `hr/`,
+  upload con `POST /api/hr/allegati`). Nel body della scheda il campo è `documenti`, con la forma
+  di `formazioni`.
+- `salvaFormazioni` è diventato `salvaElenco` (in `hr.service.ts`), comune ai due elenchi.
+  Un allegato è orfano se non ha né formazione né documento né scheda (`ALLEGATO_ORFANO`, usato
+  anche da `pulisciOrfani`). Si collegano solo orfani o allegati di questa scheda, come prima.
+- `CAMPI_HR` ha la voce `documenti` (sezione *Documenti personali*) prima di `formazioni`, quindi
+  c'è anche la colonna nel riepilogo.
+- **Stampa della scheda.** Le sezioni seguono ora l'ordine di `CAMPI_HR`; documenti e formazioni
+  hanno il disegno a tutta larghezza con le miniature, che prima era solo delle formazioni in coda.
+  Ordine: ... Impiego, Documenti personali, Formazioni, **Contatto di emergenza** (prima stava
+  prima delle formazioni). Nel form il contatto di emergenza era già l'ultima sezione.
+- Il backup comprende `documentiHr`, ripristinata prima degli allegati che vi puntano. I backup
+  precedenti si ripristinano senza documenti.
+- `db push` senza perdita di dati: tabella nuova e colonna facoltativa (provato in locale su un
+  database con lo schema precedente, una formazione e i suoi allegati).
+
+Provato in locale: documento con allegato, allegato di un'altra scheda non sottraibile, allegato
+spostato da una formazione a un documento, documento tolto (l'allegato torna orfano), salvataggio
+dal form, stampa della scheda e riepilogo.
 
 ---
 

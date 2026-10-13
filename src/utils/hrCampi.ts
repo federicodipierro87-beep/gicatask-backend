@@ -116,8 +116,15 @@ export const CAMPI_HR: CampoHr[] = [
   },
   { chiave: 'dataCessazione', etichetta: 'Data di cessazione', sezione: 'Impiego', peso: 0.9, valore: (s) => formatDataHr(s.dataCessazione) },
 
-  // Formazioni: nella scheda hanno una sezione propria con le foto, qui
-  // servono al riepilogo
+  // Documenti personali e formazioni: nella scheda hanno una sezione propria
+  // con le foto, qui servono al riepilogo e all'ordine delle sezioni
+  {
+    chiave: 'documenti',
+    etichetta: 'Documenti personali',
+    sezione: 'Documenti personali',
+    peso: 2,
+    valore: (s) => s.documenti.map((d) => d.nome).join(', '),
+  },
   {
     chiave: 'formazioni',
     etichetta: 'Formazioni',
@@ -126,7 +133,7 @@ export const CAMPI_HR: CampoHr[] = [
     valore: (s) => s.formazioni.map((f) => f.nome).join(', '),
   },
 
-  // Emergenza
+  // Emergenza: anche nella scheda stampata e' l'ultima sezione
   { chiave: 'emergenzaNome', etichetta: 'Nome contatto emergenza', sezione: 'Contatto di emergenza', peso: 1.3, valore: (s) => t(s.emergenzaNome) },
   { chiave: 'emergenzaTelefono', etichetta: 'Telefono contatto emergenza', sezione: 'Contatto di emergenza', peso: 1.1, valore: (s) => t(s.emergenzaTelefono) },
 ];
