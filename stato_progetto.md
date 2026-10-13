@@ -3314,6 +3314,9 @@ Provato in locale: documento con allegato, allegato di un'altra scheda non sottr
 spostato da una formazione a un documento, documento tolto (l'allegato torna orfano), salvataggio
 dal form, stampa della scheda e riepilogo.
 
+Deploy: prima il backend `4ad9325`, poi il frontend `812014a`. Su Railway il `db push` ha creato
+`documenti_hr` e `allegati_hr.documento_id` senza errori.
+
 ---
 
 ## Progetto Completato
