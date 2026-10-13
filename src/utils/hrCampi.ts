@@ -29,6 +29,12 @@ export function formatDataHr(data: Date | null | undefined): string {
 
 const t = (v: string | null | undefined) => v ?? '';
 
+/** "10% - CHF 250 dal 01.01.2026", saltando le parti vuote. */
+export function formatLppHr(r: { percentuale: string | null; importo: string | null; dal: Date | null }): string {
+  const valore = [r.percentuale, r.importo].filter(Boolean).join(' - ');
+  return r.dal ? `${valore} dal ${formatDataHr(r.dal)}`.trim() : valore;
+}
+
 export const CAMPI_HR: CampoHr[] = [
   // Dati personali
   { chiave: 'cognomeNome', etichetta: 'Cognome e nome', sezione: 'Dati personali', peso: 1.6, valore: (s) => s.cognomeNome },
@@ -86,8 +92,9 @@ export const CAMPI_HR: CampoHr[] = [
   { chiave: 'padreCognomeNome', etichetta: 'Cognome e nome del padre', sezione: 'Famiglia', peso: 1.4, valore: (s) => t(s.padreCognomeNome) },
   { chiave: 'madreCognomeNome', etichetta: 'Cognome e nome (da nubile) della madre', sezione: 'Famiglia', peso: 1.4, valore: (s) => t(s.madreCognomeNome) },
 
-  // Impiego. Nella scheda stampata ogni grado di occupazione occupa una riga
-  // intera (grado | dal), quindi deve cadere a sinistra: e' il quinto campo
+  // Impiego. Nella scheda stampata ogni grado di occupazione e ogni LPP
+  // occupano una riga intera (valore | dal), quindi devono cadere a sinistra:
+  // il grado e' il quinto campo e le sue righe sono sempre in numero pari
   { chiave: 'dataAssunzione', etichetta: 'Data di assunzione', sezione: 'Impiego', peso: 0.9, valore: (s) => formatDataHr(s.dataAssunzione) },
   { chiave: 'tipoSalario', etichetta: 'Tipo di salario', sezione: 'Impiego', peso: 0.9, valore: (s) => t(s.tipoSalario) },
   { chiave: 'salario', etichetta: 'Salario', sezione: 'Impiego', peso: 0.8, valore: (s) => t(s.salario) },
@@ -99,6 +106,13 @@ export const CAMPI_HR: CampoHr[] = [
     peso: 1.1,
     valore: (s) =>
       s.gradiOccupazione.map((g) => (g.dal ? `${g.grado} dal ${formatDataHr(g.dal)}` : g.grado)).join('; '),
+  },
+  {
+    chiave: 'lpp',
+    etichetta: 'LPP',
+    sezione: 'Impiego',
+    peso: 1.3,
+    valore: (s) => s.lpp.map(formatLppHr).join('; '),
   },
   { chiave: 'dataCessazione', etichetta: 'Data di cessazione', sezione: 'Impiego', peso: 0.9, valore: (s) => formatDataHr(s.dataCessazione) },
 

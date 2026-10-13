@@ -563,7 +563,7 @@ enum StatoCivile {
 /// tutto e' facoltativo perche' la scheda si compila a piu' riprese.
 /// Con `dataCessazione` valorizzata il dipendente passa fra gli uscenti.
 /// Il salario e' testo: "28.50/h". Il grado di occupazione sta in
-/// `gradi_occupazione_hr`, con piu' righe.
+/// `gradi_occupazione_hr` e la LPP in `lpp_hr`, con piu' righe.
 model SchedaHr {
   id                 Int          @id @default(autoincrement())
   numeroPersonale    String?      @map("numero_personale")
@@ -611,6 +611,7 @@ model SchedaHr {
   foto             AllegatoHr?          @relation("FotoScheda", fields: [fotoId], references: [id], onDelete: SetNull)
   statiCivili      StatoCivileHr[]
   gradiOccupazione GradoOccupazioneHr[]
+  lpp              LppHr[]
   figli            FiglioHr[]
   formazioni       FormazioneHr[]
 
@@ -643,6 +644,24 @@ model GradoOccupazioneHr {
 
   @@index([schedaId])
   @@map("gradi_occupazione_hr")
+}
+
+/// Previdenza professionale (LPP): percentuale, importo e data da cui vale.
+/// Piu' righe quando cambia nel tempo, nell'ordine in cui sono inserite.
+/// Tutto facoltativo: si salva la riga con almeno un campo compilato.
+model LppHr {
+  id          Int       @id @default(autoincrement())
+  schedaId    Int       @map("scheda_id")
+  // "10%": testo, come arriva dalla tendina
+  percentuale String?
+  // Testo libero: "CHF 250.-/mese"
+  importo     String?
+  dal         DateTime? @db.Date
+
+  scheda SchedaHr @relation(fields: [schedaId], references: [id], onDelete: Cascade)
+
+  @@index([schedaId])
+  @@map("lpp_hr")
 }
 
 model FiglioHr {

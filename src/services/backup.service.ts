@@ -38,6 +38,7 @@ interface BackupData {
     schedeHr?: any[];
     statiCiviliHr?: any[];
     gradiOccupazioneHr?: any[];
+    lppHr?: any[];
     figliHr?: any[];
     formazioniHr?: any[];
     allegatiHr?: any[];
@@ -114,6 +115,7 @@ export class BackupService {
           schedeHr: await this.prisma.schedaHr.findMany(),
           statiCiviliHr: await this.prisma.statoCivileHr.findMany(),
           gradiOccupazioneHr: await this.prisma.gradoOccupazioneHr.findMany(),
+          lppHr: await this.prisma.lppHr.findMany(),
           figliHr: await this.prisma.figlioHr.findMany(),
           formazioniHr: await this.prisma.formazioneHr.findMany(),
           allegatiHr: await this.prisma.allegatoHr.findMany(),
@@ -267,6 +269,7 @@ export class BackupService {
       await tx.formazioneHr.deleteMany();
       await tx.statoCivileHr.deleteMany();
       await tx.gradoOccupazioneHr.deleteMany();
+      await tx.lppHr.deleteMany();
       await tx.figlioHr.deleteMany();
       await tx.schedaHr.deleteMany();
 
@@ -430,6 +433,13 @@ export class BackupService {
         stats.gradiOccupazioneHr = gradiOccupazioneHr.length;
       }
 
+      // I backup precedenti alla LPP non hanno la tabella
+      const lppHr = backupData.tables.lppHr ?? [];
+      if (lppHr.length > 0) {
+        await tx.lppHr.createMany({ data: lppHr });
+        stats.lppHr = lppHr.length;
+      }
+
       const figliHr = backupData.tables.figliHr ?? [];
       if (figliHr.length > 0) {
         await tx.figlioHr.createMany({ data: figliHr });
@@ -481,6 +491,7 @@ export class BackupService {
         'schede_hr',
         'stati_civili_hr',
         'gradi_occupazione_hr',
+        'lpp_hr',
         'figli_hr',
         'formazioni_hr',
         'allegati_hr',

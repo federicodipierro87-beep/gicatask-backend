@@ -50,6 +50,12 @@ export interface GradoOccupazioneInput {
   dal?: string | null;
 }
 
+export interface LppInput {
+  percentuale?: string | null;
+  importo?: string | null;
+  dal?: string | null;
+}
+
 export interface FiglioInput {
   cognomeNome: string;
   dataNascita?: string | null;
@@ -67,6 +73,7 @@ export type SchedaHrInput = {
   impostaFonte?: boolean | null;
   statiCivili?: StatoCivileInput[];
   gradiOccupazione?: GradoOccupazioneInput[];
+  lpp?: LppInput[];
   // Foto del dipendente, gia' caricata con POST /api/hr/allegati
   fotoId?: number | null;
   figli?: FiglioInput[];
@@ -80,6 +87,7 @@ export const SCHEDA_INCLUDE = {
   foto: { select: SELECT_ALLEGATO },
   statiCivili: { orderBy: { id: 'asc' } },
   gradiOccupazione: { orderBy: { id: 'asc' } },
+  lpp: { orderBy: { id: 'asc' } },
   figli: { orderBy: { id: 'asc' } },
   formazioni: {
     orderBy: { id: 'asc' },
@@ -138,7 +146,7 @@ export class HrService {
 
     return dati as Omit<
       Prisma.SchedaHrUncheckedCreateInput,
-      'statiCivili' | 'gradiOccupazione' | 'figli' | 'formazioni'
+      'statiCivili' | 'gradiOccupazione' | 'lpp' | 'figli' | 'formazioni'
     >;
   }
 
@@ -158,6 +166,13 @@ export class HrService {
       .map((g) => ({ grado: testo(g.grado)!, dal: data(g.dal) }));
   }
 
+  // Una riga LPP si tiene se ha almeno un campo compilato
+  private datiLpp(righe: LppInput[] = []) {
+    return righe
+      .map((r) => ({ percentuale: testo(r.percentuale), importo: testo(r.importo), dal: data(r.dal) }))
+      .filter((r) => r.percentuale || r.importo || r.dal);
+  }
+
   private datiFigli(figli: FiglioInput[] = []) {
     return figli
       .filter((f) => testo(f.cognomeNome))
@@ -168,6 +183,7 @@ export class HrService {
     const dati = this.datiScheda(input);
     const statiCivili = this.datiStatiCivili(input.statiCivili);
     const gradiOccupazione = this.datiGradiOccupazione(input.gradiOccupazione);
+    const lpp = this.datiLpp(input.lpp);
     const figli = this.datiFigli(input.figli);
 
     return this.prisma.$transaction(async (tx) => {
@@ -176,6 +192,7 @@ export class HrService {
           ...dati,
           statiCivili: { create: statiCivili },
           gradiOccupazione: { create: gradiOccupazione },
+          lpp: { create: lpp },
           figli: { create: figli },
         },
       });
@@ -191,15 +208,17 @@ export class HrService {
     const dati = this.datiScheda(input);
     const statiCivili = this.datiStatiCivili(input.statiCivili);
     const gradiOccupazione = this.datiGradiOccupazione(input.gradiOccupazione);
+    const lpp = this.datiLpp(input.lpp);
     const figli = this.datiFigli(input.figli);
 
     return this.prisma.$transaction(async (tx) => {
       const esistente = await tx.schedaHr.findUnique({ where: { id }, select: { id: true } });
       if (!esistente) throw new Error('Scheda non trovata');
 
-      // Stati civili, gradi e figli non hanno nulla appeso: si riscrivono per intero
+      // Stati civili, gradi, LPP e figli non hanno nulla appeso: si riscrivono per intero
       await tx.statoCivileHr.deleteMany({ where: { schedaId: id } });
       await tx.gradoOccupazioneHr.deleteMany({ where: { schedaId: id } });
+      await tx.lppHr.deleteMany({ where: { schedaId: id } });
       await tx.figlioHr.deleteMany({ where: { schedaId: id } });
       await tx.schedaHr.update({
         where: { id },
@@ -207,6 +226,7 @@ export class HrService {
           ...dati,
           statiCivili: { create: statiCivili },
           gradiOccupazione: { create: gradiOccupazione },
+          lpp: { create: lpp },
           figli: { create: figli },
         },
       });

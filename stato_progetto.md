@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 1 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 13 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -2854,7 +2854,9 @@ Finiscono in stampa solo quelli spuntati *e visibili*: cambiando sezione la sele
   orizzontale, oltre un A3. La scelta delle voci resta memorizzata nel browser (localStorage).
 
 - Backend: modelli `SchedaHr`, `FiglioHr`, `FormazioneHr` e `AllegatoHr` (tabelle `schede_hr`,
-  `figli_hr`, `formazioni_hr`, `allegati_hr`), più l'enum `StatoCivile`. Route `/api/hr`, **tutte
+  `figli_hr`, `formazioni_hr`, `allegati_hr`), più l'enum `StatoCivile`. Poi aggiunti
+  `StatoCivileHr`, `GradoOccupazioneHr` e `LppHr` (`stati_civili_hr`, `gradi_occupazione_hr`,
+  `lpp_hr`), vedi le voci del 29 e 30 Settembre e del 13 Ottobre. Route `/api/hr`, **tutte
   solo responsabile, letture comprese**: un hook `preHandler` sull'intero plugin.
   - `GET /campi`: il catalogo delle voci, che vive in `utils/hrCampi.ts`. È l'unica fonte per le
     sezioni della scheda stampata, le colonne del riepilogo (col loro `peso`, cioè la larghezza
@@ -3260,6 +3262,26 @@ validazione, 403, export, eliminazione e uscita, su desktop e su telefono.
 
 Deploy: prima il backend `5d7957b`, poi il frontend `408d089`. Su Railway il `db push` ha creato la
 tabella senza errori e `GET /api/log` risponde 401 senza token, come previsto.
+
+### Scheda HR: LPP su più righe (13 Ottobre 2026)
+
+Nella sezione *Impiego*, fra i gradi di occupazione e la *Data di cessazione*, ci sono le righe
+**LPP**: *LPP* (tendina 0%–100%, di 10 in 10), *Importo* (testo libero) e *Dal* (data), affiancati su
+tre colonne. Il **+** sotto aggiunge un'altra riga, *Rimuovi* la toglie quando ce n'è più d'una.
+Come per i gradi il form ha sempre almeno una riga, ma qui i tre campi sono tutti facoltativi: si
+salva la riga che ne ha almeno uno compilato.
+
+- Nuova tabella `lpp_hr` (`LppHr`: `schedaId`, `percentuale` testo, `importo` testo, `dal`), riscritta
+  per intera a ogni salvataggio. Nel body di `POST`/`PUT /api/hr` il campo è `lpp`.
+- `CAMPI_HR` ha la voce `lpp` fra `gradoOccupazione` e `dataCessazione`. Nella stampa della scheda
+  ogni riga diventa *LPP* ("10% - CHF 250.-") | *Dal*, a tutta larghezza come i gradi; nel
+  riepilogo la colonna *LPP* elenca le righe ("10% - CHF 250.- dal 01/01/2025; 20% dal …").
+- Il backup comprende `lppHr`; i backup precedenti non hanno la tabella e si ripristinano senza LPP.
+- Nessuna migrazione: la tabella è nuova e il `db push` di Railway la crea senza perdita di dati
+  (provato in locale su un database con lo schema precedente e una scheda già presente).
+
+Provato in locale: salvataggio via API (la riga vuota si scarta), form su desktop e telefono,
+stampa della scheda e riepilogo.
 
 ---
 

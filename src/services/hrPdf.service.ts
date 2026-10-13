@@ -196,6 +196,13 @@ export class HrPdfService {
           { etichetta: 'Grado occupazione', valore: g?.grado ?? '' },
           { etichetta: 'Dal', valore: g ? formatDataHr(g.dal) : '' },
         ]);
+      } else if (campo.chiave === 'lpp') {
+        // Percentuale e importo a sinistra, la data a destra
+        const righe = scheda.lpp.length > 0 ? scheda.lpp : [null];
+        celle = righe.flatMap((r) => [
+          { etichetta: 'LPP', valore: r ? [r.percentuale, r.importo].filter(Boolean).join(' - ') : '' },
+          { etichetta: 'Dal', valore: r ? formatDataHr(r.dal) : '' },
+        ]);
       } else if (campo.chiave !== 'figli') {
         celle = [{ etichetta: campo.etichetta, valore: campo.valore(scheda) }];
       } else if (scheda.figli.length === 0) {

@@ -33,6 +33,14 @@ const schedaSchema = {
         properties: { grado: { type: 'string' }, dal: testoNullable },
       },
     },
+    lpp: {
+      type: 'array',
+      maxItems: 30,
+      items: {
+        type: 'object',
+        properties: { percentuale: testoNullable, importo: testoNullable, dal: testoNullable },
+      },
+    },
     fotoId: { type: ['number', 'null'] },
     figli: {
       type: 'array',
