@@ -3337,6 +3337,20 @@ i campi facoltativi e si salva la riga con almeno uno compilato.
 Deploy: prima il backend `d23fb60`, poi il frontend `792fc86`. Su Railway il `db push` ha creato
 `lpp_hr.importo_50` senza errori.
 
+### Report attività: date scrivibili a mano (15 Ottobre 2026)
+
+I campi **Dal** e **Al** del Report attività si possono ora anche digitare (gg/mm/aaaa), non solo
+scegliere dal calendario. Prima usavano `DateTimeInput`, che apre il calendario a ogni click sul
+campo e quindi non lascia posizionare il cursore per scrivere.
+
+- Ora usano `CampoData`, lo stesso componente di Calendario eventi e Dream: input data nativo,
+  il calendario si apre solo dall'icona a destra.
+- Mentre si digita l'anno il campo passa per valori intermedi (0002, 0020, ...): ognuno lancia una
+  richiesta, ma il caricamento scarta già le risposte superate, quindi a video resta solo l'ultima.
+- Nessuna modifica al backend.
+
+Deploy: solo frontend `58da654`.
+
 ---
 
 ## Progetto Completato
@@ -3449,7 +3463,7 @@ frontend/
 │   │   ├── AllegatiUploader.tsx   # Foto/PDF, ridimensiona e carica su R2
 │   │   ├── Pagination.tsx     # Paginazione lato client + hook usePagination
 │   │   ├── CalendarioEventiGrid.tsx # Griglia annuale scorrevole
-│   │   ├── CampoData.tsx          # Input data, condiviso Calendario/Dream
+│   │   ├── CampoData.tsx          # Input data digitabile, Calendario/Dream/Report
 │   │   ├── DateTimeInput.tsx      # Input data/ora con picker e default
 │   │   ├── InactivityWarning.tsx  # Modal avviso timeout sessione
 │   │   ├── MonthNavigator.tsx     # Navigazione mese + utility su "YYYY-MM"
