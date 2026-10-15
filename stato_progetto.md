@@ -3334,6 +3334,9 @@ i campi facoltativi e si salva la riga con almeno uno compilato.
   (`importiLppHr` / `formatLppHr` in `hrCampi.ts`).
 - Nessuna migrazione: colonna nuova e facoltativa, i backup precedenti si ripristinano senza.
 
+Deploy: prima il backend `d23fb60`, poi il frontend `792fc86`. Su Railway il `db push` ha creato
+`lpp_hr.importo_50` senza errori.
+
 ---
 
 ## Progetto Completato
