@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit';
 import type { SchedaHrCompleta } from './hr.service.js';
-import { CAMPI_HR, ETICHETTE_STATO_CIVILE, formatDataHr } from '../utils/hrCampi.js';
+import { CAMPI_HR, ETICHETTE_STATO_CIVILE, formatDataHr, importiLppHr } from '../utils/hrCampi.js';
 
 const MARGIN = 40;
 const GRID_COLOR = '#bbbbbb';
@@ -203,10 +203,10 @@ export class HrPdfService {
           { etichetta: 'Dal', valore: g ? formatDataHr(g.dal) : '' },
         ]);
       } else if (campo.chiave === 'lpp') {
-        // Percentuale e importo a sinistra, la data a destra
+        // I due importi a sinistra, uno per riga, la data a destra
         const righe = scheda.lpp.length > 0 ? scheda.lpp : [null];
         celle = righe.flatMap((r) => [
-          { etichetta: 'LPP', valore: r ? [r.percentuale, r.importo].filter(Boolean).join(' - ') : '' },
+          { etichetta: 'LPP', valore: r ? importiLppHr(r).join('\n') : '' },
           { etichetta: 'Dal', valore: r ? formatDataHr(r.dal) : '' },
         ]);
       } else if (campo.chiave !== 'figli') {

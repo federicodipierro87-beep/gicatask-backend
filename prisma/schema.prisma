@@ -647,16 +647,19 @@ model GradoOccupazioneHr {
   @@map("gradi_occupazione_hr")
 }
 
-/// Previdenza professionale (LPP): percentuale, importo e data da cui vale.
-/// Piu' righe quando cambia nel tempo, nell'ordine in cui sono inserite.
+/// Previdenza professionale (LPP): importo al 100%, importo al 50% e data da
+/// cui vale. Piu' righe quando cambia nel tempo, nell'ordine in cui sono inserite.
 /// Tutto facoltativo: si salva la riga con almeno un campo compilato.
 model LppHr {
   id          Int       @id @default(autoincrement())
   schedaId    Int       @map("scheda_id")
-  // "10%": testo, come arriva dalla tendina
+  // Non piu' usata dal 15/10/2026 (era la tendina 0%-100%): resta perche'
+  // toglierla con dati dentro bloccherebbe `prisma db push` all'avvio
   percentuale String?
-  // Testo libero: "CHF 250.-/mese"
+  // Importo al 100%, testo libero: "CHF 500.-"
   importo     String?
+  // Importo al 50%, testo libero
+  importo50   String?   @map("importo_50")
   dal         DateTime? @db.Date
 
   scheda SchedaHr @relation(fields: [schedaId], references: [id], onDelete: Cascade)

@@ -51,8 +51,9 @@ export interface GradoOccupazioneInput {
 }
 
 export interface LppInput {
-  percentuale?: string | null;
+  // Importo al 100%
   importo?: string | null;
+  importo50?: string | null;
   dal?: string | null;
 }
 
@@ -205,8 +206,8 @@ export class HrService {
   // Una riga LPP si tiene se ha almeno un campo compilato
   private datiLpp(righe: LppInput[] = []) {
     return righe
-      .map((r) => ({ percentuale: testo(r.percentuale), importo: testo(r.importo), dal: data(r.dal) }))
-      .filter((r) => r.percentuale || r.importo || r.dal);
+      .map((r) => ({ importo: testo(r.importo), importo50: testo(r.importo50), dal: data(r.dal) }))
+      .filter((r) => r.importo || r.importo50 || r.dal);
   }
 
   private datiFigli(figli: FiglioInput[] = []) {

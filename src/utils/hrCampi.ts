@@ -29,9 +29,16 @@ export function formatDataHr(data: Date | null | undefined): string {
 
 const t = (v: string | null | undefined) => v ?? '';
 
-/** "10% - CHF 250 dal 01.01.2026", saltando le parti vuote. */
-export function formatLppHr(r: { percentuale: string | null; importo: string | null; dal: Date | null }): string {
-  const valore = [r.percentuale, r.importo].filter(Boolean).join(' - ');
+/** Gli importi di una riga LPP, saltando quelli vuoti: ["100%: CHF 500", "50%: CHF 250"]. */
+export function importiLppHr(r: { importo: string | null; importo50: string | null }): string[] {
+  return [r.importo && `100%: ${r.importo}`, r.importo50 && `50%: ${r.importo50}`].filter(
+    (v): v is string => Boolean(v)
+  );
+}
+
+/** "100%: CHF 500 - 50%: CHF 250 dal 01.01.2026", saltando le parti vuote. */
+export function formatLppHr(r: { importo: string | null; importo50: string | null; dal: Date | null }): string {
+  const valore = importiLppHr(r).join(' - ');
   return r.dal ? `${valore} dal ${formatDataHr(r.dal)}`.trim() : valore;
 }
 

@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 13 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 15 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -3317,6 +3317,22 @@ dal form, stampa della scheda e riepilogo.
 
 Deploy: prima il backend `4ad9325`, poi il frontend `812014a`. Su Railway il `db push` ha creato
 `documenti_hr` e `allegati_hr.documento_id` senza errori.
+
+### Scheda HR: LPP con importo 100% e 50% (15 Ottobre 2026)
+
+La sezione **LPP** della scheda ha ora il titolo *LPP* e sotto, per ogni riga, tre caselle:
+*Importo 100%* (testo libero), *Importo 50%* (testo libero) e *Dal* (data). La tendina della
+percentuale è sparita. Il resto è come prima: il **+** aggiunge una riga, *Rimuovi* la toglie, tutti
+i campi facoltativi e si salva la riga con almeno uno compilato.
+
+- `LppHr`: `importo` è l'importo al 100%, nuova colonna facoltativa `importo50` (`importo_50`).
+  `percentuale` resta nello schema ma non si usa più: toglierla con dati dentro bloccherebbe il
+  `db push` all'avvio. Il primo salvataggio di una scheda, che riscrive le righe LPP, la svuota.
+  Nel body di `POST`/`PUT /api/hr` le righe `lpp` hanno `importo`, `importo50`, `dal`.
+- Stampa della scheda: la cella *LPP* mostra gli importi su due righe ("100%: CHF 500.-" /
+  "50%: CHF 250.-"), a destra *Dal*. Riepilogo: "100%: CHF 500.- - 50%: CHF 250.- dal 01/01/2026"
+  (`importiLppHr` / `formatLppHr` in `hrCampi.ts`).
+- Nessuna migrazione: colonna nuova e facoltativa, i backup precedenti si ripristinano senza.
 
 ---
 

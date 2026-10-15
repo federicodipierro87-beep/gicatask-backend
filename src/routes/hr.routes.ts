@@ -53,7 +53,7 @@ const schedaSchema = {
       maxItems: 30,
       items: {
         type: 'object',
-        properties: { percentuale: testoNullable, importo: testoNullable, dal: testoNullable },
+        properties: { importo: testoNullable, importo50: testoNullable, dal: testoNullable },
       },
     },
     fotoId: { type: ['number', 'null'] },
