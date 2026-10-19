@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 15 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 19 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -2840,8 +2840,8 @@ nome* è obbligatorio.
   apre in una nuova scheda.
 
 La scheda HR è **indipendente da `utenti`**: nel personale ci sono anche persone che non entrano
-mai nel portale. Il salario è testo libero ("28.50/h"); il grado di occupazione è una lista
-(vedi sotto).
+mai nel portale. Il salario è testo libero ("28.50/h") e, come il grado di occupazione, ha più
+righe con la data da cui vale (vedi sotto).
 
 **Stampe.** Nell'elenco si spuntano i dipendenti (una casella per riga, più "seleziona tutti").
 Finiscono in stampa solo quelli spuntati *e visibili*: cambiando sezione la selezione si azzera.
@@ -2856,9 +2856,9 @@ Finiscono in stampa solo quelli spuntati *e visibili*: cambiando sezione la sele
 
 - Backend: modelli `SchedaHr`, `FiglioHr`, `FormazioneHr` e `AllegatoHr` (tabelle `schede_hr`,
   `figli_hr`, `formazioni_hr`, `allegati_hr`), più l'enum `StatoCivile`. Poi aggiunti
-  `StatoCivileHr`, `GradoOccupazioneHr`, `LppHr` e `DocumentoHr` (`stati_civili_hr`,
-  `gradi_occupazione_hr`, `lpp_hr`, `documenti_hr`), vedi le voci del 29 e 30 Settembre e del
-  13 Ottobre. Route `/api/hr`, **tutte solo responsabile, letture comprese**: un hook
+  `StatoCivileHr`, `GradoOccupazioneHr`, `LppHr`, `DocumentoHr` e `SalarioHr` (`stati_civili_hr`,
+  `gradi_occupazione_hr`, `lpp_hr`, `documenti_hr`, `salari_hr`), vedi le voci del 29 e 30
+  Settembre, del 13 e del 19 Ottobre. Route `/api/hr`, **tutte solo responsabile, letture comprese**: un hook
   `preHandler` sull'intero plugin.
   - `GET /campi`: il catalogo delle voci, che vive in `utils/hrCampi.ts`. È l'unica fonte per le
     sezioni della scheda stampata, le colonne del riepilogo (col loro `peso`, cioè la larghezza
@@ -3351,6 +3351,29 @@ campo e quindi non lascia posizionare il cursore per scrivere.
 
 Deploy: solo frontend `58da654`.
 
+### Scheda HR: salario su più righe con la data (19 Ottobre 2026)
+
+Il **Salario** funziona ora come il grado di occupazione: ogni riga ha *Salario* (testo libero,
+"28.50/h") e a fianco *Dal* (data), e il **+** sotto aggiunge un'altra riga; *Rimuovi* la toglie.
+Il form ha sempre almeno una riga; le righe senza salario non si salvano.
+
+- Nuova tabella `salari_hr` (`SalarioHr`: `schedaId`, `salario` testo, `dal`), riscritta per intera
+  a ogni salvataggio. Nel body di `POST`/`PUT /api/hr` c'è l'elenco `salari` (`salario`, `dal`);
+  il campo `salario` della scheda non si scrive più.
+- Stampa della scheda: ogni riga diventa *Salario | Dal*. Riepilogo: la colonna *Salario* (stessa
+  chiave `salario` di prima, quindi le scelte salvate nel browser restano valide) elenca tutte le
+  righe ("28.50/h dal 01/03/2024; 30.00/h dal 01/01/2026").
+- **Nuovo ordine di *Impiego*.** Anche la riga *salario | dal* deve partire da sinistra nella
+  griglia della stampa, quindi il *Numero IBAN* è sceso in fondo, accanto a *Data di
+  cessazione*. Ordine, in `CAMPI_HR` e nel form: Data di assunzione, Tipo di salario, i salari, i
+  gradi, la LPP, Numero IBAN e Data di cessazione. Nel riepilogo la colonna IBAN viene quindi dopo
+  la LPP.
+- **Migrazione.** La colonna `schede_hr.salario` resta nello schema, come quelle dello stato civile
+  e del grado. All'avvio e dopo un ripristino `migraSalarioHr` (in `hr.service.ts`) copia il valore
+  rimasto in `salari_hr`, senza data, e svuota la colonna. Il backup ora comprende `salariHr`.
+- Provato su un Postgres locale: schema vecchio con un salario, poi `db push` del nuovo senza
+  `--accept-data-loss` (passa), migrazione all'avvio, salvataggio di due righe, stampa e riepilogo.
+
 ---
 
 ## Progetto Completato
@@ -3587,7 +3610,7 @@ VITE_API_URL=https://web-production-fde54.up.railway.app
 
 13. **Una rotta nuova va aggiunta al catalogo del Log.** Gli hook di `plugins/logOperazioni.ts` sono globali, quindi una scrittura nuova finisce comunque nel registro, ma come *Altro* con metodo e percorso. Per avere area, descrizione e il nome dell'elemento, va aggiunta a `CATALOGO` in `logOperazioni.service.ts`. Se lavora su un modello nuovo, anche a `MODELLI` con la sua etichetta. Un campo con dati sensibili o voluminosi va aggiunto a `CAMPI_ESCLUSI`.
 
-14. **Una voce nuova della scheda HR passa da `CAMPI_HR`.** Il catalogo in `utils/hrCampi.ts` decide l'ordine delle sezioni della scheda stampata e le colonne del riepilogo; il form (`HrSchedaPage.tsx`) va allineato a mano. Le voci su più righe (stato civile, grado, LPP) hanno un disegno a coppie nella stampa e devono cadere a sinistra della griglia a due colonne. Un elenco con foto come documenti e formazioni passa da `ELENCHI` / `salvaElenco` in `hr.service.ts` e da `elencoConFoto` nella stampa; un nuovo proprietario degli allegati va aggiunto ad `ALLEGATO_ORFANO`, altrimenti la pulizia notturna cancella i suoi file.
+14. **Una voce nuova della scheda HR passa da `CAMPI_HR`.** Il catalogo in `utils/hrCampi.ts` decide l'ordine delle sezioni della scheda stampata e le colonne del riepilogo; il form (`HrSchedaPage.tsx`) va allineato a mano. Le voci su più righe (stato civile, salario, grado, LPP) hanno un disegno a coppie nella stampa e devono cadere a sinistra della griglia a due colonne. Un elenco con foto come documenti e formazioni passa da `ELENCHI` / `salvaElenco` in `hr.service.ts` e da `elencoConFoto` nella stampa; un nuovo proprietario degli allegati va aggiunto ad `ALLEGATO_ORFANO`, altrimenti la pulizia notturna cancella i suoi file.
 
 ---
 

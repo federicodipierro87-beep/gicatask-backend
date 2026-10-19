@@ -99,13 +99,19 @@ export const CAMPI_HR: CampoHr[] = [
   { chiave: 'padreCognomeNome', etichetta: 'Cognome e nome del padre', sezione: 'Famiglia', peso: 1.4, valore: (s) => t(s.padreCognomeNome) },
   { chiave: 'madreCognomeNome', etichetta: 'Cognome e nome (da nubile) della madre', sezione: 'Famiglia', peso: 1.4, valore: (s) => t(s.madreCognomeNome) },
 
-  // Impiego. Nella scheda stampata ogni grado di occupazione e ogni LPP
-  // occupano una riga intera (valore | dal), quindi devono cadere a sinistra:
-  // il grado e' il quinto campo e le sue righe sono sempre in numero pari
+  // Impiego. Nella scheda stampata ogni salario, grado di occupazione e LPP
+  // occupa una riga intera (valore | dal), quindi deve cadere a sinistra: il
+  // salario e' il terzo campo e le righe di ciascuno sono sempre in numero
+  // pari. IBAN e cessazione chiudono la sezione sulla stessa riga
   { chiave: 'dataAssunzione', etichetta: 'Data di assunzione', sezione: 'Impiego', peso: 0.9, valore: (s) => formatDataHr(s.dataAssunzione) },
   { chiave: 'tipoSalario', etichetta: 'Tipo di salario', sezione: 'Impiego', peso: 0.9, valore: (s) => t(s.tipoSalario) },
-  { chiave: 'salario', etichetta: 'Salario', sezione: 'Impiego', peso: 0.8, valore: (s) => t(s.salario) },
-  { chiave: 'iban', etichetta: 'Numero IBAN', sezione: 'Impiego', peso: 1.8, valore: (s) => t(s.iban) },
+  {
+    chiave: 'salario',
+    etichetta: 'Salario',
+    sezione: 'Impiego',
+    peso: 1.1,
+    valore: (s) => s.salari.map((r) => (r.dal ? `${r.salario} dal ${formatDataHr(r.dal)}` : r.salario)).join('; '),
+  },
   {
     chiave: 'gradoOccupazione',
     etichetta: 'Grado occupazione',
@@ -121,6 +127,7 @@ export const CAMPI_HR: CampoHr[] = [
     peso: 1.3,
     valore: (s) => s.lpp.map(formatLppHr).join('; '),
   },
+  { chiave: 'iban', etichetta: 'Numero IBAN', sezione: 'Impiego', peso: 1.8, valore: (s) => t(s.iban) },
   { chiave: 'dataCessazione', etichetta: 'Data di cessazione', sezione: 'Impiego', peso: 0.9, valore: (s) => formatDataHr(s.dataCessazione) },
 
   // Documenti personali e formazioni: nella scheda hanno una sezione propria

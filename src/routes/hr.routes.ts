@@ -39,6 +39,15 @@ const schedaSchema = {
         properties: { stato: { type: 'string' }, dal: testoNullable },
       },
     },
+    salari: {
+      type: 'array',
+      maxItems: 30,
+      items: {
+        type: 'object',
+        required: ['salario'],
+        properties: { salario: { type: 'string' }, dal: testoNullable },
+      },
+    },
     gradiOccupazione: {
       type: 'array',
       maxItems: 30,

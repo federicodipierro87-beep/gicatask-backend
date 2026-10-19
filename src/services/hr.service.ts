@@ -21,7 +21,6 @@ const CAMPI_TESTO = [
   'padreCognomeNome',
   'madreCognomeNome',
   'tipoSalario',
-  'salario',
   'iban',
   'email',
   'emergenzaNome',
@@ -42,6 +41,11 @@ type CampoData = (typeof CAMPI_DATA)[number];
 
 export interface StatoCivileInput {
   stato: StatoCivile;
+  dal?: string | null;
+}
+
+export interface SalarioInput {
+  salario: string;
   dal?: string | null;
 }
 
@@ -74,6 +78,7 @@ export type SchedaHrInput = {
   cognomeNome: string;
   impostaFonte?: boolean | null;
   statiCivili?: StatoCivileInput[];
+  salari?: SalarioInput[];
   gradiOccupazione?: GradoOccupazioneInput[];
   lpp?: LppInput[];
   // Foto del dipendente, gia' caricata con POST /api/hr/allegati
@@ -89,6 +94,7 @@ const SELECT_ALLEGATO = { id: true, nomeFile: true, mimeType: true, dimensione: 
 export const SCHEDA_INCLUDE = {
   foto: { select: SELECT_ALLEGATO },
   statiCivili: { orderBy: { id: 'asc' } },
+  salari: { orderBy: { id: 'asc' } },
   gradiOccupazione: { orderBy: { id: 'asc' } },
   lpp: { orderBy: { id: 'asc' } },
   figli: { orderBy: { id: 'asc' } },
@@ -183,7 +189,7 @@ export class HrService {
 
     return dati as Omit<
       Prisma.SchedaHrUncheckedCreateInput,
-      'statiCivili' | 'gradiOccupazione' | 'lpp' | 'figli' | 'documenti' | 'formazioni'
+      'statiCivili' | 'salari' | 'gradiOccupazione' | 'lpp' | 'figli' | 'documenti' | 'formazioni'
     >;
   }
 
@@ -196,7 +202,14 @@ export class HrService {
     return compilati.map((s) => ({ stato: s.stato, dal: data(s.dal) }));
   }
 
-  // Anche qui una riga senza grado e' una riga lasciata vuota
+  // Anche qui una riga senza salario e' una riga lasciata vuota
+  private datiSalari(salari: SalarioInput[] = []) {
+    return salari
+      .filter((r) => testo(r.salario))
+      .map((r) => ({ salario: testo(r.salario)!, dal: data(r.dal) }));
+  }
+
+  // Lo stesso per il grado
   private datiGradiOccupazione(gradi: GradoOccupazioneInput[] = []) {
     return gradi
       .filter((g) => testo(g.grado))
@@ -219,6 +232,7 @@ export class HrService {
   async create(input: SchedaHrInput): Promise<SchedaHrCompleta> {
     const dati = this.datiScheda(input);
     const statiCivili = this.datiStatiCivili(input.statiCivili);
+    const salari = this.datiSalari(input.salari);
     const gradiOccupazione = this.datiGradiOccupazione(input.gradiOccupazione);
     const lpp = this.datiLpp(input.lpp);
     const figli = this.datiFigli(input.figli);
@@ -228,6 +242,7 @@ export class HrService {
         data: {
           ...dati,
           statiCivili: { create: statiCivili },
+          salari: { create: salari },
           gradiOccupazione: { create: gradiOccupazione },
           lpp: { create: lpp },
           figli: { create: figli },
@@ -245,6 +260,7 @@ export class HrService {
   async update(id: number, input: SchedaHrInput): Promise<SchedaHrCompleta> {
     const dati = this.datiScheda(input);
     const statiCivili = this.datiStatiCivili(input.statiCivili);
+    const salari = this.datiSalari(input.salari);
     const gradiOccupazione = this.datiGradiOccupazione(input.gradiOccupazione);
     const lpp = this.datiLpp(input.lpp);
     const figli = this.datiFigli(input.figli);
@@ -253,8 +269,9 @@ export class HrService {
       const esistente = await tx.schedaHr.findUnique({ where: { id }, select: { id: true } });
       if (!esistente) throw new Error('Scheda non trovata');
 
-      // Stati civili, gradi, LPP e figli non hanno nulla appeso: si riscrivono per intero
+      // Stati civili, salari, gradi, LPP e figli non hanno nulla appeso: si riscrivono per intero
       await tx.statoCivileHr.deleteMany({ where: { schedaId: id } });
+      await tx.salarioHr.deleteMany({ where: { schedaId: id } });
       await tx.gradoOccupazioneHr.deleteMany({ where: { schedaId: id } });
       await tx.lppHr.deleteMany({ where: { schedaId: id } });
       await tx.figlioHr.deleteMany({ where: { schedaId: id } });
@@ -263,6 +280,7 @@ export class HrService {
         data: {
           ...dati,
           statiCivili: { create: statiCivili },
+          salari: { create: salari },
           gradiOccupazione: { create: gradiOccupazione },
           lpp: { create: lpp },
           figli: { create: figli },
@@ -427,5 +445,34 @@ export async function migraGradoOccupazioneHr(prisma: PrismaClient): Promise<voi
     console.log(`[Migrazione] grado occupazione HR: ${vecchie.length} schede spostate su gradi_occupazione_hr`);
   } catch (error) {
     console.error('[Migrazione] Impossibile spostare il grado di occupazione HR:', error);
+  }
+}
+
+/**
+ * Il salario era un solo valore sulla scheda (`salario`), ora e' un elenco in
+ * `salari_hr`. Come per il grado di occupazione: sposta i valori rimasti,
+ * senza data, e svuota la colonna. Gira all'avvio e dopo un ripristino.
+ */
+export async function migraSalarioHr(prisma: PrismaClient): Promise<void> {
+  try {
+    const vecchie = await prisma.schedaHr.findMany({
+      where: { salario: { not: null } },
+      select: { id: true, salario: true, _count: { select: { salari: true } } },
+    });
+    if (vecchie.length === 0) return;
+
+    await prisma.$transaction(async (tx) => {
+      for (const s of vecchie) {
+        const salario = s.salario!.trim();
+        if (salario && s._count.salari === 0) {
+          await tx.salarioHr.create({ data: { schedaId: s.id, salario } });
+        }
+        await tx.schedaHr.update({ where: { id: s.id }, data: { salario: null } });
+      }
+    });
+
+    console.log(`[Migrazione] salario HR: ${vecchie.length} schede spostate su salari_hr`);
+  } catch (error) {
+    console.error('[Migrazione] Impossibile spostare il salario HR:', error);
   }
 }

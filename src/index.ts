@@ -9,7 +9,7 @@ import { registerRoutes } from './routes/index.js';
 import { initScheduler } from './services/scheduler.service.js';
 import { seedTipiAssenza, removeCantieriGenerici } from './services/seed.service.js';
 import { numeraBollettiniMancanti } from './services/bollettini.service.js';
-import { migraGradoOccupazioneHr, migraStatoCivileHr } from './services/hr.service.js';
+import { migraGradoOccupazioneHr, migraSalarioHr, migraStatoCivileHr } from './services/hr.service.js';
 
 async function buildApp() {
   const fastify = Fastify({
@@ -86,6 +86,8 @@ async function start() {
     await migraStatoCivileHr(app.prisma);
     // Grado di occupazione HR: dalla colonna della scheda a gradi_occupazione_hr
     await migraGradoOccupazioneHr(app.prisma);
+    // Salario HR: dalla colonna della scheda a salari_hr
+    await migraSalarioHr(app.prisma);
 
     // Numero "numero-anno" ai bollettini che non lo hanno ancora. Un errore
     // qui non deve fermare il server: senza numero l'archivio mostra l'id

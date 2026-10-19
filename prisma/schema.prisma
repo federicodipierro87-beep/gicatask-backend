@@ -562,7 +562,7 @@ enum StatoCivile {
 /// personale ci sono anche persone che non entrano mai nel portale. Quasi
 /// tutto e' facoltativo perche' la scheda si compila a piu' riprese.
 /// Con `dataCessazione` valorizzata il dipendente passa fra gli uscenti.
-/// Il salario e' testo: "28.50/h". Il grado di occupazione sta in
+/// Il salario sta in `salari_hr`, il grado di occupazione in
 /// `gradi_occupazione_hr` e la LPP in `lpp_hr`, con piu' righe.
 model SchedaHr {
   id                 Int          @id @default(autoincrement())
@@ -594,6 +594,8 @@ model SchedaHr {
   madreCognomeNome   String?      @map("madre_cognome_nome")
   dataAssunzione     DateTime?    @map("data_assunzione") @db.Date
   tipoSalario        String?      @map("tipo_salario")
+  // Colonna dismessa: il salario sta in `salari_hr`, con piu' righe.
+  // All'avvio `migraSalarioHr` sposta li' i valori rimasti
   salario            String?
   // Colonna dismessa: il grado sta in `gradi_occupazione_hr`, con piu'
   // righe. All'avvio `migraGradoOccupazioneHr` sposta li' i valori rimasti
@@ -610,6 +612,7 @@ model SchedaHr {
 
   foto             AllegatoHr?          @relation("FotoScheda", fields: [fotoId], references: [id], onDelete: SetNull)
   statiCivili      StatoCivileHr[]
+  salari           SalarioHr[]
   gradiOccupazione GradoOccupazioneHr[]
   lpp              LppHr[]
   figli            FiglioHr[]
@@ -631,6 +634,20 @@ model StatoCivileHr {
 
   @@index([schedaId])
   @@map("stati_civili_hr")
+}
+
+/// Salario con la data da cui vale. Testo libero ("28.50/h"); piu' righe
+/// quando cambia nel tempo, nell'ordine in cui sono inserite.
+model SalarioHr {
+  id       Int       @id @default(autoincrement())
+  schedaId Int       @map("scheda_id")
+  salario  String
+  dal      DateTime? @db.Date
+
+  scheda SchedaHr @relation(fields: [schedaId], references: [id], onDelete: Cascade)
+
+  @@index([schedaId])
+  @@map("salari_hr")
 }
 
 /// Grado di occupazione con la data da cui vale ("80%" dal ...). Piu' righe

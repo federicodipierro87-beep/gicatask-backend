@@ -195,6 +195,13 @@ export class HrPdfService {
           { etichetta: 'Stato civile', valore: c ? ETICHETTE_STATO_CIVILE[c.stato] : '' },
           { etichetta: 'Dal', valore: c ? formatDataHr(c.dal) : '' },
         ]);
+      } else if (campo.chiave === 'salario') {
+        // Come lo stato civile: il salario a sinistra, la data a destra
+        const salari = scheda.salari.length > 0 ? scheda.salari : [null];
+        celle = salari.flatMap((r) => [
+          { etichetta: 'Salario', valore: r?.salario ?? '' },
+          { etichetta: 'Dal', valore: r ? formatDataHr(r.dal) : '' },
+        ]);
       } else if (campo.chiave === 'gradoOccupazione') {
         // Come lo stato civile: il grado a sinistra, la data a destra
         const gradi = scheda.gradiOccupazione.length > 0 ? scheda.gradiOccupazione : [null];
