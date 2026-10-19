@@ -3374,6 +3374,9 @@ Il form ha sempre almeno una riga; le righe senza salario non si salvano.
 - Provato su un Postgres locale: schema vecchio con un salario, poi `db push` del nuovo senza
   `--accept-data-loss` (passa), migrazione all'avvio, salvataggio di due righe, stampa e riepilogo.
 
+Deploy: prima il backend `726692f`, poi il frontend `a000c29`. Su Railway il `db push` ha creato
+`salari_hr` senza errori e la migrazione ha spostato il salario di 12 schede.
+
 ---
 
 ## Progetto Completato
