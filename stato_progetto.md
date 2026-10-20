@@ -3493,6 +3493,8 @@ flag 2:
 
 Schermate del form (desktop e mobile), dell'elenco e dell'archivio col badge.
 
+Deploy: prima il backend `d4a1586` (su Railway il `db push` ha aggiunto colonne e tabella senza errori), poi il frontend `7285b29`. Dopo il deploy la spunta *Abilita Bollettini 2* va messa a mano su Riccardo Viaro.
+
 ---
 
 ## Progetto Completato
