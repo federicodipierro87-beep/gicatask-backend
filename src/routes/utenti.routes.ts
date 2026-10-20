@@ -62,6 +62,7 @@ export async function utentiRoutes(fastify: FastifyInstance) {
       cognome?: string;
       ruolo?: Ruolo;
       abilitatoBollettini?: boolean;
+      abilitatoBollettini2?: boolean;
       percentualeLavoro?: number;
     };
   }>('/:id', {
@@ -75,6 +76,7 @@ export async function utentiRoutes(fastify: FastifyInstance) {
           cognome: { type: 'string', minLength: 1 },
           ruolo: { type: 'string', enum: ['DIPENDENTE', 'RESPONSABILE'] },
           abilitatoBollettini: { type: 'boolean' },
+          abilitatoBollettini2: { type: 'boolean' },
           percentualeLavoro: { type: 'integer', minimum: 0, maximum: 100 },
         },
       },

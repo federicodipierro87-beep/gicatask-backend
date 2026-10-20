@@ -4,6 +4,7 @@ import {
   BollettiniService,
   type CollaboratoreInput,
   type FasceOrarie,
+  type NoleggioInput,
   type SquadraInput,
   type RigaInput,
 } from '../services/bollettini.service.js';
@@ -111,6 +112,24 @@ const createBodySchema = {
     // Non in `required` e senza vincoli semantici, stessa regola: gli id non
     // ammissibili li scarta il service, che a quel punto ha gia' salvato.
     allegatiIds: { type: 'array', maxItems: 10, items: { type: 'number' } },
+    // Sezione "Bollettini 2". Assente = 1, i client precedenti non lo mandano
+    modello: { type: 'integer', enum: [1, 2] },
+    riferimentoCantiere: { type: 'string', maxLength: 200 },
+    mezziTesto: { type: 'string', maxLength: 5000 },
+    trasportiTesto: { type: 'string', maxLength: 5000 },
+    // Durata senza `enum`: la verifica il service, con un 400 leggibile
+    noleggi: {
+      type: 'array',
+      maxItems: 50,
+      items: {
+        type: 'object',
+        required: ['veicoloId', 'durata'],
+        properties: {
+          veicoloId: { type: 'number' },
+          durata: { type: 'string', maxLength: 20 },
+        },
+      },
+    },
   },
 } as const;
 
@@ -136,6 +155,11 @@ interface CreateBody {
   firmaCommittenteImg: string;
   email?: string;
   allegatiIds?: number[];
+  modello?: 1 | 2;
+  riferimentoCantiere?: string;
+  mezziTesto?: string;
+  trasportiTesto?: string;
+  noleggi?: NoleggioInput[];
 }
 
 export async function bollettiniRoutes(fastify: FastifyInstance) {
@@ -158,7 +182,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
   fastify.post('/allegati', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+    if (!(await assertAccessoBollettini(fastify, request, reply, 'qualsiasi'))) return reply;
 
     if (!allegatiService.isConfigured()) {
       return reply.status(503).send({ error: 'Gli allegati non sono disponibili' });
@@ -214,7 +238,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
   fastify.delete<{ Params: { id: string } }>('/allegati/:id', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+    if (!(await assertAccessoBollettini(fastify, request, reply, 'qualsiasi'))) return reply;
 
     const user = request.user as JwtPayload;
     const rimosso = await allegatiService.rimuoviOrfano(parseInt(request.params.id, 10), user.id);
@@ -229,7 +253,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>('/allegati/:id/file', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+    if (!(await assertAccessoBollettini(fastify, request, reply, 'qualsiasi'))) return reply;
 
     if (!allegatiService.isConfigured()) {
       return reply.status(503).send({ error: 'Gli allegati non sono disponibili' });
@@ -242,19 +266,21 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Allegato non trovato' });
     }
 
-    // Il dipendente accede ai propri: gli orfani che ha caricato lui, o quelli
-    // appesi a un suo bollettino
-    if (user.ruolo === 'DIPENDENTE') {
-      const bollettino = allegato.bollettinoId
-        ? await service.getById(allegato.bollettinoId)
-        : null;
-      const proprio = bollettino
-        ? bollettino.utenteId === user.id
-        : allegato.caricatoDaId === user.id;
+    // Ognuno accede ai propri: gli orfani che ha caricato, o quelli appesi a
+    // un suo bollettino. Quelli altrui solo il responsabile dell'archivio,
+    // cioe' col flag dei bollettini classici
+    const bollettino = allegato.bollettinoId
+      ? await service.getById(allegato.bollettinoId)
+      : null;
+    const proprio = bollettino
+      ? bollettino.utenteId === user.id
+      : allegato.caricatoDaId === user.id;
 
-      if (!proprio) {
+    if (!proprio) {
+      if (user.ruolo !== 'RESPONSABILE') {
         return reply.status(403).send({ error: 'Non autorizzato' });
       }
+      if (!(await assertAccessoBollettini(fastify, request, reply, 1))) return reply;
     }
 
     let file;
@@ -284,7 +310,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
   fastify.get('/veicoli', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+    if (!(await assertAccessoBollettini(fastify, request, reply, 'qualsiasi'))) return reply;
 
     const veicoli = await fastify.prisma.dreamVeicolo.findMany({
       where: { attivo: true },
@@ -295,21 +321,24 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     return reply.send(veicoli);
   });
 
-  // Elenco bollettini (senza firme)
+  // Elenco bollettini (senza firme). Senza `modello` restituisce entrambi i
+  // modelli, come serve all'archivio del responsabile
   fastify.get('/', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
-
     const user = request.user as JwtPayload;
-    const { utenteId, clienteId, cantiereId, startDate, endDate, fatturato } = request.query as {
+    const { utenteId, clienteId, cantiereId, startDate, endDate, fatturato, modello } = request.query as {
       utenteId?: string;
       clienteId?: string;
       cantiereId?: string;
       startDate?: string;
       endDate?: string;
       fatturato?: string;
+      modello?: string;
     };
+
+    const soloModello2 = modello === '2';
+    if (!(await assertAccessoBollettini(fastify, request, reply, soloModello2 ? 2 : 1))) return reply;
 
     const bollettini = await service.getAll({
       // Il dipendente vede solo i propri, qualunque cosa chieda la query
@@ -321,6 +350,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
       fatturato: fatturato === 'true' ? true : fatturato === 'false' ? false : undefined,
+      modello: soloModello2 ? 2 : modello === '1' ? 1 : undefined,
     });
 
     return reply.send(bollettini);
@@ -330,7 +360,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>('/:id', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+    if (!(await assertAccessoBollettini(fastify, request, reply, 'qualsiasi'))) return reply;
 
     const user = request.user as JwtPayload;
     const bollettino = await service.getById(parseInt(request.params.id, 10));
@@ -339,8 +369,12 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Bollettino non trovato' });
     }
 
-    if (user.ruolo === 'DIPENDENTE' && bollettino.utenteId !== user.id) {
-      return reply.status(403).send({ error: 'Non autorizzato' });
+    // Quelli altrui solo il responsabile dell'archivio, col flag classico
+    if (bollettino.utenteId !== user.id) {
+      if (user.ruolo !== 'RESPONSABILE') {
+        return reply.status(403).send({ error: 'Non autorizzato' });
+      }
+      if (!(await assertAccessoBollettini(fastify, request, reply, 1))) return reply;
     }
 
     return reply.send(bollettino);
@@ -352,10 +386,11 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     bodyLimit: BODY_LIMIT,
     schema: { body: createBodySchema },
   }, async (request, reply) => {
-    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+    const body = request.body;
+    const modello = body.modello === 2 ? 2 : 1;
+    if (!(await assertAccessoBollettini(fastify, request, reply, modello))) return reply;
 
     const user = request.user as JwtPayload;
-    const body = request.body;
 
     const destinatario = (body.email ?? '').trim();
     const emailValida = normalizzaEmail(destinatario) !== null;
@@ -391,6 +426,11 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
         // non aver mai richiesto la mail.
         emailStato: destinatario ? (emailValida ? 'IN_CORSO' : 'NON_VALIDA') : null,
         allegatiIds: body.allegatiIds ?? [],
+        modello,
+        riferimentoCantiere: body.riferimentoCantiere ?? null,
+        mezziTesto: body.mezziTesto ?? null,
+        trasportiTesto: body.trasportiTesto ?? null,
+        noleggi: body.noleggi ?? [],
         createdById: user.id,
       });
       bollettinoId = creato.id;
@@ -492,7 +532,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { id: string } }>('/:id/pdf', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
+    if (!(await assertAccessoBollettini(fastify, request, reply, 'qualsiasi'))) return reply;
 
     const user = request.user as JwtPayload;
     const bollettino = await service.getFull(parseInt(request.params.id, 10));
@@ -501,8 +541,12 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Bollettino non trovato' });
     }
 
-    if (user.ruolo === 'DIPENDENTE' && bollettino.utenteId !== user.id) {
-      return reply.status(403).send({ error: 'Non autorizzato' });
+    // Quelli altrui solo il responsabile dell'archivio, col flag classico
+    if (bollettino.utenteId !== user.id) {
+      if (user.ruolo !== 'RESPONSABILE') {
+        return reply.status(403).send({ error: 'Non autorizzato' });
+      }
+      if (!(await assertAccessoBollettini(fastify, request, reply, 1))) return reply;
     }
 
     const pdfBuffer = await pdfService.generateSingolo(bollettino);

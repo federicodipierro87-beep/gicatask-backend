@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 19 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 20 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -1018,6 +1018,9 @@ accontenti del solo `requireRole('RESPONSABILE')`.
 
 Pagine: `/dipendente/bollettini`, `/dipendente/bollettini/nuovo`, `/responsabile/bollettini`
 (attivi), `/responsabile/bollettini/fatturati` (dal 01/10/2026), `/responsabile/mezzi|materiali|trasporti`.
+
+Dal 20/10/2026 esiste anche la sezione **Bollettini 2** (`/dipendente/bollettini-2`, flag
+`abilitatoBollettini2`): alcune rotte accettano l'uno o l'altro flag, vedi la sezione dedicata.
 
 #### Menu
 
@@ -3377,6 +3380,119 @@ Il form ha sempre almeno una riga; le righe senza salario non si salvano.
 Deploy: prima il backend `726692f`, poi il frontend `a000c29`. Su Railway il `db push` ha creato
 `salari_hr` senza errori e la migrazione ha spostato il salario di 12 schede.
 
+### Sezione "Bollettini 2" per un solo utente (20 Ottobre 2026)
+
+Richiesta: solo per **Riccardo Viaro**, una sezione *Bollettini 2* che replica il bollettino con
+tre differenze. Riferimento del cantiere in testa a tutto. Mezzi e trasporti come testo libero
+dentro le attività svolte. Una parte dedicata ai **noleggi**: un veicolo per riga, a mezza
+giornata o giornata intera.
+
+#### Un flag, non il nome dell'utente
+
+"Solo per Riccardo Viaro" è un nuovo flag `abilitatoBollettini2` sull'utente, con la sua spunta
+**Abilita Bollettini 2** nella modale di modifica della pagina *Utenti*. È indipendente da
+`abilitatoBollettini`. Riccardo può avere solo il nuovo, e allora nel menu dell'area dipendente
+vede *Bollettini 2* ma non *Bollettini*. **Dopo il deploy la spunta va messa a mano** su Riccardo
+Viaro: di default è spenta per tutti.
+
+Come per il primo flag, va in due punti per lato: login e `/auth/me` nel backend, `toUser` in
+`AuthContext` e la pagina Utenti nel frontend. Il Log lo mostra come "Abilitato bollettini 2".
+
+#### Stessa tabella, colonna `modello`
+
+Il bollettino 2 **non** ha tabelle sue. È un `Bollettino` con `modello = 2`; i classici hanno
+`modello = 1` (default, quindi lo storico non si tocca). Così numerazione "numero-anno", firme,
+e-mail, allegati, flag *Fatturato*, eliminazione, cumulativi e backup valgono così come sono.
+Duplicare servizio, rotte, PDF e archivio avrebbe voluto dire quasi 2000 righe da tenere allineate.
+
+Schema (solo aggiunte, `db push` sicuro):
+- `utenti.abilitato_bollettini_2` boolean default false;
+- `bollettini.modello` int default 1, e tre colonne nullable: `riferimento_cantiere`,
+  `mezzi_testo`, `trasporti_testo`;
+- enum `DurataNoleggio` (`MEZZA_GIORNATA`, `GIORNATA_INTERA`) e tabella `bollettini_noleggi`
+  (`BollettinoNoleggio`: `bollettinoId`, `veicoloId` → `dream_veicoli`, `descrizione` copiata
+  alla firma, `durata`). Il veicolo è quello della **Banca dati veicoli**, come per i mezzi.
+
+Il backup comprende `bollettiniNoleggi` (dump, `deleteMany` prima dei bollettini, ripristino
+dopo bollettini e veicoli, reset della sequenza).
+
+#### Permessi: `assertAccessoBollettini(..., modello)`
+
+La guardia prende un quarto parametro: `1` (default, tutte le rotte di prima), `2`, oppure
+`'qualsiasi'` (basta uno dei due flag).
+
+| Rotta | Flag |
+|---|---|
+| `POST /api/bollettini` | quello del `modello` del body (assente = 1) |
+| `GET /api/bollettini?modello=2` | 2; senza `modello` o con `modello=1`: 1, come prima |
+| `GET /api/bollettini/veicoli`, `/allegati*` | qualsiasi |
+| `GET /api/bollettini/:id` e `/:id/pdf` | qualsiasi. Quelli **altrui** solo il responsabile col flag 1 |
+| `GET /api/bollettini/allegati/:id/file` | qualsiasi; idem per gli altrui |
+| archivio, mail, fatturato, eliminazione, cumulativi | 1, come prima |
+
+Il controllo sugli altrui era "il dipendente vede solo i propri". Ora è "chi non è il proprietario
+deve essere responsabile **e** avere il flag 1": con `'qualsiasi'` un responsabile col solo flag 2
+avrebbe altrimenti letto i bollettini di tutti.
+
+La banca dati trasporti (`/api/voci-bollettino`) resta al flag 1: il form del modello 2 non la
+chiede, perché con il solo flag 2 risponderebbe 403 e il form non si caricherebbe.
+
+#### API
+
+Il body di `POST /api/bollettini` accetta `modello` (1|2), `riferimentoCantiere` (max 200),
+`mezziTesto`, `trasportiTesto` (max 5000) e `noleggi: [{ veicoloId, durata }]` (max 50).
+`durata` non ha l'`enum` nello schema: un 400 dello schema arriverebbe prima dell'handler e
+perderebbe le firme, quindi la verifica il service con "Durata del noleggio non valida". Nel
+modello 2 il service ignora eventuali righe mezzi/trasporti, e i campi del modello 2 restano
+NULL in un bollettino classico.
+
+I noleggi si creano con `veicoloId` scalare e non con un `connect`: con la relazione annidata
+Prisma li inseriva in ordine inverso (visto nel test).
+
+`GET /api/bollettini` accetta `?modello=1|2`. Elenco e dettaglio restituiscono `modello`,
+`riferimentoCantiere`, `mezziTesto` e `trasportiTesto`; il dettaglio anche `noleggi`.
+
+#### PDF
+
+Nel modello 2 (`renderBollettino`):
+- **Riferimento cantiere** in grassetto sopra a tutto, anche sopra il titolo. L'intestazione
+  scende di 34 pt;
+- dopo il riquadro delle attività, i riquadri **Mezzi** e **Trasporti** (testo libero);
+- poi Operai e Materiali come prima. Le tabelle Mezzi e Trasporti a righe non ci sono;
+- in fondo la tabella **Noleggi** (*Veicolo | Durata*: "Mezza giornata" / "Giornata intera").
+  `renderSezioneVoci` accetta ora anche un valore stringa già formattato.
+
+Il bollettino classico è stampato come prima.
+
+#### Frontend
+
+- Le pagine sono le stesse, con una prop: `BollettiniListPage modello={2}` e
+  `BollettinoFormPage modello={2}` su `/dipendente/bollettini-2` e `/bollettini-2/nuovo`.
+  `ProtectedRoute` ha `requireBollettini2`.
+- Form del modello 2: *Riferimento cantiere* (facoltativo) come primo campo. Poi un riquadro
+  *Attività svolte* con *Lavori eseguiti*, *Mezzi* e *Trasporti*. Poi Operai, Materiali e
+  *Noleggi* (nuovo componente `NoleggiSelector`: tendina veicolo + tendina durata,
+  "+ Aggiungi noleggio"). "Firma e Invia" resta spento finché una riga noleggio non ha il veicolo.
+- Elenco: titolo "I Miei Bollettini 2"; sopra la data, il riferimento del cantiere.
+- `DipendenteLayout`: la voce *Bollettini 2*. `isActive` ora confronta per segmenti
+  (`path` o `path/…`), altrimenti `/dipendente/bollettini-2` accendeva anche *Bollettini*.
+- Archivio del responsabile: i bollettini 2 compaiono insieme agli altri, col badge **B2**
+  accanto al numero (il tooltip mostra il riferimento del cantiere). Il responsabile li gestisce
+  col flag 1, come gli altri.
+
+#### Verifica
+
+Su un Postgres 18 locale: schema vecchio con un bollettino, poi `db push` del nuovo senza
+`--accept-data-loss` (passa, il vecchio diventa modello 1). Prove sull'API con Riccardo col solo
+flag 2:
+- lista del modello 1 e POST del modello 1: 403; lista del modello 2: 200;
+- durata errata: 400 leggibile;
+- salvataggio con due noleggi nell'ordine giusto, e PDF;
+- PDF di un bollettino altrui: 403;
+- l'admin vede entrambi in archivio, scarica il PDF e il cumulativo; il PDF classico è invariato.
+
+Schermate del form (desktop e mobile), dell'elenco e dell'archivio col badge.
+
 ---
 
 ## Progetto Completato
@@ -3454,7 +3570,7 @@ backend/
 │   │   ├── assenze.ts         # Durata e segno delle assenze (punto unico)
 │   │   ├── festivita.ts       # Festivi Ticino e giorni non lavorativi
 │   │   ├── nomeUtente.ts      # Cognome Nome, col trim sul nome vuoto
-│   │   ├── bollettiniAccess.ts # Guardia flag bollettini (condivisa)
+│   │   ├── bollettiniAccess.ts # Guardia flag bollettini e bollettini 2 (condivisa)
 │   │   └── hrCampi.ts         # Catalogo voci HR (scheda, riepilogo, caselle)
 │   └── types/index.ts         # Tipi TypeScript
 ├── stato_progetto.md          # Questo file: storia di ENTRAMBI i repo

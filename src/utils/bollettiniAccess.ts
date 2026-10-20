@@ -13,22 +13,34 @@ import { JwtPayload } from '../types/index.js';
  * sette giorni, quindi metterlo dentro significherebbe non poter revocare
  * l'accesso prima della scadenza.
  *
+ * `modello` dice quale flag serve: 1 i bollettini classici (e l'archivio del
+ * responsabile), 2 la sezione "Bollettini 2", `qualsiasi` le rotte comuni alle
+ * due sezioni (allegati, veicoli, dettaglio e PDF del singolo bollettino).
+ *
  * Restituisce false dopo aver già inviato il 403: il chiamante deve limitarsi
  * a uscire dall'handler.
  */
 export async function assertAccessoBollettini(
   fastify: FastifyInstance,
   request: FastifyRequest,
-  reply: FastifyReply
+  reply: FastifyReply,
+  modello: 1 | 2 | 'qualsiasi' = 1
 ): Promise<boolean> {
   const user = request.user as JwtPayload;
 
   const dbUser = await fastify.prisma.utente.findUnique({
     where: { id: user.id },
-    select: { abilitatoBollettini: true },
+    select: { abilitatoBollettini: true, abilitatoBollettini2: true },
   });
 
-  if (!dbUser?.abilitatoBollettini) {
+  const abilitato =
+    modello === 1
+      ? dbUser?.abilitatoBollettini
+      : modello === 2
+        ? dbUser?.abilitatoBollettini2
+        : dbUser?.abilitatoBollettini || dbUser?.abilitatoBollettini2;
+
+  if (!abilitato) {
     reply.status(403).send({ error: 'Non autorizzato ai bollettini' });
     return false;
   }

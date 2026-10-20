@@ -23,6 +23,7 @@ interface BackupData {
     bollettiniCantieri?: any[];
     bollettiniCollaboratori?: any[];
     bollettiniSquadre?: any[];
+    bollettiniNoleggi?: any[];
     // Solo i metadati: i byte degli allegati stanno su R2 e non vengono mai
     // cancellati per i bollettini salvati, quindi un ripristino li ritrova
     allegatiBollettino?: any[];
@@ -105,6 +106,7 @@ export class BackupService {
           bollettiniCantieri: await this.prisma.bollettinoCantiere.findMany(),
           bollettiniCollaboratori: await this.prisma.bollettinoCollaboratore.findMany(),
           bollettiniSquadre: await this.prisma.bollettinoSquadra.findMany(),
+          bollettiniNoleggi: await this.prisma.bollettinoNoleggio.findMany(),
           allegatiBollettino: await this.prisma.allegatoBollettino.findMany(),
           calendarioEventi: await this.prisma.calendarioEvento.findMany(),
           dreamVeicoli: await this.prisma.dreamVeicolo.findMany(),
@@ -245,6 +247,7 @@ export class BackupService {
       await tx.bollettinoCantiere.deleteMany();
       await tx.bollettinoCollaboratore.deleteMany();
       await tx.bollettinoSquadra.deleteMany();
+      await tx.bollettinoNoleggio.deleteMany();
       await tx.allegatoBollettino.deleteMany();
       await tx.bollettino.deleteMany();
       await tx.voceBollettino.deleteMany();
@@ -365,6 +368,13 @@ export class BackupService {
       if (bollettiniSquadre.length > 0) {
         await tx.bollettinoSquadra.createMany({ data: bollettiniSquadre });
         stats.bollettiniSquadre = bollettiniSquadre.length;
+      }
+
+      // Dopo bollettini e veicoli: referenzia entrambi
+      const bollettiniNoleggi = backupData.tables.bollettiniNoleggi ?? [];
+      if (bollettiniNoleggi.length > 0) {
+        await tx.bollettinoNoleggio.createMany({ data: bollettiniNoleggi });
+        stats.bollettiniNoleggi = bollettiniNoleggi.length;
       }
 
       // Dopo i bollettini: referenziano sia questi sia gli utenti
@@ -500,6 +510,7 @@ export class BackupService {
         'bollettini_cantieri',
         'bollettini_collaboratori',
         'bollettini_squadre',
+        'bollettini_noleggi',
         'allegati_bollettino',
         'calendario_eventi',
         'dream_veicoli',

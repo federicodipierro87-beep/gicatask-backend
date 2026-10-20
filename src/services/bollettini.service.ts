@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma, TipoVoce } from '@prisma/client';
+import { PrismaClient, Prisma, TipoVoce, DurataNoleggio } from '@prisma/client';
 import { AllegatiBollettinoService } from './allegatiBollettino.service.js';
 import { calculateDurationMinutes, isValidTimeFormat } from '../utils/duration.js';
 
@@ -26,8 +26,21 @@ export interface CollaboratoreInput {
   ore: number;
 }
 
+/** Noleggio del modello 2: veicolo della Banca dati veicoli e durata. */
+export interface NoleggioInput {
+  veicoloId: number;
+  durata: DurataNoleggio;
+}
+
 export interface CreateBollettinoInput {
   utenteId: number;
+  // 1 = classico, 2 = sezione "Bollettini 2"
+  modello: 1 | 2;
+  // Solo modello 2
+  riferimentoCantiere?: string | null;
+  mezziTesto?: string | null;
+  trasportiTesto?: string | null;
+  noleggi?: NoleggioInput[];
   clienteId?: number | null;
   cantiereId?: number | null;
   // Selezione multipla; `cantiereId` resta per i client che mandano il singolo
@@ -123,6 +136,8 @@ export interface BollettinoFilters {
   endDate?: Date;
   // Assente: tutti, come prima del flag (elenco del dipendente, cumulativi)
   fatturato?: boolean;
+  // Assente: entrambi i modelli (archivio del responsabile, cumulativi)
+  modello?: number;
 }
 
 /**
@@ -146,6 +161,10 @@ const listSelect = {
   oraInizioPomeriggio: true,
   oraFinePomeriggio: true,
   materialiTesto: true,
+  modello: true,
+  riferimentoCantiere: true,
+  mezziTesto: true,
+  trasportiTesto: true,
   clienteNome: true,
   cantiereNome: true,
   firmaOperatoreNome: true,
@@ -201,6 +220,10 @@ const detailSelect = {
       descrizione: true,
       quantita: true,
     },
+    orderBy: { id: 'asc' },
+  },
+  noleggi: {
+    select: { veicoloId: true, descrizione: true, durata: true },
     orderBy: { id: 'asc' },
   },
 } satisfies Prisma.BollettinoSelect;
@@ -290,6 +313,7 @@ export class BollettiniService {
     return {
       ...(filters.utenteId ? { utenteId: filters.utenteId } : {}),
       ...(filters.fatturato !== undefined ? { fatturato: filters.fatturato } : {}),
+      ...(filters.modello !== undefined ? { modello: filters.modello } : {}),
       ...(and.length ? { AND: and } : {}),
       ...(filters.startDate || filters.endDate
         ? {
@@ -500,7 +524,13 @@ export class BollettiniService {
 
     const materialiTesto = input.materialiTesto?.trim() || null;
 
-    const righe = await this.buildRighe(input);
+    // Il modello 2 ha mezzi e trasporti a testo libero: eventuali righe
+    // arrivate insieme verrebbero stampate due volte, quindi si ignorano
+    const modello2 = input.modello === 2;
+    const righe = await this.buildRighe(
+      modello2 ? { ...input, mezzi: [], trasporti: [] } : input
+    );
+    const noleggi = modello2 ? await this.buildNoleggi(input.noleggi ?? []) : [];
 
     // Si filtra prima e si usa un `connect` annidato: l'operazione resta
     // atomica e non serve una update dopo la create, che e' il momento in cui
@@ -548,6 +578,10 @@ export class BollettiniService {
           oreTotali,
           ...intestazione.fasce,
           materialiTesto,
+          modello: input.modello,
+          riferimentoCantiere: modello2 ? input.riferimentoCantiere?.trim() || null : null,
+          mezziTesto: modello2 ? input.mezziTesto?.trim() || null : null,
+          trasportiTesto: modello2 ? input.trasportiTesto?.trim() || null : null,
           clienteNome: destinazione.clienteNome,
           cantiereNome: destinazione.cantieri.length
             ? destinazione.cantieri.map((c) => c.nome).join(', ')
@@ -574,6 +608,7 @@ export class BollettiniService {
             })),
           },
           squadre: { create: squadre ?? [] },
+          noleggi: { create: noleggi },
           allegati: { connect: allegati.map((a) => ({ id: a.id })) },
         },
         select: { id: true },
@@ -667,6 +702,40 @@ export class BollettiniService {
         };
       })
     );
+  }
+
+  /** Noleggi con il nome del veicolo copiato dall'anagrafica, come i mezzi. */
+  private async buildNoleggi(
+    noleggi: NoleggioInput[]
+  ): Promise<Prisma.BollettinoNoleggioUncheckedCreateWithoutBollettinoInput[]> {
+    if (noleggi.length === 0) return [];
+
+    const veicoli = await this.prisma.dreamVeicolo.findMany({
+      where: { id: { in: noleggi.map((n) => n.veicoloId) } },
+      select: { id: true, nome: true },
+    });
+    const veicoliById = new Map(veicoli.map((v) => [v.id, v]));
+
+    return noleggi.map((n) => {
+      const veicolo = veicoliById.get(n.veicoloId);
+
+      if (!veicolo) {
+        throw new Error('Veicolo del noleggio non trovato');
+      }
+
+      // Lo schema della rotta non ha l'enum: qui il 400 resta leggibile
+      if (!Object.values(DurataNoleggio).includes(n.durata)) {
+        throw new Error('Durata del noleggio non valida');
+      }
+
+      // L'id scalare e non un `connect`: con le relazioni annidate Prisma non
+      // conserva l'ordine delle righe, che e' quello scelto dall'operatore
+      return {
+        veicoloId: veicolo.id,
+        descrizione: veicolo.nome,
+        durata: n.durata,
+      };
+    });
   }
 
   /** Restituisce false se il bollettino non esiste. */

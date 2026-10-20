@@ -41,6 +41,12 @@ export interface BollettinoPdf {
   // Vuoto per i bollettini precedenti alla selezione dei collaboratori
   collaboratori: { nome: string; ore: number | null }[];
   righe: RigaPdf[];
+  // Sezione "Bollettini 2". Assenti o NULL nei bollettini classici
+  modello?: number;
+  riferimentoCantiere?: string | null;
+  mezziTesto?: string | null;
+  trasportiTesto?: string | null;
+  noleggi?: { descrizione: string; durata: 'MEZZA_GIORNATA' | 'GIORNATA_INTERA' }[];
   // Solo i nomi: i file non vengono impaginati, servirebbe una lettura da R2
   // per ogni immagine e nel cumulativo di cliente sarebbero centinaia di GET
   // dentro una sola richiesta
@@ -118,6 +124,11 @@ function renderTestoLibero(
   return cursor + altezzaBox + 14;
 }
 
+const DURATA_NOLEGGIO: Record<'MEZZA_GIORNATA' | 'GIORNATA_INTERA', string> = {
+  MEZZA_GIORNATA: 'Mezza giornata',
+  GIORNATA_INTERA: 'Giornata intera',
+};
+
 function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString('it-IT');
 }
@@ -193,7 +204,8 @@ function renderSezioneVoci(
   doc: PDFKit.PDFDocument,
   titolo: string,
   labelQuantita: string,
-  righe: { descrizione: string; quantita: number }[],
+  // Stringa per i valori gia' formattati, come la durata dei noleggi
+  righe: { descrizione: string; quantita: number | string }[],
   y: number,
   totale?: { label: string; valore: number }
 ): number {
@@ -222,7 +234,8 @@ function renderSezioneVoci(
       ellipsis: true,
       lineBreak: false,
     });
-    doc.text(formatNumero(riga.quantita), MARGIN + CONTENT_WIDTH - 85, cursor + 4, {
+    const valore = typeof riga.quantita === 'number' ? formatNumero(riga.quantita) : riga.quantita;
+    doc.text(valore, MARGIN + CONTENT_WIDTH - 85, cursor + 4, {
       width: 80,
       align: 'right',
     });
@@ -274,16 +287,31 @@ function renderFirma(
 
 /** Disegna un bollettino completo sulla pagina corrente. */
 function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
-  doc.fontSize(16).fillColor('#000').text('Giornale Lavori', MARGIN, MARGIN, {
+  const modello2 = b.modello === 2;
+  let top = MARGIN;
+
+  // Modello 2: il riferimento del cantiere sta in testa a tutto, sopra il titolo
+  if (modello2 && b.riferimentoCantiere) {
+    doc.fontSize(8).fillColor('#666').text('Riferimento cantiere', MARGIN, top, { width: CONTENT_WIDTH });
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#000').text(b.riferimentoCantiere, MARGIN, top + 11, {
+      width: CONTENT_WIDTH,
+      ellipsis: true,
+      lineBreak: false,
+    });
+    doc.font('Helvetica');
+    top += 34;
+  }
+
+  doc.fontSize(16).fillColor('#000').text('Giornale Lavori', MARGIN, top, {
     width: CONTENT_WIDTH,
     align: 'center',
   });
-  doc.fontSize(9).fillColor('#666').text(`Bollettino n. ${numeroBollettino(b)}`, MARGIN, MARGIN + 20, {
+  doc.fontSize(9).fillColor('#666').text(`Bollettino n. ${numeroBollettino(b)}`, MARGIN, top + 20, {
     width: CONTENT_WIDTH,
     align: 'center',
   });
 
-  let y = MARGIN + 44;
+  let y = top + 44;
   doc.moveTo(MARGIN, y).lineTo(MARGIN + CONTENT_WIDTH, y).strokeColor('#ccc').lineWidth(0.5).stroke();
   y += 10;
 
@@ -344,6 +372,12 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
   });
   y += altezzaBox + 14;
 
+  // Modello 2: mezzi e trasporti a testo libero, subito dopo le attivita'
+  if (modello2) {
+    y = renderTestoLibero(doc, 'Mezzi', b.mezziTesto ?? '', y, 80);
+    y = renderTestoLibero(doc, 'Trasporti', b.trasportiTesto ?? '', y, 80);
+  }
+
   if (b.squadre.length > 0 && b.oreTotali !== null) {
     y = renderSezioneVoci(
       doc,
@@ -372,6 +406,8 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
   }
 
   for (const sezione of SEZIONI) {
+    // Nel modello 2 mezzi e trasporti sono gia' stampati come testo
+    if (modello2 && sezione.tipo !== 'MATERIALE') continue;
     // Materiali come testo libero nei bollettini nuovi, a righe nei precedenti
     if (sezione.tipo === 'MATERIALE' && b.materialiTesto !== null) {
       y = renderTestoLibero(doc, 'Materiali', b.materialiTesto, y, 120);
@@ -379,6 +415,16 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
     }
     const righe = b.righe.filter((r) => r.tipo === sezione.tipo);
     y = renderSezioneVoci(doc, sezione.titolo, sezione.labelQuantita, righe, y) + 6;
+  }
+
+  if (modello2) {
+    y = renderSezioneVoci(
+      doc,
+      'Noleggi',
+      'Durata',
+      (b.noleggi ?? []).map((n) => ({ descrizione: n.descrizione, quantita: DURATA_NOLEGGIO[n.durata] })),
+      y
+    ) + 6;
   }
 
   // I file stanno su R2, ma il documento firmato deve registrare cosa era

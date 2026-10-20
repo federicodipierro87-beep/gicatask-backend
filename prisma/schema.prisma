@@ -8,19 +8,22 @@ datasource db {
 }
 
 model Utente {
-  id                  Int      @id @default(autoincrement())
-  nome                String
-  cognome             String
-  passwordHash        String?  @map("password_hash")
-  ruolo               Ruolo    @default(DIPENDENTE)
-  attivo              Boolean  @default(true)
-  abilitatoBollettini Boolean  @default(false) @map("abilitato_bollettini")
+  id                   Int      @id @default(autoincrement())
+  nome                 String
+  cognome              String
+  passwordHash         String?  @map("password_hash")
+  ruolo                Ruolo    @default(DIPENDENTE)
+  attivo               Boolean  @default(true)
+  abilitatoBollettini  Boolean  @default(false) @map("abilitato_bollettini")
+  // Sezione "Bollettini 2" (modello 2 del bollettino): indipendente dal flag
+  // sopra, che resta quello dei bollettini classici e dell'archivio
+  abilitatoBollettini2 Boolean  @default(false) @map("abilitato_bollettini_2")
   // Percentuale di lavoro base (100 = tempo pieno): scala le ore dovute del
   // Report Saldi Ore nei mesi precedenti alla prima variazione in
   // `percentuali_lavoro`
-  percentualeLavoro   Int      @default(100) @map("percentuale_lavoro")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  percentualeLavoro    Int      @default(100) @map("percentuale_lavoro")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
   attivita           Attivita[]                @relation("UtenteAttivita")
   attivitaCreate     Attivita[]                @relation("CreatoDa")
@@ -155,9 +158,10 @@ model DreamVeicolo {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  noleggi         DreamNoleggio[]
-  noleggiGica     GicaNoleggio[]
-  righeBollettino RigaBollettino[]
+  noleggi           DreamNoleggio[]
+  noleggiGica       GicaNoleggio[]
+  righeBollettino   RigaBollettino[]
+  noleggiBollettino BollettinoNoleggio[]
 
   @@map("dream_veicoli")
 }
@@ -411,6 +415,15 @@ model Bollettino {
   emailMessageId    String?   @map("email_message_id")
   emailErrore       String?   @map("email_errore") @db.Text
 
+  // 1 = bollettino classico, 2 = sezione "Bollettini 2": riferimento del
+  // cantiere in testa, mezzi e trasporti a testo libero, noleggi dei veicoli
+  modello Int @default(1)
+
+  // Solo modello 2. NULL in tutti i bollettini classici
+  riferimentoCantiere String? @map("riferimento_cantiere")
+  mezziTesto          String? @map("mezzi_testo") @db.Text
+  trasportiTesto      String? @map("trasporti_testo") @db.Text
+
   // Messo dal responsabile nell'archivio: separa i bollettini attivi da quelli
   // gia' fatturati. Si puo' togliere, nel caso di una spunta sbagliata
   fatturato   Boolean   @default(false)
@@ -438,6 +451,7 @@ model Bollettino {
   cantieri      BollettinoCantiere[]
   collaboratori BollettinoCollaboratore[]
   squadre       BollettinoSquadra[]
+  noleggi       BollettinoNoleggio[]
 
   @@index([clienteId, dataRiferimento])
   @@index([cantiereId, dataRiferimento])
@@ -468,6 +482,27 @@ model RigaBollettino {
 
   @@index([bollettinoId, tipo])
   @@map("righe_bollettino")
+}
+
+enum DurataNoleggio {
+  MEZZA_GIORNATA
+  GIORNATA_INTERA
+}
+
+/// Noleggi del bollettino modello 2: un veicolo della Banca dati veicoli per
+/// mezza giornata o giornata intera. Nome copiato alla firma, come per le righe.
+model BollettinoNoleggio {
+  id           Int            @id @default(autoincrement())
+  bollettinoId Int            @map("bollettino_id")
+  veicoloId    Int?           @map("veicolo_id")
+  descrizione  String
+  durata       DurataNoleggio
+
+  bollettino Bollettino    @relation(fields: [bollettinoId], references: [id], onDelete: Cascade)
+  veicolo    DreamVeicolo? @relation(fields: [veicoloId], references: [id], onDelete: SetNull)
+
+  @@index([bollettinoId])
+  @@map("bollettini_noleggi")
 }
 
 /// Cantieri del bollettino, tutti dello stesso cliente. Il nome e' copiato
