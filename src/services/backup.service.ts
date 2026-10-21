@@ -32,6 +32,9 @@ interface BackupData {
     dreamClienti?: any[];
     dreamNoleggi?: any[];
     gicaNoleggi?: any[];
+    // Sezione Noleggi: delle foto solo i metadati, come per i bollettini
+    noleggi?: any[];
+    allegatiNoleggio?: any[];
     oreDovuteMesi?: any[];
     oreDovuteAnni?: any[];
     percentualiLavoro?: any[];
@@ -113,6 +116,8 @@ export class BackupService {
           dreamClienti: await this.prisma.dreamCliente.findMany(),
           dreamNoleggi: await this.prisma.dreamNoleggio.findMany(),
           gicaNoleggi: await this.prisma.gicaNoleggio.findMany(),
+          noleggi: await this.prisma.noleggio.findMany(),
+          allegatiNoleggio: await this.prisma.allegatoNoleggio.findMany(),
           oreDovuteMesi: await this.prisma.oreDovuteMese.findMany(),
           oreDovuteAnni: await this.prisma.oreDovuteAnno.findMany(),
           percentualiLavoro: await this.prisma.percentualeLavoro.findMany(),
@@ -243,6 +248,9 @@ export class BackupService {
       // Delete existing data (in reverse order of dependencies).
       // I bollettini referenziano utenti e cantieri: se restassero in piedi,
       // le deleteMany qui sotto fallirebbero sul vincolo di chiave esterna
+      // I verbali di noleggio referenziano utenti, clienti, cantieri e veicoli
+      await tx.allegatoNoleggio.deleteMany();
+      await tx.noleggio.deleteMany();
       await tx.rigaBollettino.deleteMany();
       await tx.bollettinoCantiere.deleteMany();
       await tx.bollettinoCollaboratore.deleteMany();
@@ -402,6 +410,19 @@ export class BackupService {
         stats.gicaNoleggi = gicaNoleggi.length;
       }
 
+      // Dopo utenti, clienti, cantieri e veicoli: li referenzia tutti
+      const noleggi = backupData.tables.noleggi ?? [];
+      if (noleggi.length > 0) {
+        await tx.noleggio.createMany({ data: noleggi });
+        stats.noleggi = noleggi.length;
+      }
+
+      const allegatiNoleggio = backupData.tables.allegatiNoleggio ?? [];
+      if (allegatiNoleggio.length > 0) {
+        await tx.allegatoNoleggio.createMany({ data: allegatiNoleggio });
+        stats.allegatiNoleggio = allegatiNoleggio.length;
+      }
+
       // I backup creati prima del Report Saldi Ore non hanno la sezione
       const oreDovuteMesi = backupData.tables.oreDovuteMesi ?? [];
       if (oreDovuteMesi.length > 0) {
@@ -517,6 +538,8 @@ export class BackupService {
         'dream_clienti',
         'dream_noleggi',
         'gica_noleggi',
+        'noleggi',
+        'allegati_noleggio',
         'ore_dovute_mesi',
         'ore_dovute_anni',
         'percentuali_lavoro',

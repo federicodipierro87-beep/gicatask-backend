@@ -28,7 +28,7 @@ export async function clientiRoutes(fastify: FastifyInstance) {
   });
 
   // Create client (responsabile only)
-  fastify.post<{ Body: { nome: string } }>('/', {
+  fastify.post<{ Body: { nome: string; emailFatturazione?: string } }>('/', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
     schema: {
       body: {
@@ -36,16 +36,18 @@ export async function clientiRoutes(fastify: FastifyInstance) {
         required: ['nome'],
         properties: {
           nome: { type: 'string', minLength: 1 },
+          // Indirizzo della sezione Noleggi. Stringa vuota = nessuno
+          emailFatturazione: { type: 'string', maxLength: 254 },
         },
       },
     },
   }, async (request, reply) => {
-    const cliente = await service.create(request.body.nome);
+    const cliente = await service.create(request.body.nome, request.body.emailFatturazione);
     return reply.status(201).send(cliente);
   });
 
   // Update client (responsabile only)
-  fastify.put<{ Params: { id: string }; Body: { nome: string } }>('/:id', {
+  fastify.put<{ Params: { id: string }; Body: { nome: string; emailFatturazione?: string } }>('/:id', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
     schema: {
       body: {
@@ -53,12 +55,14 @@ export async function clientiRoutes(fastify: FastifyInstance) {
         required: ['nome'],
         properties: {
           nome: { type: 'string', minLength: 1 },
+          // Indirizzo della sezione Noleggi. Stringa vuota = nessuno
+          emailFatturazione: { type: 'string', maxLength: 254 },
         },
       },
     },
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
-    const cliente = await service.update(id, request.body.nome);
+    const cliente = await service.update(id, request.body.nome, request.body.emailFatturazione);
     return reply.send(cliente);
   });
 

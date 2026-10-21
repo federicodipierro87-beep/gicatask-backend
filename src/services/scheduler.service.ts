@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { BackupService } from './backup.service.js';
 import { AllegatiBollettinoService } from './allegatiBollettino.service.js';
 import { AllegatiHrService } from './allegatiHr.service.js';
+import { AllegatiNoleggioService } from './allegatiNoleggio.service.js';
 import { LogOperazioniService } from './logOperazioni.service.js';
 
 const BACKUP_RETENTION_DAYS = 7;
@@ -15,6 +16,7 @@ export function initScheduler(prisma: PrismaClient) {
   const backupService = new BackupService(prisma);
   const allegatiService = new AllegatiBollettinoService(prisma);
   const allegatiHrService = new AllegatiHrService(prisma);
+  const allegatiNoleggioService = new AllegatiNoleggioService(prisma);
   const logService = new LogOperazioniService(prisma);
 
   // Daily backup at 2:00 AM + cleanup old backups
@@ -52,6 +54,14 @@ export function initScheduler(prisma: PrismaClient) {
       console.log(`[Scheduler] Orphaned HR photos cleanup completed: ${rimossi} deleted`);
     } catch (error) {
       console.error('[Scheduler] HR photo cleanup failed:', error instanceof Error ? error.message : error);
+    }
+
+    // Foto dei verbali di noleggio caricate e mai salvate
+    try {
+      const rimossi = await allegatiNoleggioService.pulisciOrfani(ALLEGATI_ORFANI_ORE);
+      console.log(`[Scheduler] Orphaned rental photos cleanup completed: ${rimossi} deleted`);
+    } catch (error) {
+      console.error('[Scheduler] Rental photo cleanup failed:', error instanceof Error ? error.message : error);
     }
 
     try {

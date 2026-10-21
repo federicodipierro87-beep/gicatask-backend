@@ -27,6 +27,7 @@ type Modello =
   | 'dreamCliente'
   | 'dreamNoleggio'
   | 'gicaNoleggio'
+  | 'noleggio'
   | 'schedaHr'
   | 'backupLog';
 
@@ -111,6 +112,14 @@ const CATALOGO: Record<string, VoceCatalogo> = {
   'GET /api/bollettini/cantiere/:cantiereId/pdf': { area: 'Bollettini', azione: 'DOWNLOAD', testo: 'Download PDF cumulativo cantiere' },
   'GET /api/bollettini/cliente/:clienteId/pdf': { area: 'Bollettini', azione: 'DOWNLOAD', testo: 'Download PDF cumulativo cliente' },
   'GET /api/bollettini/allegati/:id/file': { area: 'Bollettini', azione: 'DOWNLOAD', testo: 'Apertura allegato bollettino' },
+
+  'POST /api/noleggi': { area: 'Noleggi', azione: 'CREAZIONE', testo: 'Nuovo verbale di noleggio', modello: 'noleggio' },
+  'POST /api/noleggi/allegati': { area: 'Noleggi', azione: 'ALTRO', testo: 'Caricamento foto noleggio' },
+  'DELETE /api/noleggi/allegati/:id': { area: 'Noleggi', azione: 'ELIMINAZIONE', testo: 'Eliminazione foto noleggio' },
+  'POST /api/noleggi/:id/invia-mail': { area: 'Noleggi', azione: 'ALTRO', testo: 'Invio verbale di noleggio per e-mail', modello: 'noleggio' },
+  'DELETE /api/noleggi/:id': { area: 'Noleggi', azione: 'ELIMINAZIONE', testo: 'Eliminazione verbale di noleggio', modello: 'noleggio' },
+  'GET /api/noleggi/:id/pdf': { area: 'Noleggi', azione: 'DOWNLOAD', testo: 'Download PDF verbale di noleggio', modello: 'noleggio' },
+  'GET /api/noleggi/allegati/:id/file': { area: 'Noleggi', azione: 'DOWNLOAD', testo: 'Apertura foto noleggio' },
 
   'POST /api/calendario-eventi': { area: 'Calendari eventi', azione: 'CREAZIONE', testo: 'Nuovo evento', modello: 'calendarioEvento' },
   'PUT /api/calendario-eventi/:id': { area: 'Calendari eventi', azione: 'MODIFICA', testo: 'Modifica evento', modello: 'calendarioEvento' },
@@ -203,6 +212,7 @@ const MODELLI: Record<Modello, DefinizioneModello> = {
     etichetta: (r) => `${r.veicolo?.nome ?? '-'}, ${r.cliente?.nome ?? 'senza cliente'}, ${dataIt(r.data)}`,
     riferimenti: { clienteId: 'dreamCliente' },
   },
+  noleggio: { etichetta: (r) => `n. ${r.id}, ${r.veicoloNome}, ${r.clienteNome}, ${dataIt(r.data)}` },
   schedaHr: { etichetta: (r) => r.cognomeNome },
   backupLog: { etichetta: (r) => r.filename },
 };
@@ -224,6 +234,7 @@ const CAMPI_ESCLUSI = new Set([
   'password',
   'firmaOperatoreImg',
   'firmaCommittenteImg',
+  'firmaImg',
   'createdAt',
   'updatedAt',
   'createdById',

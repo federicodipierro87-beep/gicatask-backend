@@ -18,6 +18,8 @@ model Utente {
   // Sezione "Bollettini 2" (modello 2 del bollettino): indipendente dal flag
   // sopra, che resta quello dei bollettini classici e dell'archivio
   abilitatoBollettini2 Boolean  @default(false) @map("abilitato_bollettini_2")
+  // Sezione "Noleggi" dell'area dipendente e relativo archivio del responsabile
+  abilitatoNoleggi     Boolean  @default(false) @map("abilitato_noleggi")
   // Percentuale di lavoro base (100 = tempo pieno): scala le ore dovute del
   // Report Saldi Ore nei mesi precedenti alla prima variazione in
   // `percentuali_lavoro`
@@ -31,6 +33,8 @@ model Utente {
   allegatiBollettino AllegatoBollettino[]      @relation("UtenteAllegatiBollettino")
   collaborazioni     BollettinoCollaboratore[]
   percentualiLavoro  PercentualeLavoro[]
+  noleggi            Noleggio[]                @relation("UtenteNoleggi")
+  allegatiNoleggio   AllegatoNoleggio[]        @relation("UtenteAllegatiNoleggio")
 
   @@map("utenti")
 }
@@ -41,16 +45,19 @@ enum Ruolo {
 }
 
 model Cliente {
-  id        Int      @id @default(autoincrement())
-  nome      String
-  attivo    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                Int      @id @default(autoincrement())
+  nome              String
+  // Indirizzo a cui la sezione Noleggi invia il verbale per la fatturazione
+  emailFatturazione String?  @map("email_fatturazione")
+  attivo            Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   cantieri   Cantiere[]
   attivita   Attivita[]
   eventi     CalendarioEvento[]
   bollettini Bollettino[]
+  noleggi    Noleggio[]
 
   @@map("clienti")
 }
@@ -68,6 +75,7 @@ model Cantiere {
   attivita        Attivita[]
   bollettini      Bollettino[]
   bollettiniMulti BollettinoCantiere[]
+  noleggi         Noleggio[]
 
   @@map("cantieri")
 }
@@ -162,6 +170,7 @@ model DreamVeicolo {
   noleggiGica       GicaNoleggio[]
   righeBollettino   RigaBollettino[]
   noleggiBollettino BollettinoNoleggio[]
+  noleggiVerbali    Noleggio[]
 
   @@map("dream_veicoli")
 }
@@ -503,6 +512,77 @@ model BollettinoNoleggio {
 
   @@index([bollettinoId])
   @@map("bollettini_noleggi")
+}
+
+enum Carburante {
+  DIESEL
+  BENZINA
+}
+
+/// Verbale della sezione "Noleggi": cantiere, cliente e veicolo sono testo
+/// libero. Il nome scritto e' sempre salvato; l'id c'e' quando il valore
+/// corrisponde a una voce di anagrafica (o e' stato salvato in anagrafica).
+/// Firmato da chi ha effettuato il noleggio: non si modifica.
+model Noleggio {
+  id                Int         @id @default(autoincrement())
+  utenteId          Int         @map("utente_id")
+  data              DateTime    @db.Date
+  cantiereId        Int?        @map("cantiere_id")
+  cantiereNome      String?     @map("cantiere_nome")
+  clienteId         Int?        @map("cliente_id")
+  clienteNome       String      @map("cliente_nome")
+  veicoloId         Int?        @map("veicolo_id")
+  veicoloNome       String      @map("veicolo_nome")
+  // Mezza giornata = 0.5, poi giorni interi fino a 90
+  giorni            Float
+  pieno             Boolean     @default(false)
+  carburante        Carburante?
+  danni             Boolean     @default(false)
+  danniNote         String?     @map("danni_note") @db.Text
+  emailFatturazione String?     @map("email_fatturazione")
+  firmaNome         String      @map("firma_nome")
+  firmaImg          String      @map("firma_img") @db.Text
+  // Stesso schema dei bollettini: IN_CORSO, INVIATA, ERRORE, NON_VALIDA,
+  // NON_CONFIGURATA. NULL = mai inviato
+  emailStato        String?     @map("email_stato")
+  emailInviataAt    DateTime?   @map("email_inviata_at")
+  emailMessageId    String?     @map("email_message_id")
+  emailErrore       String?     @map("email_errore") @db.Text
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  utente   Utente             @relation("UtenteNoleggi", fields: [utenteId], references: [id])
+  cantiere Cantiere?          @relation(fields: [cantiereId], references: [id], onDelete: SetNull)
+  cliente  Cliente?           @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  veicolo  DreamVeicolo?      @relation(fields: [veicoloId], references: [id], onDelete: SetNull)
+  allegati AllegatoNoleggio[]
+
+  @@index([data])
+  @@index([utenteId])
+  @@map("noleggi")
+}
+
+/// Foto del verbale di noleggio: scontrino del pieno o danni. Come per i
+/// bollettini i byte stanno su R2; `noleggioId` e `tipo` sono NULL fra
+/// l'upload e il salvataggio.
+model AllegatoNoleggio {
+  id           Int      @id @default(autoincrement())
+  noleggioId   Int?     @map("noleggio_id")
+  // SCONTRINO o DANNI
+  tipo         String?
+  caricatoDaId Int      @map("caricato_da")
+  chiave       String   @unique
+  nomeFile     String   @map("nome_file")
+  mimeType     String   @map("mime_type")
+  dimensione   Int
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  noleggio   Noleggio? @relation(fields: [noleggioId], references: [id], onDelete: Cascade)
+  caricatoDa Utente    @relation("UtenteAllegatiNoleggio", fields: [caricatoDaId], references: [id])
+
+  @@index([noleggioId])
+  @@index([createdAt])
+  @@map("allegati_noleggio")
 }
 
 /// Cantieri del bollettino, tutti dello stesso cliente. Il nome e' copiato

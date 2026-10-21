@@ -18,6 +18,7 @@ import { gicaNoleggiRoutes } from './gicaNoleggi.routes.js';
 import { oreDovuteRoutes } from './oreDovute.routes.js';
 import { hrRoutes } from './hr.routes.js';
 import { logRoutes } from './log.routes.js';
+import { noleggiRoutes } from './noleggi.routes.js';
 
 export const registerRoutes: FastifyPluginAsync = async (fastify) => {
   // Health check
@@ -47,4 +48,5 @@ export const registerRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(oreDovuteRoutes, { prefix: '/api/ore-dovute' });
   await fastify.register(hrRoutes, { prefix: '/api/hr' });
   await fastify.register(logRoutes, { prefix: '/api/log' });
+  await fastify.register(noleggiRoutes, { prefix: '/api/noleggi' });
 };

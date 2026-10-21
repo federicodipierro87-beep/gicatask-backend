@@ -1023,6 +1023,20 @@ Dal 20/10/2026 esiste anche la sezione **Bollettini Nuovi** (chiamata *Bollettin
 21/10/2026; `/dipendente/bollettini-2`, flag `abilitatoBollettini2`): alcune rotte accettano l'uno
 o l'altro flag, vedi la sezione dedicata.
 
+Dal 21/10/2026 c'è la sezione **Noleggi** (`/dipendente/noleggi`, archivio `/responsabile/noleggi`,
+flag `abilitatoNoleggi`), con le sue rotte `/api/noleggi`:
+
+| Metodo | Endpoint | Accesso |
+|---|---|---|
+| GET | `/api/noleggi/anagrafiche` | autenticato + flag noleggi |
+| GET | `/api/noleggi` | autenticato + flag (il dipendente vede solo i propri) |
+| POST | `/api/noleggi` | autenticato + flag (`invia: true` = "Salva e invia") |
+| POST | `/api/noleggi/:id/invia-mail` | chi l'ha compilato o il responsabile, + flag |
+| GET | `/api/noleggi/:id/pdf` | chi l'ha compilato o il responsabile, + flag |
+| DELETE | `/api/noleggi/:id` | RESPONSABILE + flag |
+| POST/DELETE | `/api/noleggi/allegati`, `/allegati/:id` | autenticato + flag (solo orfani propri) |
+| GET | `/api/noleggi/allegati/:id/file` | chi l'ha compilato o il responsabile, + flag |
+
 #### Menu
 
 Le quattro pagine del responsabile stanno sotto un'unica voce **Bollettino** (Archivio, Mezzi,
@@ -3529,6 +3543,84 @@ L'export per i report è il cumulativo PDF dell'archivio (*Scarica cumulativo ca
 Verifica: `tsc --noEmit` del backend e `npm run build` del frontend.
 
 Deploy: prima il backend `e30b5ba`, poi il frontend `2690089`.
+
+### Sezione "Noleggi": verbale con firma, foto e invio per la fatturazione (21 Ottobre 2026)
+
+Richiesta: un nuovo tab **Noleggi**. In alto il cantiere, poi cliente e veicolo, tutti a testo
+libero e salvabili in anagrafica; i giorni di noleggio da mezza giornata a 90; una casella per il
+pieno (diesel o benzina) con le foto dello scontrino; una casella per i danni con le foto; il campo
+**Fatturazione** (e-mail, testo libero, con la possibilità di aggiornare l'anagrafica); in fondo
+la firma di chi ha effettuato il noleggio; i pulsanti **Annulla**, **Salva**, **Salva e invia**.
+
+#### Scelte fatte (da confermare con l'utente)
+
+- **Dove:** un tab *Noleggi* nell'area dipendente, dietro un nuovo flag `abilitatoNoleggi` (spunta
+  **Abilita Noleggi** in *Utenti*, spenta per tutti dopo il deploy). Al responsabile col flag
+  compare *Noleggi* nella barra: l'archivio di tutti i verbali.
+- **Anagrafiche:** cliente e cantiere sono quelli di *Clienti*/*Cantieri* (un cantiere sta sotto
+  un cliente, per questo non i clienti Dream); il veicolo è della **Banca dati veicoli**. Il form
+  suggerisce le voci attive (`<datalist>`); se il testo non corrisponde (maiuscole e spazi a parte)
+  compare "Nuovo: salva in anagrafica". Un cantiere nuovo si può salvare solo se il cliente è in
+  anagrafica o viene salvato insieme. Scrivendo un cantiere che appartiene a un solo cliente, il
+  cliente si compila da sé.
+- **Fatturazione:** nuova colonna `clienti.email_fatturazione`. Scelto un cliente, il form propone
+  il suo indirizzo; con un indirizzo valido e diverso compare "Aggiorna l'anagrafica del cliente".
+  L'indirizzo si modifica anche dalla modale della pagina *Clienti*.
+- **Salva / Salva e invia:** entrambi richiedono cliente, veicolo, data, carburante se c'è il
+  pieno, nome e firma. "Salva e invia" richiede anche un indirizzo valido e manda il verbale in PDF
+  con le foto. Un verbale salvato senza invio si invia dopo, dal pulsante **Invia** dell'elenco
+  del dipendente o dall'archivio del responsabile.
+- Aggiunti, non richiesti: il campo **Data** (oggi di default, `CampoData` digitabile) e una
+  **descrizione dei danni** facoltativa. Il verbale firmato non si modifica, come i bollettini.
+
+#### Backend
+
+- Schema (solo aggiunte, `db push` senza `--accept-data-loss` provato): `utenti.abilitato_noleggi`,
+  `clienti.email_fatturazione`, enum `Carburante`, tabelle `noleggi` (`Noleggio`) e
+  `allegati_noleggio` (`AllegatoNoleggio`). Il verbale salva sempre i nomi scritti
+  (`clienteNome`, `cantiereNome`, `veicoloNome`) e l'id quando c'è la voce di anagrafica
+  (`onDelete: SetNull`). `giorni` è Float: 0.5 o un intero da 1 a 90.
+- `noleggi.service.ts`: anagrafiche, elenco, creazione in **una transazione** (risoluzione o
+  creazione di cliente, cantiere, veicolo; un omonimo disattivato viene ricollegato e, se si chiede
+  di salvarlo, riattivato; aggiornamento dell'e-mail del cliente; collegamento delle foto col tipo
+  `SCONTRINO`/`DANNI`). Le foto di una casella non spuntata restano orfane.
+- `allegatiNoleggio.service.ts`: stesso schema degli allegati dei bollettini, prefisso R2
+  `noleggi/`; pulizia notturna degli orfani nello scheduler.
+- `noleggioPdf.service.ts`: verbale A4 con cantiere in testa, dati, descrizione danni, firma, poi
+  le foto due per riga (solo JPEG/PNG; gli altri formati sono elencati come allegati alla mail).
+- `noleggioEmail.service.ts`: invio a `emailFatturazione` con PDF e foto (max 15 MB), stessi stati
+  dei bollettini; non lancia mai, perché il verbale è già salvato.
+- Guardia `assertAccessoNoleggi`, catalogo del Log (area *Noleggi*, `firmaImg` escluso), backup e
+  ripristino delle due tabelle nuove.
+
+#### Frontend
+
+`NoleggioFormPage`, `NoleggiListPage` (*I Miei Noleggi*: mese, PDF, Invia/Reinvia, stato della
+fatturazione), `NoleggiArchivioPage` (filtri Dal/Al/Dipendente, foto cliccabili per tipo, PDF,
+invio, eliminazione), componente `InvioNoleggio` (stato e modale di invio). `ProtectedRoute` ha
+`requireNoleggi`. `AllegatiUploader` è riusato con `carica`/`rimuovi` dei noleggi.
+
+#### Correzione di sicurezza trovata durante le prove
+
+`authenticate` e `requireRole` (`plugins/auth.ts`) rispondevano 401/403 **senza fermare la
+richiesta**: in un hook async Fastify prosegue con l'handler se la risposta non viene restituita
+(`return reply`). Risultato: un dipendente riceveva 403 ma l'operazione riservata al responsabile
+veniva eseguita lo stesso (visto in prova: un DELETE ha cancellato il verbale). Lo stesso valeva
+per tutte le 70 rotte con `requireRole('RESPONSABILE')`, per esempio la modifica degli utenti, e
+per le scritture senza login sulle rotte protette dal solo `authenticate`. Ora entrambe fanno
+`return reply`; `requireRole` esce subito anche dopo un 401. Provato: il dipendente che si assegna
+il ruolo RESPONSABILE riceve 403 e il ruolo resta invariato; un POST su `/api/clienti` senza token
+riceve 401 e non crea nulla. Il difetto c'era dal 29/07/2026 (`3cd0a39`).
+
+#### Verifica
+
+Postgres 18 locale: schema precedente con dati, poi `db push` del nuovo senza flag. Prove sull'API
+(30 controlli): creazione con salvataggio in anagrafica di cliente, cantiere, veicolo ed e-mail;
+collegamento a voci esistenti con maiuscole diverse; solo testo; errori leggibili per giorni e
+carburante; elenco, PDF, invio successivo, permessi, flag tolto, upload senza R2 (503). Dal
+browser: form desktop e telefono, salvataggio con firma, elenco, archivio, modale Clienti. PDF con
+foto generato e controllato. Non provati in locale, perché servono R2 e Resend: il caricamento reale
+delle foto e la consegna della mail.
 
 ---
 

@@ -22,14 +22,22 @@ export class ClientiService {
     });
   }
 
-  async create(nome: string): Promise<Cliente> {
-    return this.prisma.cliente.create({ data: { nome } });
+  // `emailFatturazione` assente = non toccata, vuota = tolta
+  async create(nome: string, emailFatturazione?: string): Promise<Cliente> {
+    return this.prisma.cliente.create({
+      data: { nome, emailFatturazione: emailFatturazione?.trim() || null },
+    });
   }
 
-  async update(id: number, nome: string): Promise<Cliente> {
+  async update(id: number, nome: string, emailFatturazione?: string): Promise<Cliente> {
     return this.prisma.cliente.update({
       where: { id },
-      data: { nome },
+      data: {
+        nome,
+        ...(emailFatturazione !== undefined
+          ? { emailFatturazione: emailFatturazione.trim() || null }
+          : {}),
+      },
     });
   }
 
