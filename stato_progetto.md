@@ -3528,6 +3528,8 @@ L'export per i report è il cumulativo PDF dell'archivio (*Scarica cumulativo ca
 
 Verifica: `tsc --noEmit` del backend e `npm run build` del frontend.
 
+Deploy: prima il backend `e30b5ba`, poi il frontend `2690089`.
+
 ---
 
 ## Progetto Completato
