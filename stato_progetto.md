@@ -3622,6 +3622,11 @@ browser: form desktop e telefono, salvataggio con firma, elenco, archivio, modal
 foto generato e controllato. Non provati in locale, perché servono R2 e Resend: il caricamento reale
 delle foto e la consegna della mail.
 
+Deploy: prima il backend `a66cbe9` (sicurezza) e `c322eaa`, poi il frontend `8787e4e` (insieme a
+`2690089` dei Bollettini Nuovi). Le build di Railway erano sospese per un guasto generale della
+piattaforma: il deploy è partito con `railway up` alla ripresa. Dopo il deploy la spunta *Abilita
+Noleggi* va messa a mano su chi deve usare la sezione.
+
 ---
 
 ## Progetto Completato
