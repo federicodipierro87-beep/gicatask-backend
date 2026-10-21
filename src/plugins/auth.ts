@@ -40,7 +40,9 @@ async function authPlugin(fastify: FastifyInstance) {
           throw new Error('No token provided');
         }
       } catch (err) {
-        reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or expired token' });
+        // `return reply`: in un hook async, una risposta inviata senza
+        // restituirla NON ferma la richiesta, e l'handler girerebbe lo stesso
+        return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or expired token' });
       }
     }
   );
@@ -48,10 +50,14 @@ async function authPlugin(fastify: FastifyInstance) {
   fastify.decorate('requireRole', function (...roles: Ruolo[]) {
     return async function (request: FastifyRequest, reply: FastifyReply) {
       await fastify.authenticate(request, reply);
+      // Gia' risposto 401: l'utente non c'e'
+      if (reply.sent) return reply;
 
       const user = request.user as JwtPayload;
       if (!roles.includes(user.ruolo)) {
-        reply.status(403).send({
+        // Senza `return reply` l'handler verrebbe eseguito comunque: il
+        // dipendente riceverebbe 403 ma l'operazione avverrebbe lo stesso
+        return reply.status(403).send({
           error: 'Forbidden',
           message: 'Insufficient permissions',
         });
