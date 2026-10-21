@@ -112,7 +112,7 @@ const createBodySchema = {
     // Non in `required` e senza vincoli semantici, stessa regola: gli id non
     // ammissibili li scarta il service, che a quel punto ha gia' salvato.
     allegatiIds: { type: 'array', maxItems: 10, items: { type: 'number' } },
-    // Sezione "Bollettini 2". Assente = 1, i client precedenti non lo mandano
+    // Sezione "Bollettini Nuovi". Assente = 1, i client precedenti non lo mandano
     modello: { type: 'integer', enum: [1, 2] },
     riferimentoCantiere: { type: 'string', maxLength: 200 },
     mezziTesto: { type: 'string', maxLength: 5000 },
@@ -160,6 +160,15 @@ interface CreateBody {
   mezziTesto?: string;
   trasportiTesto?: string;
   noleggi?: NoleggioInput[];
+}
+
+/** `?modello=` dei cumulativi: un valore diverso da 1 o 2 vale come assente. */
+function parseModello(valore?: string): 1 | 2 | undefined {
+  return valore === '1' ? 1 : valore === '2' ? 2 : undefined;
+}
+
+function prefissoCumulativo(modello?: 1 | 2): string {
+  return modello === 2 ? 'bollettini-nuovi' : 'bollettini';
 }
 
 export async function bollettiniRoutes(fastify: FastifyInstance) {
@@ -559,14 +568,20 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
       .send(pdfBuffer);
   });
 
-  // PDF cumulativo di cantiere (solo responsabile, e solo se abilitato)
+  // PDF cumulativo di cantiere (solo responsabile, e solo se abilitato).
+  // `?modello=1|2` sceglie Bollettini o Bollettini Nuovi; assente, entrambi
   fastify.get<{ Params: { cantiereId: string } }>('/cantiere/:cantiereId/pdf', {
     preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
     if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
 
     const cantiereId = parseInt(request.params.cantiereId, 10);
-    const { startDate, endDate } = request.query as { startDate?: string; endDate?: string };
+    const { startDate, endDate, modello: modelloQuery } = request.query as {
+      startDate?: string;
+      endDate?: string;
+      modello?: string;
+    };
+    const modello = parseModello(modelloQuery);
 
     const cantiere = await fastify.prisma.cantiere.findUnique({
       where: { id: cantiereId },
@@ -580,7 +595,8 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     const bollettini = await service.getByCantiere(
       cantiereId,
       startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined
+      endDate ? new Date(endDate) : undefined,
+      modello
     );
 
     if (bollettini.length === 0) {
@@ -590,10 +606,11 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     const pdfBuffer = await pdfService.generateCumulativo(
       cantiere.nome,
       cantiere.cliente.nome,
-      bollettini
+      bollettini,
+      modello
     );
 
-    const filename = `bollettini-${sanitizeFilenamePart(cantiere.nome)}.pdf`;
+    const filename = `${prefissoCumulativo(modello)}-${sanitizeFilenamePart(cantiere.nome)}.pdf`;
 
     return reply
       .header('Content-Type', 'application/pdf')
@@ -609,7 +626,12 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     if (!(await assertAccessoBollettini(fastify, request, reply))) return reply;
 
     const clienteId = parseInt(request.params.clienteId, 10);
-    const { startDate, endDate } = request.query as { startDate?: string; endDate?: string };
+    const { startDate, endDate, modello: modelloQuery } = request.query as {
+      startDate?: string;
+      endDate?: string;
+      modello?: string;
+    };
+    const modello = parseModello(modelloQuery);
 
     const cliente = await fastify.prisma.cliente.findUnique({
       where: { id: clienteId },
@@ -623,16 +645,17 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
     const bollettini = await service.getByCliente(
       clienteId,
       startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined
+      endDate ? new Date(endDate) : undefined,
+      modello
     );
 
     if (bollettini.length === 0) {
       return reply.status(404).send({ error: 'Nessun bollettino per questo cliente' });
     }
 
-    const pdfBuffer = await pdfService.generateCumulativo(null, cliente.nome, bollettini);
+    const pdfBuffer = await pdfService.generateCumulativo(null, cliente.nome, bollettini, modello);
 
-    const filename = `bollettini-cliente-${sanitizeFilenamePart(cliente.nome)}.pdf`;
+    const filename = `${prefissoCumulativo(modello)}-cliente-${sanitizeFilenamePart(cliente.nome)}.pdf`;
 
     return reply
       .header('Content-Type', 'application/pdf')

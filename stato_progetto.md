@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 20 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 21 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -1012,15 +1012,16 @@ accontenti del solo `requireRole('RESPONSABILE')`.
 | POST | `/api/bollettini` | autenticato + flag |
 | DELETE | `/api/bollettini/:id` | RESPONSABILE + flag |
 | GET | `/api/bollettini/:id/pdf` | autenticato + flag |
-| GET | `/api/bollettini/cantiere/:id/pdf` | RESPONSABILE + flag (cumulativo) |
-| GET | `/api/bollettini/cliente/:id/pdf` | RESPONSABILE + flag (cumulativo, dal 17/09/2026) |
+| GET | `/api/bollettini/cantiere/:id/pdf` | RESPONSABILE + flag (cumulativo; `?modello=1\|2` dal 21/10/2026) |
+| GET | `/api/bollettini/cliente/:id/pdf` | RESPONSABILE + flag (cumulativo, dal 17/09/2026; `?modello=1\|2` dal 21/10/2026) |
 | PATCH | `/api/bollettini/:id/fatturato` | RESPONSABILE + flag (dal 01/10/2026) |
 
 Pagine: `/dipendente/bollettini`, `/dipendente/bollettini/nuovo`, `/responsabile/bollettini`
 (attivi), `/responsabile/bollettini/fatturati` (dal 01/10/2026), `/responsabile/mezzi|materiali|trasporti`.
 
-Dal 20/10/2026 esiste anche la sezione **Bollettini 2** (`/dipendente/bollettini-2`, flag
-`abilitatoBollettini2`): alcune rotte accettano l'uno o l'altro flag, vedi la sezione dedicata.
+Dal 20/10/2026 esiste anche la sezione **Bollettini Nuovi** (chiamata *Bollettini 2* fino al
+21/10/2026; `/dipendente/bollettini-2`, flag `abilitatoBollettini2`): alcune rotte accettano l'uno
+o l'altro flag, vedi la sezione dedicata.
 
 #### Menu
 
@@ -3494,6 +3495,38 @@ flag 2:
 Schermate del form (desktop e mobile), dell'elenco e dell'archivio col badge.
 
 Deploy: prima il backend `d4a1586` (su Railway il `db push` ha aggiunto colonne e tabella senza errori), poi il frontend `7285b29`. Dopo il deploy la spunta *Abilita Bollettini 2* va messa a mano su Riccardo Viaro.
+
+### "Bollettini 2" diventa "Bollettini Nuovi", e il cumulativo sceglie il tipo (21 Ottobre 2026)
+
+Richiesta: rinominare la sezione *Bollettini 2* in **Bollettini Nuovi**. L'admin, quando esporta
+per i report, deve scegliere se esportare *Bollettini* o *Bollettini Nuovi*.
+
+#### Rinomina (solo testi)
+
+Cambiano le etichette visibili: voce di menu dell'area dipendente, titolo dell'elenco ("I Miei
+Bollettini Nuovi"), titolo del form ("Nuovo Bollettino (Bollettini Nuovi)"), spunta **Abilita
+Bollettini Nuovi** nella pagina Utenti, etichetta del Log ("Abilitato bollettini nuovi"). Il badge
+dell'archivio passa da *B2* a **Nuovo**. Restano invariati di proposito il flag
+`abilitatoBollettini2`, la colonna `abilitato_bollettini_2`, `modello = 2` e il percorso
+`/dipendente/bollettini-2`: rinominarli non cambierebbe nulla per chi usa l'app, e il percorso
+romperebbe eventuali preferiti. Nessuna modifica allo schema.
+
+#### Cumulativo: Bollettini o Bollettini Nuovi
+
+L'export per i report è il cumulativo PDF dell'archivio (*Scarica cumulativo cantiere/cliente*).
+- Archivio del responsabile: nuovo filtro **Tipo** (*Tutti* / *Bollettini* / *Bollettini Nuovi*).
+  Filtra l'elenco lato client, senza ricaricare, e aggiorna conteggio e ore totali in testa.
+- Il pulsante del cumulativo resta spento con *Tutti*: accanto compare "Per il cumulativo scegli il
+  tipo: Bollettini o Bollettini Nuovi". Scelto il tipo, l'etichetta lo dice, per esempio *Scarica
+  cumulativo cliente (Bollettini Nuovi)*. I due tipi non finiscono quindi mai nello stesso report.
+- Backend: `GET /api/bollettini/cantiere/:id/pdf` e `/cliente/:id/pdf` accettano `?modello=1|2`
+  (`parseModello`), passato a `getByCantiere`/`getByCliente` e quindi a `buildWhere`. Senza il
+  parametro, o con un valore diverso, restano entrambi i tipi come prima. Il flag richiesto resta
+  l'1.
+- Il PDF: in copertina la riga del conteggio si chiama *Bollettini Nuovi* per il modello 2. Il file
+  si chiama `bollettini-nuovi-cantiere-…pdf` / `bollettini-nuovi-cliente-…pdf`.
+
+Verifica: `tsc --noEmit` del backend e `npm run build` del frontend.
 
 ---
 

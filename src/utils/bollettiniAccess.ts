@@ -14,7 +14,7 @@ import { JwtPayload } from '../types/index.js';
  * l'accesso prima della scadenza.
  *
  * `modello` dice quale flag serve: 1 i bollettini classici (e l'archivio del
- * responsabile), 2 la sezione "Bollettini 2", `qualsiasi` le rotte comuni alle
+ * responsabile), 2 la sezione "Bollettini Nuovi", `qualsiasi` le rotte comuni alle
  * due sezioni (allegati, veicoli, dettaglio e PDF del singolo bollettino).
  *
  * Restituisce false dopo aver già inviato il 403: il chiamante deve limitarsi

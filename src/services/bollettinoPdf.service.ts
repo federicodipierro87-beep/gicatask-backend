@@ -41,7 +41,7 @@ export interface BollettinoPdf {
   // Vuoto per i bollettini precedenti alla selezione dei collaboratori
   collaboratori: { nome: string; ore: number | null }[];
   righe: RigaPdf[];
-  // Sezione "Bollettini 2". Assenti o NULL nei bollettini classici
+  // Sezione "Bollettini Nuovi". Assenti o NULL nei bollettini classici
   modello?: number;
   riferimentoCantiere?: string | null;
   mezziTesto?: string | null;
@@ -456,7 +456,8 @@ function renderCopertina(
   doc: PDFKit.PDFDocument,
   cantiereNome: string | null,
   clienteNome: string,
-  bollettini: BollettinoPdf[]
+  bollettini: BollettinoPdf[],
+  modello?: 1 | 2
 ): void {
   // Un solo totale: "ore per operaio" non esiste nei bollettini con le ore
   // per collaboratore, e sommarlo con quelli vecchi darebbe un numero senza senso
@@ -489,7 +490,7 @@ function renderCopertina(
   let y = 280;
   const voci: [string, string][] = [
     ['Periodo', periodo],
-    ['Bollettini', String(bollettini.length)],
+    [modello === 2 ? 'Bollettini Nuovi' : 'Bollettini', String(bollettini.length)],
     ['Totale ore (tutti gli operai)', formatNumero(totaleOre)],
   ];
 
@@ -535,10 +536,11 @@ export class BollettinoPdfService {
   async generateCumulativo(
     cantiereNome: string | null,
     clienteNome: string,
-    bollettini: BollettinoPdf[]
+    bollettini: BollettinoPdf[],
+    modello?: 1 | 2
   ): Promise<Buffer> {
     return buildDocument((doc) => {
-      renderCopertina(doc, cantiereNome, clienteNome, bollettini);
+      renderCopertina(doc, cantiereNome, clienteNome, bollettini, modello);
 
       for (const bollettino of bollettini) {
         doc.addPage();

@@ -34,7 +34,7 @@ export interface NoleggioInput {
 
 export interface CreateBollettinoInput {
   utenteId: number;
-  // 1 = classico, 2 = sezione "Bollettini 2"
+  // 1 = classico, 2 = sezione "Bollettini Nuovi"
   modello: 1 | 2;
   // Solo modello 2
   riferimentoCantiere?: string | null;
@@ -136,7 +136,7 @@ export interface BollettinoFilters {
   endDate?: Date;
   // Assente: tutti, come prima del flag (elenco del dipendente, cumulativi)
   fatturato?: boolean;
-  // Assente: entrambi i modelli (archivio del responsabile, cumulativi)
+  // Assente: entrambi i modelli (archivio del responsabile)
   modello?: number;
 }
 
@@ -353,10 +353,11 @@ export class BollettiniService {
   async getByCantiere(
     cantiereId: number,
     startDate?: Date,
-    endDate?: Date
+    endDate?: Date,
+    modello?: 1 | 2
   ): Promise<BollettinoFull[]> {
     return this.prisma.bollettino.findMany({
-      where: this.buildWhere({ cantiereId, startDate, endDate }),
+      where: this.buildWhere({ cantiereId, startDate, endDate, modello }),
       select: fullSelect,
       orderBy: [{ dataRiferimento: 'asc' }, { id: 'asc' }],
     });
@@ -369,10 +370,11 @@ export class BollettiniService {
   async getByCliente(
     clienteId: number,
     startDate?: Date,
-    endDate?: Date
+    endDate?: Date,
+    modello?: 1 | 2
   ): Promise<BollettinoFull[]> {
     return this.prisma.bollettino.findMany({
-      where: this.buildWhere({ clienteId, startDate, endDate }),
+      where: this.buildWhere({ clienteId, startDate, endDate, modello }),
       select: fullSelect,
       orderBy: [{ dataRiferimento: 'asc' }, { id: 'asc' }],
     });
