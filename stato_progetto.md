@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 21 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 22 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -1036,6 +1036,10 @@ flag `abilitatoNoleggi`), con le sue rotte `/api/noleggi`:
 | DELETE | `/api/noleggi/:id` | RESPONSABILE + flag |
 | POST/DELETE | `/api/noleggi/allegati`, `/allegati/:id` | autenticato + flag (solo orfani propri) |
 | GET | `/api/noleggi/allegati/:id/file` | chi l'ha compilato o il responsabile, + flag |
+
+Dal 22/10/2026 c'è il modulo **Nuova Attività 2** (`/dipendente/nuova-2`, modifica
+`/dipendente/modifica-2/:id`, flag `abilitatoAttivita2`). Usa le rotte `/api/attivita` di sempre,
+col campo `luogo` (`MAGAZZINO` | `CANTIERE`) al posto di cliente, cantiere e tipo.
 
 #### Menu
 
@@ -3626,6 +3630,57 @@ Deploy: prima il backend `a66cbe9` (sicurezza) e `c322eaa`, poi il frontend `878
 `2690089` dei Bollettini Nuovi). Le build di Railway erano sospese per un guasto generale della
 piattaforma: il deploy è partito con `railway up` alla ripresa. Dopo il deploy la spunta *Abilita
 Noleggi* va messa a mano su chi deve usare la sezione.
+
+### Modulo "Nuova Attività 2": magazzino o cantiere al posto del cliente (22 Ottobre 2026)
+
+Richiesta: un form uguale a **Nuova Attività**, chiamato **Nuova Attività 2**, senza il cliente: solo
+la scelta fra **magazzino** e **cantiere**, l'orario diviso in mattino e pomeriggio, poi una
+descrizione generica. Il form *Nuova Attività* resta com'era.
+
+#### Scelte fatte (da confermare con l'utente)
+
+- **Stessa tabella:** le attività di Nuova Attività 2 sono righe di `attivita` con `cliente_id`,
+  `cantiere_id` e `tipo_attivita_id` vuoti e la nuova colonna `luogo` (enum `LuogoAttivita`). Le
+  ore contano quindi in *Le Mie Attività*, Dashboard, Report, PDF/Excel e Saldi Ore come le altre.
+- **Chi lo vede:** voce *Nuova Attività 2* nel menu del dipendente, dietro il nuovo flag
+  `abilitatoAttivita2` (spunta **Abilita Nuova Attività 2** in *Utenti*, spenta per tutti dopo il
+  deploy).
+- **Campi:** Data, "Dove hai lavorato?" (Magazzino / Cantiere, obbligatorio), Mattino e
+  Pomeriggio (almeno una fascia, come nel form 1), **Descrizione** facoltativa, salvata nelle note.
+  "Cantiere" è solo la scelta: non si indica quale cantiere.
+- **Dove si vede:** nella colonna *Cliente* di Dashboard, Report, PDF ed Excel compare
+  "Magazzino" o "Cantiere"; nel dettaglio l'etichetta diventa *Luogo*. Il riepilogo per cliente
+  (Report, foglio Excel, `/stats`) ha le voci "Magazzino" e "Cantiere" invece di finire in
+  "Assenze".
+- **Modifica:** *Modifica* nell'elenco del dipendente apre il form 2; il form 1 aperto su
+  un'attività col luogo rimanda al form 2. Il responsabile la modifica dalla solita pagina: per
+  queste attività compare il campo *Luogo* al posto di cliente, cantiere e tipo, con l'opzione "Un
+  cliente (attività normale)" per riportarla a un cliente. *Assegna* resta solo col cliente.
+
+#### Backend
+
+- Schema (solo aggiunte, `db push` senza `--accept-data-loss` provato su dati esistenti): enum
+  `LuogoAttivita`, `attivita.luogo`, `utenti.abilitato_attivita_2`.
+- `attivita.service.ts`: col luogo il cliente non è obbligatorio e cliente, cantiere e tipo vengono
+  svuotati anche se mandati; resta obbligatoria una fascia oraria. Un'assenza azzera il luogo.
+  `attivita.routes.ts`: `luogo` validato (enum) in POST e PUT.
+- `utils/luogoAttivita.ts` (`NOMI_LUOGO`), usato da `export.service.ts` (colonna Cliente e
+  riepilogo Excel) e da `/stats`. Flag in login, `/me` e `PUT /utenti/:id`.
+
+#### Frontend
+
+`Attivita2FormPage` (nuova), `requireAttivita2` in `ProtectedRoute`, voce di menu, spunta in
+*Utenti*, etichette nel *Log*. `types/index.ts`: `LuogoAttivita`, `NOMI_LUOGO`,
+`nomeClienteAttivita()`, usati da `AttivitaListPage`, `ReportPage`, `ResponsabileDashboard` e
+`AssegnaAttivitaPage`.
+
+#### Verifica
+
+Postgres 18 locale: schema in produzione con dati, poi `db push` del nuovo senza flag. API (17
+controlli): creazione magazzino e cantiere, cliente svuotato, errori su orario e luogo non valido,
+cliente ancora obbligatorio senza luogo, modifica, ritorno a un cliente e di nuovo al luogo, flag.
+PDF del report controllato. Browser: form desktop e telefono, salvataggio, elenco, redirect dal
+form 1, dashboard e modifica del responsabile.
 
 ---
 

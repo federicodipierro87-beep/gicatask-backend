@@ -20,6 +20,8 @@ model Utente {
   abilitatoBollettini2 Boolean  @default(false) @map("abilitato_bollettini_2")
   // Sezione "Noleggi" dell'area dipendente e relativo archivio del responsabile
   abilitatoNoleggi     Boolean  @default(false) @map("abilitato_noleggi")
+  // Modulo "Nuova Attivita 2" (luogo al posto del cliente)
+  abilitatoAttivita2   Boolean  @default(false) @map("abilitato_attivita_2")
   // Percentuale di lavoro base (100 = tempo pieno): scala le ore dovute del
   // Report Saldi Ore nei mesi precedenti alla prima variazione in
   // `percentuali_lavoro`
@@ -105,22 +107,25 @@ model TipoAssenza {
 }
 
 model Attivita {
-  id                  Int      @id @default(autoincrement())
-  utenteId            Int      @map("utente_id")
-  dataRiferimento     DateTime @map("data_riferimento") @db.Date
-  oraInizioMattino    String?  @map("ora_inizio_mattino")
-  oraFineMattino      String?  @map("ora_fine_mattino")
-  oraInizioPomeriggio String?  @map("ora_inizio_pomeriggio")
-  oraFinePomeriggio   String?  @map("ora_fine_pomeriggio")
-  durataMinuti        Int      @map("durata_minuti")
-  clienteId           Int?     @map("cliente_id")
-  cantiereId          Int?     @map("cantiere_id")
-  tipoAttivitaId      Int?     @map("tipo_attivita_id")
-  assenzaId           Int?     @map("assenza_id")
+  id                  Int            @id @default(autoincrement())
+  utenteId            Int            @map("utente_id")
+  dataRiferimento     DateTime       @map("data_riferimento") @db.Date
+  oraInizioMattino    String?        @map("ora_inizio_mattino")
+  oraFineMattino      String?        @map("ora_fine_mattino")
+  oraInizioPomeriggio String?        @map("ora_inizio_pomeriggio")
+  oraFinePomeriggio   String?        @map("ora_fine_pomeriggio")
+  durataMinuti        Int            @map("durata_minuti")
+  clienteId           Int?           @map("cliente_id")
+  cantiereId          Int?           @map("cantiere_id")
+  tipoAttivitaId      Int?           @map("tipo_attivita_id")
+  assenzaId           Int?           @map("assenza_id")
+  // Solo per le attivita' del modulo "Nuova Attivita 2": senza cliente,
+  // con la sola scelta fra magazzino e cantiere
+  luogo               LuogoAttivita?
   note                String?
-  createdById         Int      @map("created_by")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  createdById         Int            @map("created_by")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
 
   utente       Utente        @relation("UtenteAttivita", fields: [utenteId], references: [id])
   cliente      Cliente?      @relation(fields: [clienteId], references: [id])
@@ -512,6 +517,11 @@ model BollettinoNoleggio {
 
   @@index([bollettinoId])
   @@map("bollettini_noleggi")
+}
+
+enum LuogoAttivita {
+  MAGAZZINO
+  CANTIERE
 }
 
 enum Carburante {

@@ -101,6 +101,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           abilitatoBollettini: result.user.abilitatoBollettini,
           abilitatoBollettini2: result.user.abilitatoBollettini2,
           abilitatoNoleggi: result.user.abilitatoNoleggi,
+          abilitatoAttivita2: result.user.abilitatoAttivita2,
         },
       });
     }
@@ -138,6 +139,7 @@ export async function authRoutes(fastify: FastifyInstance) {
           abilitatoBollettini: user.abilitatoBollettini,
           abilitatoBollettini2: user.abilitatoBollettini2,
           abilitatoNoleggi: user.abilitatoNoleggi,
+          abilitatoAttivita2: user.abilitatoAttivita2,
         },
       });
     }

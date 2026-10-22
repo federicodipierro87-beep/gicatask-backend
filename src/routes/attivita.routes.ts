@@ -6,7 +6,11 @@ import { SaldiOreExportService } from '../services/saldiOreExport.service.js';
 import { OreDovuteService } from '../services/oreDovute.service.js';
 import type { GruppoReport, ReportFilters } from '../services/export.service.js';
 import { nomeUtente } from '../utils/nomeUtente.js';
+import { NOMI_LUOGO } from '../utils/luogoAttivita.js';
 import type { JwtPayload } from '../types/index.js';
+import type { LuogoAttivita } from '@prisma/client';
+
+const SCHEMA_LUOGO = { type: ['string', 'null'], enum: ['MAGAZZINO', 'CANTIERE', null] };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -150,6 +154,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       cantiereId?: number | null;
       tipoAttivitaId?: number | null;
       assenzaId?: number | null;
+      luogo?: LuogoAttivita | null;
       note?: string;
     };
   }>('/', {
@@ -169,6 +174,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
           cantiereId: { type: ['number', 'null'] },
           tipoAttivitaId: { type: ['number', 'null'] },
           assenzaId: { type: ['number', 'null'] },
+          luogo: SCHEMA_LUOGO,
           note: { type: 'string' },
         },
       },
@@ -194,6 +200,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
         cantiereId: body.cantiereId,
         tipoAttivitaId: body.tipoAttivitaId,
         assenzaId: body.assenzaId,
+        luogo: body.luogo,
         note: body.note,
         createdById: user.id,
       });
@@ -219,10 +226,17 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       cantiereId?: number | null;
       tipoAttivitaId?: number | null;
       assenzaId?: number | null;
+      luogo?: LuogoAttivita | null;
       note?: string;
     };
   }>('/:id', {
     preHandler: [fastify.authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        properties: { luogo: SCHEMA_LUOGO },
+      },
+    },
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
     const user = request.user as JwtPayload;
@@ -243,6 +257,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
           cantiereId: body.cantiereId,
           tipoAttivitaId: body.tipoAttivitaId,
           assenzaId: body.assenzaId,
+          luogo: body.luogo,
           note: body.note,
         },
         user.id,
@@ -490,7 +505,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
 
     // By client
     const byCliente = await fastify.prisma.attivita.groupBy({
-      by: ['clienteId'],
+      by: ['clienteId', 'luogo'],
       where: dateFilters,
       _count: true,
       _sum: { durataMinuti: true },
@@ -530,7 +545,9 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       perCliente: byCliente
         .map((c) => ({
           clienteId: c.clienteId,
-          clienteNome: c.clienteId === null ? 'Assenze' : (clientiMap.get(c.clienteId) || 'Unknown'),
+          clienteNome: c.clienteId !== null
+            ? (clientiMap.get(c.clienteId) || 'Unknown')
+            : c.luogo ? NOMI_LUOGO[c.luogo] : 'Assenze',
           attivita: c._count,
           durataMinuti: c._sum.durataMinuti || 0,
         }))

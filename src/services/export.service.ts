@@ -8,6 +8,8 @@ import {
   isoUtc,
 } from '../utils/festivita.js';
 import { nomeUtente } from '../utils/nomeUtente.js';
+import { NOMI_LUOGO } from '../utils/luogoAttivita.js';
+import type { LuogoAttivita } from '@prisma/client';
 
 interface AttivitaExport {
   id: number;
@@ -22,7 +24,16 @@ interface AttivitaExport {
   cantiere: { nome: string } | null;
   tipoAttivita: { nome: string } | null;
   assenza: { nome: string } | null;
+  luogo?: LuogoAttivita | null;
   utente: { nome: string; cognome: string };
+}
+
+/**
+ * La colonna "Cliente": per le attivita' di "Nuova Attivita 2", che non hanno
+ * cliente, il luogo scelto (Magazzino o Cantiere).
+ */
+function nomeCliente(att: AttivitaExport): string {
+  return att.cliente?.nome ?? (att.luogo ? NOMI_LUOGO[att.luogo] : '');
 }
 
 function formatTimeSlot(start?: string | null, end?: string | null): string {
@@ -294,7 +305,7 @@ interface PdfColumn {
 const PDF_COLUMNS: PdfColumn[] = [
   { header: 'Data', width: 62, value: (r) => formatDate(r.data) },
   { header: 'Dipendente', width: 130, value: (r) => r.utenteNome },
-  { header: 'Cliente', width: 150, value: (r) => r.att?.cliente?.nome ?? '' },
+  { header: 'Cliente', width: 150, value: (r) => (r.att ? nomeCliente(r.att) : '') },
   { header: 'Cantiere', width: 140, value: (r) => r.att?.cantiere?.nome ?? '' },
   { header: 'Tipo', width: 120, value: (r) => r.att?.tipoAttivita?.nome ?? '' },
   { header: 'Assenza', width: 100, value: (r) => r.att?.assenza?.nome ?? '' },
@@ -602,7 +613,7 @@ function scriviFoglioAttivita(
     const row = worksheet.addRow([
       formatDate(riga.data),
       riga.utenteNome,
-      att?.cliente?.nome ?? '',
+      att ? nomeCliente(att) : '',
       att?.cantiere?.nome ?? '',
       att?.tipoAttivita?.nome ?? '',
       att?.assenza?.nome ?? '',
@@ -689,7 +700,7 @@ export class ExportService {
 
     const clientStats = new Map<string, { count: number; minutes: number }>();
     attivita.forEach((att) => {
-      const key = att.cliente?.nome ?? 'Assenze';
+      const key = nomeCliente(att) || 'Assenze';
       const existing = clientStats.get(key) || { count: 0, minutes: 0 };
       clientStats.set(key, {
         count: existing.count + 1,

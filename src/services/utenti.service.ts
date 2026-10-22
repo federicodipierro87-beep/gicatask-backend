@@ -67,6 +67,7 @@ export class UtentiService {
       abilitatoBollettini?: boolean;
       abilitatoBollettini2?: boolean;
       abilitatoNoleggi?: boolean;
+      abilitatoAttivita2?: boolean;
       percentualeLavoro?: number;
     }
   ): Promise<Omit<Utente, 'passwordHash'>> {

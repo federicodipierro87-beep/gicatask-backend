@@ -1,4 +1,4 @@
-import { PrismaClient, Attivita } from '@prisma/client';
+import { PrismaClient, Attivita, LuogoAttivita } from '@prisma/client';
 import { calculateDurationMinutes } from '../utils/duration.js';
 import { durataAssenzaMinuti } from '../utils/assenze.js';
 
@@ -13,6 +13,7 @@ interface CreateAttivitaInput {
   cantiereId?: number | null;
   tipoAttivitaId?: number | null;
   assenzaId?: number | null;
+  luogo?: LuogoAttivita | null;
   note?: string;
   createdById: number;
 }
@@ -153,13 +154,17 @@ export class AttivitaService {
   async create(input: CreateAttivitaInput): Promise<Attivita> {
     // With an absence selected, cliente/cantiere and time slots are optional
     const assenzaId = input.assenzaId ?? null;
+    // "Nuova Attivita 2": il luogo prende il posto di cliente, cantiere e tipo
+    const luogo = assenzaId === null ? input.luogo ?? null : null;
 
     if (assenzaId === null) {
-      if (!input.clienteId) {
-        throw new Error('Il cliente è obbligatorio');
-      }
+      if (luogo === null) {
+        if (!input.clienteId) {
+          throw new Error('Il cliente è obbligatorio');
+        }
 
-      await this.assertCantiereWhenRequired(input.clienteId, input.cantiereId);
+        await this.assertCantiereWhenRequired(input.clienteId, input.cantiereId);
+      }
 
       const hasMattino = input.oraInizioMattino && input.oraFineMattino;
       const hasPomeriggio = input.oraInizioPomeriggio && input.oraFinePomeriggio;
@@ -187,10 +192,11 @@ export class AttivitaService {
         oraInizioPomeriggio: input.oraInizioPomeriggio || null,
         oraFinePomeriggio: input.oraFinePomeriggio || null,
         durataMinuti,
-        clienteId: input.clienteId ?? null,
-        cantiereId: input.cantiereId ?? null,
-        tipoAttivitaId: input.tipoAttivitaId ?? null,
+        clienteId: luogo ? null : input.clienteId ?? null,
+        cantiereId: luogo ? null : input.cantiereId ?? null,
+        tipoAttivitaId: luogo ? null : input.tipoAttivitaId ?? null,
         assenzaId: input.assenzaId ?? null,
+        luogo,
         note: input.note,
         createdById: input.createdById,
       },
@@ -227,13 +233,18 @@ export class AttivitaService {
 
     // With an absence selected, cliente/cantiere and time slots are optional
     const isAssenza = assenzaId != null;
+    const luogo = isAssenza
+      ? null
+      : input.luogo !== undefined ? input.luogo : attivita.luogo;
 
     if (!isAssenza) {
-      if (!clienteId) {
-        throw new Error('Il cliente è obbligatorio');
-      }
+      if (!luogo) {
+        if (!clienteId) {
+          throw new Error('Il cliente è obbligatorio');
+        }
 
-      await this.assertCantiereWhenRequired(clienteId, cantiereId);
+        await this.assertCantiereWhenRequired(clienteId, cantiereId);
+      }
 
       const hasMattino = oraInizioMattino && oraFineMattino;
       const hasPomeriggio = oraInizioPomeriggio && oraFinePomeriggio;
@@ -266,6 +277,9 @@ export class AttivitaService {
         ...(input.cantiereId !== undefined ? { cantiereId: input.cantiereId ?? null } : {}),
         ...(input.tipoAttivitaId !== undefined ? { tipoAttivitaId: input.tipoAttivitaId || null } : {}),
         ...(input.assenzaId !== undefined ? { assenzaId: input.assenzaId ?? null } : {}),
+        // Il luogo esclude cliente, cantiere e tipo, che vengono svuotati
+        luogo,
+        ...(luogo ? { clienteId: null, cantiereId: null, tipoAttivitaId: null } : {}),
         ...(input.note !== undefined ? { note: input.note || null } : {}),
       },
     });
