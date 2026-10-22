@@ -3724,6 +3724,7 @@ backend/
 │   │   ├── log.routes.ts      # Lettura del pannello Log (solo responsabile)
 │   │   ├── import.routes.ts   # Import massivo Excel + vecchi lavori
 │   │   ├── bollettini.routes.ts # CRUD bollettini + PDF
+│   │   ├── noleggi.routes.ts  # Verbali di noleggio, foto, PDF, invio (flag noleggi)
 │   │   ├── vociBollettino.routes.ts # Anagrafiche mezzi/materiali/trasporti
 │   │   ├── calendarioEventi.routes.ts # CRUD eventi + export Excel
 │   │   ├── dreamNoleggi.routes.ts # CRUD noleggi Dream + export PDF
@@ -3731,6 +3732,7 @@ backend/
 │   │   └── dreamClienti.routes.ts # Anagrafica clienti Dream (separata)
 │   ├── services/
 │   │   ├── allegatiBollettino.service.ts # Foto e PDF su R2, prefisso allegati/
+│   │   ├── allegatiNoleggio.service.ts   # Foto scontrino/danni su R2, prefisso noleggi/
 │   │   ├── attivita.service.ts  # CRUD attività
 │   │   ├── auth.service.ts      # Login e utente corrente
 │   │   ├── backup.service.ts    # Backup R2
@@ -3748,6 +3750,9 @@ backend/
 │   │   ├── import.service.ts    # Import massivo da Excel
 │   │   ├── importStorico.service.ts # Import vecchi lavori (foglio pre-GicaTask)
 │   │   ├── logOperazioni.service.ts # Catalogo operazioni, etichette, differenze
+│   │   ├── noleggi.service.ts   # Verbali di noleggio + salvataggio in anagrafica
+│   │   ├── noleggioPdf.service.ts   # Verbale A4 con firma e foto
+│   │   ├── noleggioEmail.service.ts # Invio del verbale all'e-mail di fatturazione
 │   │   ├── scheduler.service.ts # Cron: backup 2:00, allegati orfani e log > 1 anno 2:30
 │   │   ├── seed.service.ts      # Tipi assenza di default + pulizia generici
 │   │   ├── tipiAssenza.service.ts  # CRUD tipi assenza
@@ -3764,6 +3769,8 @@ backend/
 │   │   ├── festivita.ts       # Festivi Ticino e giorni non lavorativi
 │   │   ├── nomeUtente.ts      # Cognome Nome, col trim sul nome vuoto
 │   │   ├── bollettiniAccess.ts # Guardia flag bollettini e bollettini 2 (condivisa)
+│   │   ├── noleggiAccess.ts   # Guardia flag noleggi
+│   │   ├── luogoAttivita.ts   # Magazzino/Cantiere di Nuova Attività 2 nei report
 │   │   └── hrCampi.ts         # Catalogo voci HR (scheda, riepilogo, caselle)
 │   └── types/index.ts         # Tipi TypeScript
 ├── stato_progetto.md          # Questo file: storia di ENTRAMBI i repo
@@ -3801,6 +3808,7 @@ frontend/
 │   │   ├── CampoData.tsx          # Input data digitabile, Calendario/Dream/Report
 │   │   ├── DateTimeInput.tsx      # Input data/ora con picker e default
 │   │   ├── InactivityWarning.tsx  # Modal avviso timeout sessione
+│   │   ├── InvioNoleggio.tsx      # Stato della mail e modale di invio del verbale
 │   │   ├── MonthNavigator.tsx     # Navigazione mese + utility su "YYYY-MM"
 │   │   ├── MultiSelect.tsx        # Elenco a spunta, chiusura al click fuori
 │   │   ├── SignaturePad.tsx       # Firma su canvas (pointer events, no librerie)
@@ -3813,9 +3821,12 @@ frontend/
 │   │   ├── dipendente/
 │   │   │   ├── AttivitaListPage.tsx
 │   │   │   ├── AttivitaFormPage.tsx
+│   │   │   ├── Attivita2FormPage.tsx # Nuova Attività 2: magazzino o cantiere
 │   │   │   ├── AssenzaFormPage.tsx   # Form separato per le assenze
 │   │   │   ├── BollettiniListPage.tsx
-│   │   │   └── BollettinoFormPage.tsx
+│   │   │   ├── BollettinoFormPage.tsx
+│   │   │   ├── NoleggiListPage.tsx   # I Miei Noleggi
+│   │   │   └── NoleggioFormPage.tsx  # Verbale di noleggio con foto e firma
 │   │   └── responsabile/
 │   │       ├── ClientiPage.tsx
 │   │       ├── ClienteDetailPage.tsx
@@ -3832,6 +3843,7 @@ frontend/
 │   │       ├── TipiAttivitaPage.tsx  # Gestione tipi attività
 │   │       ├── TipiAssenzaPage.tsx   # Gestione tipi assenza
 │   │       ├── BollettiniArchivioPage.tsx # Bollettini attivi / fatturati + cumulativo
+│   │       ├── NoleggiArchivioPage.tsx    # Archivio dei verbali di noleggio
 │   │       ├── VociBollettinoPage.tsx     # Un file per mezzi/materiali/trasporti
 │   │       ├── CalendarioEventiPage.tsx   # Form, elenco, griglia ed export
 │   │       ├── DreamNoleggiPage.tsx       # Form, elenco, totali ed export PDF
