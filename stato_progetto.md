@@ -3682,6 +3682,10 @@ cliente ancora obbligatorio senza luogo, modifica, ritorno a un cliente e di nuo
 PDF del report controllato. Browser: form desktop e telefono, salvataggio, elenco, redirect dal
 form 1, dashboard e modifica del responsabile.
 
+Deploy: prima il backend `b4134b4` (su Railway il `db push` ha aggiunto colonna, enum e flag senza
+errori), poi il frontend `4c19d8f`. Dopo il deploy la spunta *Abilita Nuova Attività 2* va messa a
+mano su chi deve usare il modulo.
+
 ---
 
 ## Progetto Completato
