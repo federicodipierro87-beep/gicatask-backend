@@ -3702,6 +3702,8 @@ Segnalazione: da telefono non si riusciva a toccare *Noleggi* nel menu.
 Verifica: a 360 px *Noleggi* è dentro lo schermo e il tocco apre la pagina, in entrambe le aree,
 senza scorrimento orizzontale; a 1280 px la barra è identica a prima.
 
+Deploy: solo frontend, `4f772ad` (insieme alle date dei noleggi).
+
 ### Noleggi: data uscita e data ingresso (22 Ottobre 2026)
 
 Richiesta: all'inizio del form del noleggio i campi **Data uscita** e **Data ingresso**, entrambi
@@ -3727,6 +3729,9 @@ con il campo data.
 Verifica: API (creazione, ingresso mancante, date invertite, verbale precedente senza ingresso,
 PDF di entrambi); browser a 390 px: date in cima, giorni calcolati, avviso sulle date invertite,
 salvataggio, elenco e archivio.
+
+Deploy: prima il backend `1383eab` (su Railway il `db push` ha aggiunto la colonna senza errori), poi
+il frontend `4f772ad`.
 
 ---
 
