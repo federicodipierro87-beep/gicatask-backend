@@ -536,7 +536,10 @@ enum Carburante {
 model Noleggio {
   id                Int         @id @default(autoincrement())
   utenteId          Int         @map("utente_id")
+  // Data di uscita del veicolo
   data              DateTime    @db.Date
+  // Data di rientro; vuota solo nei verbali precedenti al 22/10/2026
+  dataIngresso      DateTime?   @map("data_ingresso") @db.Date
   cantiereId        Int?        @map("cantiere_id")
   cantiereNome      String?     @map("cantiere_nome")
   clienteId         Int?        @map("cliente_id")

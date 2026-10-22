@@ -23,6 +23,7 @@ const createBodySchema = {
   required: ['data', 'clienteNome', 'veicoloNome', 'giorni', 'firmaNome', 'firmaImg'],
   properties: {
     data: { type: 'string', maxLength: 30 },
+    dataIngresso: { type: 'string', maxLength: 30 },
     cantiereNome: { type: 'string', maxLength: 200 },
     salvaCantiere: { type: 'boolean' },
     clienteNome: { type: 'string', maxLength: 200 },
@@ -46,7 +47,9 @@ const createBodySchema = {
 } as const;
 
 interface CreateBody {
+  /** Data di uscita del veicolo. */
   data: string;
+  dataIngresso?: string;
   cantiereNome?: string;
   salvaCantiere?: boolean;
   clienteNome: string;
@@ -234,7 +237,13 @@ export async function noleggiRoutes(fastify: FastifyInstance) {
 
     const data = new Date(body.data);
     if (Number.isNaN(data.getTime())) {
-      return reply.status(400).send({ error: 'Data non valida' });
+      return reply.status(400).send({ error: 'Data di uscita non valida' });
+    }
+    // Non nello schema: un 400 dello schema farebbe perdere la firma, qui il
+    // messaggio arriva leggibile sopra il form
+    const dataIngresso = new Date(body.dataIngresso ?? '');
+    if (Number.isNaN(dataIngresso.getTime())) {
+      return reply.status(400).send({ error: 'Indica la data di ingresso' });
     }
 
     let noleggioId: number;
@@ -242,6 +251,7 @@ export async function noleggiRoutes(fastify: FastifyInstance) {
       const creato = await service.create({
         utenteId: user.id,
         data,
+        dataIngresso,
         cantiereNome: body.cantiereNome,
         salvaCantiere: body.salvaCantiere,
         clienteNome: body.clienteNome,

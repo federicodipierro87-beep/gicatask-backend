@@ -111,8 +111,9 @@ function renderNoleggio(doc: PDFKit.PDFDocument, n: NoleggioFull, foto: FileNole
   y += 38;
 
   const col = CONTENT_WIDTH / 3;
-  labelCoppia(doc, 'Data', formatDate(n.data), MARGIN, y, col - 10);
-  labelCoppia(doc, 'Cliente', n.clienteNome, MARGIN + col, y, col * 2 - 10);
+  labelCoppia(doc, 'Data uscita', formatDate(n.data), MARGIN, y, col - 10);
+  labelCoppia(doc, 'Data ingresso', n.dataIngresso ? formatDate(n.dataIngresso) : '—', MARGIN + col, y, col - 10);
+  labelCoppia(doc, 'Cliente', n.clienteNome, MARGIN + col * 2, y, col - 10);
   y += 38;
 
   labelCoppia(doc, 'Veicolo', n.veicoloNome, MARGIN, y, col - 10);

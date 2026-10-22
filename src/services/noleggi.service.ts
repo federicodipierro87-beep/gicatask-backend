@@ -11,7 +11,9 @@ export function giorniValidi(giorni: number): boolean {
 
 export interface CreateNoleggioInput {
   utenteId: number;
+  /** Data di uscita del veicolo. */
   data: Date;
+  dataIngresso: Date;
   cantiereNome?: string | null;
   salvaCantiere?: boolean;
   clienteNome: string;
@@ -43,6 +45,7 @@ const listSelect = {
   id: true,
   utenteId: true,
   data: true,
+  dataIngresso: true,
   cantiereId: true,
   cantiereNome: true,
   clienteId: true,
@@ -153,6 +156,9 @@ export class NoleggiService {
 
     if (!clienteNome) throw new Error('Indica il cliente');
     if (!veicoloNome) throw new Error('Indica il veicolo');
+    if (input.dataIngresso < input.data) {
+      throw new Error('La data di ingresso non può essere prima della data di uscita');
+    }
     if (!giorniValidi(input.giorni)) {
       throw new Error(`I giorni vanno da mezza giornata a ${GIORNI_MAX}`);
     }
@@ -245,6 +251,7 @@ export class NoleggiService {
         data: {
           utenteId: input.utenteId,
           data: input.data,
+          dataIngresso: input.dataIngresso,
           cantiereId,
           cantiereNome,
           clienteId: cliente?.id ?? null,

@@ -78,6 +78,10 @@ export class NoleggioEmailService {
 
       const pdfBuffer = await this.pdf.generate(noleggio, foto);
       const data = new Date(noleggio.data).toLocaleDateString('it-IT');
+      // "dal ... al ..." coi verbali che hanno la data di ingresso
+      const periodo = noleggio.dataIngresso
+        ? `dal ${data} al ${new Date(noleggio.dataIngresso).toLocaleDateString('it-IT')}`
+        : `del ${data}`;
       const durata = formatGiorni(noleggio.giorni).toLowerCase();
 
       const risultato = await inviaEmail({
@@ -88,7 +92,7 @@ export class NoleggioEmailService {
           `<p>in allegato il verbale del noleggio di <strong>${escapeHtml(noleggio.veicoloNome)}</strong> `,
           `per <strong>${escapeHtml(noleggio.clienteNome)}</strong>`,
           noleggio.cantiereNome ? ` (cantiere ${escapeHtml(noleggio.cantiereNome)})` : '',
-          `, del ${escapeHtml(data)}, durata ${escapeHtml(durata)}.</p>`,
+          `, ${escapeHtml(periodo)}, durata ${escapeHtml(durata)}.</p>`,
           foto.length > 0 ? `<p>In allegato anche ${foto.length} foto.</p>` : '',
           '<p>Cordiali saluti.</p>',
         ].join(''),
@@ -97,7 +101,7 @@ export class NoleggioEmailService {
           '',
           `in allegato il verbale del noleggio di ${noleggio.veicoloNome} per ${noleggio.clienteNome}` +
             (noleggio.cantiereNome ? ` (cantiere ${noleggio.cantiereNome})` : '') +
-            `, del ${data}, durata ${durata}.`,
+            `, ${periodo}, durata ${durata}.`,
           ...(foto.length > 0 ? [`In allegato anche ${foto.length} foto.`] : []),
           '',
           'Cordiali saluti.',

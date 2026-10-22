@@ -3686,6 +3686,48 @@ Deploy: prima il backend `b4134b4` (su Railway il `db push` ha aggiunto colonna,
 errori), poi il frontend `4c19d8f`. Dopo il deploy la spunta *Abilita Nuova Attività 2* va messa a
 mano su chi deve usare il modulo.
 
+### Menu su telefono: le voci vanno a capo (22 Ottobre 2026)
+
+Segnalazione: da telefono non si riusciva a toccare *Noleggi* nel menu.
+
+- **Area dipendente** (`DipendenteLayout`): la barra era una riga sola senza scorrimento; con le
+  voci aggiunte (Nuova Attività 2, Noleggi) le ultime finivano fuori dallo schermo e non si
+  potevano raggiungere.
+- **Area responsabile** (`ResponsabileLayout`): la barra scorreva di lato, ma su telefono lo
+  scorrimento non si vede e *Noleggi*, ultima voce, restava nascosta.
+- Ora, sotto i 640 px (`sm`), in entrambe le aree le voci vanno a capo su più righe come pulsanti
+  arrotondati, tutte visibili. Da 640 px in su la barra a schede è quella di prima, senza modifiche.
+  Le tendine *Bollettino* e *Impostazioni* del responsabile restano nella rotella su telefono.
+
+Verifica: a 360 px *Noleggi* è dentro lo schermo e il tocco apre la pagina, in entrambe le aree,
+senza scorrimento orizzontale; a 1280 px la barra è identica a prima.
+
+### Noleggi: data uscita e data ingresso (22 Ottobre 2026)
+
+Richiesta: all'inizio del form del noleggio i campi **Data uscita** e **Data ingresso**, entrambi
+con il campo data.
+
+- **Schema:** il campo `data` esistente resta e diventa la data di uscita; nuova colonna
+  `noleggi.data_ingresso` (`dataIngresso`), facoltativa nel database perché i verbali già salvati
+  non ce l'hanno. Solo un'aggiunta: `db push` senza `--accept-data-loss` provato su dati esistenti.
+- **Regole (service e rotta):** la data di ingresso è obbligatoria per i verbali nuovi e non può
+  essere prima dell'uscita, con messaggi leggibili ("Indica la data di ingresso", "La data di
+  ingresso non può essere prima della data di uscita"). Non è nello schema della rotta, così il 400
+  non fa perdere la firma.
+- **Form:** le due date sono il primo blocco, prima del cantiere; entrambe partono da oggi. Il
+  vecchio campo *Data* accanto ai giorni è stato tolto. *Scelta fatta:* cambiando le date i
+  **giorni di noleggio si propongono da soli**, contando sia l'uscita sia l'ingresso (dal 20 al 24
+  = 5 giorni; lo stesso giorno = 1, oppure la mezza giornata se era già scelta), e restano
+  modificabili. Con le date invertite compare l'avviso e il salvataggio è bloccato.
+- **Dove si vede:** PDF del verbale (*Data uscita*, *Data ingresso*, *Cliente* sulla stessa riga),
+  testo della mail ("dal ... al ..."), elenco *I Miei Noleggi* e archivio del responsabile (colonna
+  *Uscita – Ingresso*; una data sola se coincidono o per i verbali precedenti). Filtri per mese e
+  nome del file restano sulla data di uscita.
+
+Verifica: API (creazione, ingresso mancante, date invertite, verbale precedente senza ingresso,
+PDF di entrambi); browser a 390 px: date in cima, giorni calcolati, avviso sulle date invertite,
+salvataggio, elenco e archivio.
+
 ---
 
 ## Progetto Completato
