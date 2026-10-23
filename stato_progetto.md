@@ -3768,6 +3768,23 @@ cliente nuovo con l'avviso, cliente esistente riconosciuto, due righe operai A e
 Deploy: prima il backend `617b596` (su Railway il `db push` ha aggiunto la colonna senza errori), poi
 il frontend `1f9b393`.
 
+### Bollettini Nuovi: suggerimenti del cliente dalla prima lettera (23 Ottobre 2026)
+
+Richiesta: nel campo *Cliente* basta una lettera per vedere i clienti già in anagrafica.
+
+Il `datalist` della voce precedente non bastava: da telefono molti browser non lo mostrano o lo
+nascondono dietro una freccia. Nuovo componente `CampoSuggerimenti`: campo di testo libero con un
+menu sotto, che si apre dalla prima lettera e propone fino a 8 clienti attivi, prima quelli che
+**iniziano** col testo e poi quelli che lo **contengono** (maiuscole e spazi doppi a parte). Tocco
+o click sceglie la voce; da tastiera frecce, Invio (senza inviare il form) ed Esc. Il menu si chiude
+toccando fuori o quando il nome è già scritto per intero. Il resto non cambia: un nome che non è in
+anagrafica resta un cliente nuovo, aggiunto al salvataggio.
+
+Verifica: browser a 375 px con tocco: "r" propone *Rossi Costruzioni* e *Azienda Trasporti SpA*,
+il tocco compila il campo, chiude il menu e riconosce il cliente esistente.
+
+Deploy: frontend `4c72bc4`.
+
 ---
 
 ## Progetto Completato
