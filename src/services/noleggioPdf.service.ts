@@ -162,6 +162,9 @@ function renderNoleggio(doc: PDFKit.PDFDocument, n: NoleggioFull, foto: FileNole
     // Una firma illeggibile non deve impedire il PDF
   }
   doc.fontSize(9).fillColor('#000').text(n.firmaNome, x, y + 80, { width: larghezzaFirma, align: 'center' });
+  if (n.firmaEmail) {
+    doc.fontSize(8).fillColor('#666').text(n.firmaEmail, x, y + 92, { width: larghezzaFirma, align: 'center' });
+  }
   y += 110;
 
   if (n.pieno) y = renderFoto(doc, 'Scontrino del pieno', scontrini, y + 6);

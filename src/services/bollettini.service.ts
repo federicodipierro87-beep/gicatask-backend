@@ -77,6 +77,8 @@ export interface CreateBollettinoInput {
   emailDestinatario?: string | null;
   emailStato?: string | null;
   allegatiIds?: number[];
+  // Stato scelto da chi compila; poi lo cambia il responsabile dall'archivio
+  fatturato?: boolean;
   createdById: number;
 }
 
@@ -675,6 +677,8 @@ export class BollettiniService {
           firmaCommittenteImg: input.firmaCommittenteImg,
           emailDestinatario: input.emailDestinatario ?? null,
           emailStato: input.emailStato ?? null,
+          fatturato: Boolean(input.fatturato),
+          fatturatoAt: input.fatturato ? new Date() : null,
           createdById: input.createdById,
           righe: { create: righe },
           cantieri: {

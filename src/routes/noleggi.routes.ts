@@ -38,7 +38,10 @@ const createBodySchema = {
     emailFatturazione: { type: 'string', maxLength: 254 },
     aggiornaEmailCliente: { type: 'boolean' },
     firmaNome: { type: 'string', maxLength: 200 },
+    // Senza `format`: un indirizzo scritto male non deve far perdere la firma
+    firmaEmail: { type: 'string', maxLength: 254 },
     firmaImg: { type: 'string', minLength: 1, maxLength: 400000 },
+    fatturato: { type: 'boolean' },
     scontrinoIds: { type: 'array', maxItems: 10, items: { type: 'number' } },
     danniIds: { type: 'array', maxItems: 10, items: { type: 'number' } },
     // "Salva e invia": manda subito il verbale all'indirizzo di fatturazione
@@ -64,7 +67,9 @@ interface CreateBody {
   emailFatturazione?: string;
   aggiornaEmailCliente?: boolean;
   firmaNome: string;
+  firmaEmail?: string;
   firmaImg: string;
+  fatturato?: boolean;
   scontrinoIds?: number[];
   danniIds?: number[];
   invia?: boolean;
@@ -266,7 +271,9 @@ export async function noleggiRoutes(fastify: FastifyInstance) {
         emailFatturazione: destinatario || null,
         aggiornaEmailCliente: body.aggiornaEmailCliente,
         firmaNome: body.firmaNome,
+        firmaEmail: body.firmaEmail ?? null,
         firmaImg: body.firmaImg,
+        fatturato: body.fatturato ?? false,
         scontrinoIds: body.scontrinoIds,
         danniIds: body.danniIds,
         // IN_CORSO scritto subito: se il processo muore durante l'invio resta
@@ -356,6 +363,28 @@ export async function noleggiRoutes(fastify: FastifyInstance) {
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', `attachment; filename="${nomeFileNoleggio(noleggio)}"`)
       .send(pdfBuffer);
+  });
+
+  // Flag "Fatturato" dall'archivio (solo responsabile). Il verbale resta
+  // firmato e immutato
+  fastify.patch<{ Params: { id: string }; Body: { fatturato: boolean } }>('/:id/fatturato', {
+    preHandler: [fastify.requireRole('RESPONSABILE')],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['fatturato'],
+        properties: { fatturato: { type: 'boolean' } },
+      },
+    },
+  }, async (request, reply) => {
+    if (!(await assertAccessoNoleggi(fastify, request, reply))) return reply;
+
+    const trovato = await service.setFatturato(parseInt(request.params.id, 10), request.body.fatturato);
+    if (!trovato) {
+      return reply.status(404).send({ error: 'Noleggio non trovato' });
+    }
+
+    return reply.send({ success: true });
   });
 
   fastify.delete<{ Params: { id: string } }>('/:id', {

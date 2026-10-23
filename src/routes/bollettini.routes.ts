@@ -121,6 +121,8 @@ const createBodySchema = {
     riferimentoCantiere: { type: 'string', maxLength: 200 },
     mezziTesto: { type: 'string', maxLength: 5000 },
     trasportiTesto: { type: 'string', maxLength: 5000 },
+    // Bollettini Nuovi: "Aperto" o "Fatturato" scelto in fondo al form
+    fatturato: { type: 'boolean' },
     // Durata senza `enum`: la verifica il service, con un 400 leggibile
     noleggi: {
       type: 'array',
@@ -164,6 +166,7 @@ interface CreateBody {
   riferimentoCantiere?: string;
   mezziTesto?: string;
   trasportiTesto?: string;
+  fatturato?: boolean;
   noleggi?: NoleggioInput[];
 }
 
@@ -446,6 +449,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
         mezziTesto: body.mezziTesto ?? null,
         trasportiTesto: body.trasportiTesto ?? null,
         noleggi: body.noleggi ?? [],
+        fatturato: body.fatturato ?? false,
         createdById: user.id,
       });
       bollettinoId = creato.id;

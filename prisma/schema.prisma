@@ -553,7 +553,12 @@ model Noleggio {
   danni             Boolean     @default(false)
   danniNote         String?     @map("danni_note") @db.Text
   emailFatturazione String?     @map("email_fatturazione")
+  // Stato scelto in fondo al form, poi modificabile dall'archivio
+  fatturato         Boolean     @default(false)
+  fatturatoAt       DateTime?   @map("fatturato_at")
   firmaNome         String      @map("firma_nome")
+  // E-mail di chi ha effettuato il noleggio, facoltativa
+  firmaEmail        String?     @map("firma_email")
   firmaImg          String      @map("firma_img") @db.Text
   // Stesso schema dei bollettini: IN_CORSO, INVIATA, ERRORE, NON_VALIDA,
   // NON_CONFIGURATA. NULL = mai inviato

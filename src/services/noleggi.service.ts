@@ -28,7 +28,9 @@ export interface CreateNoleggioInput {
   emailFatturazione?: string | null;
   aggiornaEmailCliente?: boolean;
   firmaNome: string;
+  firmaEmail?: string | null;
   firmaImg: string;
+  fatturato?: boolean;
   scontrinoIds?: number[];
   danniIds?: number[];
   emailStato?: string | null;
@@ -58,7 +60,10 @@ const listSelect = {
   danni: true,
   danniNote: true,
   emailFatturazione: true,
+  fatturato: true,
+  fatturatoAt: true,
   firmaNome: true,
+  firmaEmail: true,
   emailStato: true,
   emailInviataAt: true,
   emailErrore: true,
@@ -265,7 +270,10 @@ export class NoleggiService {
           danniNote: input.danni ? input.danniNote?.trim() || null : null,
           emailFatturazione: email ? email.slice(0, 254) : null,
           firmaNome: input.firmaNome.trim().slice(0, 200),
+          firmaEmail: input.firmaEmail?.trim().slice(0, 254) || null,
           firmaImg: input.firmaImg,
+          fatturato: Boolean(input.fatturato),
+          fatturatoAt: input.fatturato ? new Date() : null,
           emailStato: input.emailStato ?? null,
         },
         select: { id: true },
@@ -282,6 +290,15 @@ export class NoleggiService {
 
       return noleggio;
     });
+  }
+
+  /** Restituisce false se il verbale non esiste. */
+  async setFatturato(id: number, fatturato: boolean): Promise<boolean> {
+    const { count } = await this.prisma.noleggio.updateMany({
+      where: { id },
+      data: { fatturato, fatturatoAt: fatturato ? new Date() : null },
+    });
+    return count > 0;
   }
 
   async delete(id: number): Promise<void> {
