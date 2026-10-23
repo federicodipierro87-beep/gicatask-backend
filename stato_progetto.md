@@ -1009,7 +1009,7 @@ accontenti del solo `requireRole('RESPONSABILE')`.
 | POST | `/api/voci-bollettino/:id/activate` | RESPONSABILE + flag |
 | GET | `/api/bollettini` | autenticato + flag (il dipendente vede solo i propri) |
 | GET | `/api/bollettini/:id` | autenticato + flag |
-| POST | `/api/bollettini` | autenticato + flag |
+| POST | `/api/bollettini` | autenticato + flag (Bollettini Nuovi: `clienteNome`, `categoria` degli operai e `fatturato` dal 23/10/2026) |
 | DELETE | `/api/bollettini/:id` | RESPONSABILE + flag |
 | GET | `/api/bollettini/:id/pdf` | autenticato + flag |
 | GET | `/api/bollettini/cantiere/:id/pdf` | RESPONSABILE + flag (cumulativo; `?modello=1\|2` dal 21/10/2026) |
@@ -1030,7 +1030,8 @@ flag `abilitatoNoleggi`), con le sue rotte `/api/noleggi`:
 |---|---|---|
 | GET | `/api/noleggi/anagrafiche` | autenticato + flag noleggi |
 | GET | `/api/noleggi` | autenticato + flag (il dipendente vede solo i propri) |
-| POST | `/api/noleggi` | autenticato + flag (`invia: true` = "Salva e invia") |
+| POST | `/api/noleggi` | autenticato + flag (`invia: true` = "Salva e invia"; `fatturato` e `firmaEmail` dal 23/10/2026) |
+| PATCH | `/api/noleggi/:id/fatturato` | RESPONSABILE + flag (dal 23/10/2026) |
 | POST | `/api/noleggi/:id/invia-mail` | chi l'ha compilato o il responsabile, + flag |
 | GET | `/api/noleggi/:id/pdf` | chi l'ha compilato o il responsabile, + flag |
 | DELETE | `/api/noleggi/:id` | RESPONSABILE + flag |
@@ -3938,11 +3939,14 @@ frontend/
 │   │   ├── Pagination.tsx     # Paginazione lato client + hook usePagination
 │   │   ├── CalendarioEventiGrid.tsx # Griglia annuale scorrevole
 │   │   ├── CampoData.tsx          # Input data digitabile, Calendario/Dream/Report
+│   │   ├── CampoSuggerimenti.tsx  # Testo libero con suggerimenti dalla prima lettera
 │   │   ├── DateTimeInput.tsx      # Input data/ora con picker e default
 │   │   ├── InactivityWarning.tsx  # Modal avviso timeout sessione
 │   │   ├── InvioNoleggio.tsx      # Stato della mail e modale di invio del verbale
 │   │   ├── MonthNavigator.tsx     # Navigazione mese + utility su "YYYY-MM"
 │   │   ├── MultiSelect.tsx        # Elenco a spunta, chiusura al click fuori
+│   │   ├── SceltaOpzioni.tsx      # Pulsanti affiancati Sì/No, Aperto/Fatturato
+│   │   ├── SquadreSelector.tsx    # Righe operai con orari (e categoria A/B)
 │   │   ├── SignaturePad.tsx       # Firma su canvas (pointer events, no librerie)
 │   │   ├── VociSelector.tsx       # Selezione voci con quantità
 │   │   └── Modal.tsx              # Prop maxWidth per i contenuti tabellari
