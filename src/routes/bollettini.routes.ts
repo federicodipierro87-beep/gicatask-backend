@@ -63,6 +63,8 @@ const createBodySchema = {
   ],
   properties: {
     clienteId: { type: 'number' },
+    // Bollettini Nuovi: cliente scritto a mano, aggiunto all'anagrafica se manca
+    clienteNome: { type: 'string', maxLength: 200 },
     cantiereId: { type: 'number' },
     cantieriIds: { type: 'array', maxItems: 50, items: { type: 'number' } },
     collaboratoriIds: { type: 'array', maxItems: 200, items: { type: 'number' } },
@@ -75,6 +77,8 @@ const createBodySchema = {
         required: ['numeroOperai'],
         properties: {
           numeroOperai: { type: 'integer', minimum: 1, maximum: 999 },
+          // A o B: lo verifica il service, con un 400 leggibile
+          categoria: { type: ['string', 'null'], maxLength: 1 },
           ...fasceProperties,
         },
       },
@@ -135,6 +139,7 @@ const createBodySchema = {
 
 interface CreateBody {
   clienteId?: number;
+  clienteNome?: string;
   cantiereId?: number;
   cantieriIds?: number[];
   collaboratoriIds?: number[];
@@ -411,6 +416,7 @@ export async function bollettiniRoutes(fastify: FastifyInstance) {
       const creato = await service.create({
         utenteId: user.id,
         clienteId: body.clienteId ?? null,
+        clienteNome: body.clienteNome ?? null,
         cantiereId: body.cantiereId ?? null,
         cantieriIds: body.cantieriIds ?? [],
         collaboratoriIds: body.collaboratoriIds,

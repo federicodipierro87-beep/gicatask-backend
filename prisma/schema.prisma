@@ -620,6 +620,9 @@ model BollettinoSquadra {
   id                  Int     @id @default(autoincrement())
   bollettinoId        Int     @map("bollettino_id")
   numeroOperai        Int     @map("numero_operai")
+  // Categoria degli operai della riga, "A" o "B". Solo nei Bollettini Nuovi:
+  // NULL nei classici e nelle righe salvate prima del 23/10/2026
+  categoria           String?
   oraInizioMattino    String? @map("ora_inizio_mattino")
   oraFineMattino      String? @map("ora_fine_mattino")
   oraInizioPomeriggio String? @map("ora_inizio_pomeriggio")

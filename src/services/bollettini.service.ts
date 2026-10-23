@@ -19,7 +19,11 @@ export interface FasceOrarie {
 
 export interface SquadraInput extends FasceOrarie {
   numeroOperai: number;
+  // "A" o "B", solo nei Bollettini Nuovi
+  categoria?: string | null;
 }
+
+const CATEGORIE_OPERAI = ['A', 'B'];
 
 export interface CollaboratoreInput {
   utenteId: number;
@@ -42,6 +46,9 @@ export interface CreateBollettinoInput {
   trasportiTesto?: string | null;
   noleggi?: NoleggioInput[];
   clienteId?: number | null;
+  // Cliente scritto a mano, al posto di `clienteId`: se non c'e' in anagrafica
+  // viene aggiunto insieme al bollettino
+  clienteNome?: string | null;
   cantiereId?: number | null;
   // Selezione multipla; `cantiereId` resta per i client che mandano il singolo
   cantieriIds?: number[];
@@ -72,6 +79,12 @@ export interface CreateBollettinoInput {
   allegatiIds?: number[];
   createdById: number;
 }
+
+function pulisciNome(valore: string | null | undefined, max = 200): string {
+  return (valore ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+const insensibile = (nome: string) => ({ equals: nome, mode: 'insensitive' as const });
 
 // Chiave arbitraria dell'advisory lock che serializza la numerazione: due
 // salvataggi contemporanei leggerebbero lo stesso massimo
@@ -203,6 +216,7 @@ const detailSelect = {
   squadre: {
     select: {
       numeroOperai: true,
+      categoria: true,
       oraInizioMattino: true,
       oraFineMattino: true,
       oraInizioPomeriggio: true,
@@ -387,10 +401,16 @@ export class BollettiniService {
    * tutti allo stesso cliente.
    */
   private async risolviDestinazione(input: CreateBollettinoInput): Promise<{
-    clienteId: number;
+    // NULL: cliente scritto a mano e assente dall'anagrafica, lo crea la
+    // transazione del bollettino
+    clienteId: number | null;
     clienteNome: string;
     cantieri: { id: number; nome: string }[];
+    // Cliente scritto a mano che corrisponde a uno disattivato
+    riattivaCliente?: boolean;
   }> {
+    const nomeScritto = pulisciNome(input.clienteNome);
+
     const cantieriIds = [
       ...new Set([
         ...(input.cantieriIds ?? []),
@@ -419,6 +439,14 @@ export class BollettiniService {
         throw new Error('Il cantiere non appartiene al cliente selezionato');
       }
 
+      if (
+        !input.clienteId &&
+        nomeScritto &&
+        nomeScritto.toLocaleLowerCase('it') !== primo.cliente.nome.toLocaleLowerCase('it')
+      ) {
+        throw new Error('Il cantiere non appartiene al cliente indicato');
+      }
+
       // Nell'ordine scelto dall'operatore, non in quello del database
       const byId = new Map(trovati.map((c) => [c.id, c]));
 
@@ -429,14 +457,42 @@ export class BollettiniService {
       };
     }
 
-    if (!input.clienteId) {
+    let cliente: { id: number; nome: string } | null;
+
+    if (input.clienteId) {
+      cliente = await this.prisma.cliente.findUnique({
+        where: { id: input.clienteId },
+        select: { id: true, nome: true },
+      });
+    } else if (nomeScritto) {
+      // Cliente scritto a mano: si collega quello in anagrafica con lo stesso
+      // nome, maiuscole a parte, altrimenti si crea con il bollettino
+      const esistente = await this.prisma.cliente.findFirst({
+        where: { nome: insensibile(nomeScritto) },
+        select: { id: true, nome: true, attivo: true },
+        // Prima gli attivi: con un omonimo disattivato si collega quello in uso
+        orderBy: [{ attivo: 'desc' }, { id: 'asc' }],
+      });
+
+      if (!esistente) {
+        return { clienteId: null, clienteNome: nomeScritto, cantieri: [] };
+      }
+
+      // Un cliente disattivato non compare nei suggerimenti, quindi il form
+      // non ha proposto i suoi cantieri: niente obbligo del cantiere
+      if (!esistente.attivo) {
+        return {
+          clienteId: esistente.id,
+          clienteNome: esistente.nome,
+          cantieri: [],
+          riattivaCliente: true,
+        };
+      }
+
+      cliente = esistente;
+    } else {
       throw new Error('Cliente obbligatorio');
     }
-
-    const cliente = await this.prisma.cliente.findUnique({
-      where: { id: input.clienteId },
-      select: { id: true, nome: true },
-    });
 
     if (!cliente) {
       throw new Error('Cliente non trovato');
@@ -504,9 +560,14 @@ export class BollettiniService {
     const squadre = input.squadre
       ? input.squadre.map((s, i) => {
           const { fasce, minuti } = risolviFasce(s, `Operai, riga ${i + 1}`);
+          const categoria = s.categoria?.trim().toUpperCase() || null;
+          if (categoria && !CATEGORIE_OPERAI.includes(categoria)) {
+            throw new Error(`Operai, riga ${i + 1}: la categoria deve essere A o B`);
+          }
           return {
             ...fasce,
             numeroOperai: s.numeroOperai,
+            categoria,
             ore: Math.round(((s.numeroOperai * minuti) / 60) * 100) / 100,
           };
         })
@@ -558,6 +619,26 @@ export class BollettiniService {
       // ha numero: prende il suo prima del nuovo
       await assegnaNumeriMancanti(tx);
 
+      // Cliente scritto a mano: entra in anagrafica solo se il bollettino si
+      // salva. Si ricerca qui dentro perche' un altro salvataggio potrebbe
+      // averlo appena creato
+      let clienteId = destinazione.clienteId;
+      if (clienteId === null) {
+        const creato =
+          (await tx.cliente.findFirst({
+            where: { nome: insensibile(destinazione.clienteNome) },
+            select: { id: true },
+            orderBy: [{ attivo: 'desc' }, { id: 'asc' }],
+          })) ??
+          (await tx.cliente.create({
+            data: { nome: destinazione.clienteNome },
+            select: { id: true },
+          }));
+        clienteId = creato.id;
+      } else if (destinazione.riattivaCliente) {
+        await tx.cliente.update({ where: { id: clienteId }, data: { attivo: true } });
+      }
+
       const anno = annoCorrente();
       const { _max } = await tx.bollettino.aggregate({
         where: { anno },
@@ -569,7 +650,7 @@ export class BollettiniService {
           anno,
           numero: (_max.numero ?? 0) + 1,
           utenteId: input.utenteId,
-          clienteId: destinazione.clienteId,
+          clienteId,
           cantiereId: destinazione.cantieri[0]?.id ?? null,
           dataRiferimento: input.dataRiferimento,
           attivita: input.attivita.trim(),

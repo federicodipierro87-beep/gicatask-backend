@@ -25,6 +25,8 @@ export interface BollettinoPdf {
   materialiTesto: string | null;
   squadre: {
     numeroOperai: number;
+    // "A" o "B" nei Bollettini Nuovi, NULL altrove
+    categoria?: string | null;
     oraInizioMattino: string | null;
     oraFineMattino: string | null;
     oraInizioPomeriggio: string | null;
@@ -387,6 +389,7 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
         // Gli orari sono facoltativi: senza, resta il solo numero di operai
         descrizione: [
           `${s.numeroOperai} ${s.numeroOperai === 1 ? 'operaio' : 'operai'}`,
+          s.categoria ? `Categoria ${s.categoria}` : '',
           fasceTesto(s),
         ].filter(Boolean).join(' · '),
         quantita: s.ore,
@@ -417,7 +420,9 @@ function renderBollettino(doc: PDFKit.PDFDocument, b: BollettinoPdf): void {
     y = renderSezioneVoci(doc, sezione.titolo, sezione.labelQuantita, righe, y) + 6;
   }
 
-  if (modello2) {
+  // Il form non chiede piu' i noleggi (23/10/2026): la sezione resta per i
+  // bollettini che li hanno
+  if (modello2 && (b.noleggi ?? []).length > 0) {
     y = renderSezioneVoci(
       doc,
       'Noleggi',
