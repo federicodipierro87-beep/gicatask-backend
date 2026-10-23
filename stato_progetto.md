@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 22 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 23 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -3732,6 +3732,41 @@ salvataggio, elenco e archivio.
 
 Deploy: prima il backend `1383eab` (su Railway il `db push` ha aggiunto la colonna senza errori), poi
 il frontend `4f772ad`.
+
+### Bollettini Nuovi: cliente scritto o scelto, categoria degli operai, niente noleggi (23 Ottobre 2026)
+
+Richiesta, solo per il form dei **Bollettini Nuovi** (modello 2; il bollettino classico non cambia):
+il cliente diventa una casella di testo che propone quelli esistenti e, se manca, lo aggiunge; ogni
+riga degli operai ha la **categoria A o B**; la sezione **Noleggi** sparisce dal form.
+
+- **Cliente:** campo di testo con i suggerimenti dei clienti attivi (`datalist`, come nel verbale dei
+  Noleggi). Se il nome corrisponde a un cliente (maiuscole e spazi doppi a parte) il form lo collega
+  e propone i suoi cantieri come prima; altrimenti sotto compare "Nuovo cliente: verrà aggiunto
+  all'anagrafica quando salvi il bollettino". *Scelta fatta:* il cliente nuovo si aggiunge **sempre**,
+  senza la spunta "salva in anagrafica" dei Noleggi, perché un bollettino ha bisogno del cliente in
+  anagrafica per i cumulativi.
+  Lato server la POST accetta `clienteNome` al posto di `clienteId`: si collega il cliente con lo
+  stesso nome (prima gli attivi); se è disattivato si **riattiva**, senza obbligo di cantiere perché
+  il form non ne ha proposti; se non c'è si **crea nella stessa transazione** del bollettino, quindi
+  un bollettino rifiutato non lascia clienti orfani. Il cantiere, se arriva, deve essere del cliente
+  scritto. `clienteId` resta accettato (bollettino classico e client precedenti).
+- **Operai:** nuova colonna `bollettini_squadre.categoria` (`"A"`/`"B"`, NULL nei classici e nelle
+  righe già salvate; solo un'aggiunta, `db push` senza `--accept-data-loss` provato su dati
+  esistenti). `SquadreSelector` ha la prop `conCategoria`: accanto a *N. operai* la tendina
+  *Categoria* (Scegli… / A / B), obbligatoria nei Bollettini Nuovi ("Scegli la categoria A o B.").
+  Il server accetta la categoria assente e rifiuta un valore diverso da A o B con un 400 leggibile.
+  Nel PDF la riga diventa "1 operaio · Categoria A · 07:00–12:00".
+- **Noleggi:** tolti dal form; il componente `NoleggiSelector` è stato eliminato e il modello 2 non
+  scarica più l'elenco veicoli. Backend e tabella `bollettini_noleggi` restano, così i bollettini già
+  salvati con i noleggi li stampano ancora; il PDF mostra la tabella *Noleggi* solo se ce ne sono.
+
+Verifica su Postgres 18 locale: cliente nuovo (creato una volta sola anche con maiuscole e spazi
+diversi), cliente disattivato (riattivato), cliente esistente, `clienteId` classico, categoria "C"
+(400), cliente mancante (400); PDF con le categorie e senza la tabella Noleggi. Browser a 375 px:
+cliente nuovo con l'avviso, cliente esistente riconosciuto, due righe operai A e B su una linea.
+
+Deploy: prima il backend `617b596` (su Railway il `db push` ha aggiunto la colonna senza errori), poi
+il frontend `1f9b393`.
 
 ---
 
