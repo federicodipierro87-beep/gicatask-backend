@@ -3785,6 +3785,39 @@ il tocco compila il campo, chiude il menu e riconosce il cliente esistente.
 
 Deploy: frontend `4c72bc4`.
 
+### Noleggi e Bollettini Nuovi: stato Aperto/Fatturato; Noleggi: pieno e danni Sì/No, e-mail di chi noleggia (23 Ottobre 2026)
+
+Richiesta: in fondo ai form dei **Bollettini Nuovi** e dei **Noleggi** la scelta *Aperto* o
+*Fatturato*; nel noleggio *Ha fatto il pieno* e *Ha riportato danni* diventano una scelta Sì/No (con
+Sì si apre la parte che c'era già, con No niente); sotto il nome di chi ha effettuato il noleggio il
+campo **E-mail di chi ha effettuato il noleggio**.
+
+- **Componente `SceltaOpzioni`:** pulsanti affiancati (radio veri, nascosti) per Sì/No e
+  Aperto/Fatturato; costanti `OPZIONI_SI_NO` e `OPZIONI_STATO`.
+- **Stato Aperto/Fatturato:** in fondo, dopo le firme e prima dei pulsanti; parte da *Aperto*.
+  - Bollettini Nuovi: la POST accetta `fatturato` e imposta anche `fatturatoAt`. Il bollettino
+    fatturato finisce quindi direttamente nel tab *Fatturati* dell'archivio, dove il responsabile
+    può cambiarlo come prima. Il bollettino classico non ha la scelta.
+  - Noleggi: nuove colonne `noleggi.fatturato` (default false) e `noleggi.fatturato_at`. Nuova rotta
+    `PATCH /api/noleggi/:id/fatturato` (solo responsabile, nel catalogo del Log come "Cambio stato
+    fatturato"). Nell'archivio dei noleggi nuova colonna **Fatturato** con la casella, come nei
+    bollettini (il tooltip dice la data). Lo stato non è stampato nel PDF, come per i bollettini.
+- **Pieno e danni Sì/No:** *Scelta fatta:* nessuna delle due risposte è preselezionata e "Salva" resta
+  spento finché non si risponde a entrambe, così il verbale firmato riporta una risposta data davvero.
+  Con Sì compaiono carburante e scontrino / descrizione e foto, come prima. Server invariato.
+- **E-mail di chi ha effettuato il noleggio:** facoltativa, nuova colonna `noleggi.firma_email`; con
+  un indirizzo malformato compare un avviso ma il salvataggio non si blocca. Stampata nel PDF sotto il
+  nome, sotto la firma. Non riceve la mail del verbale, che continua ad andare all'indirizzo di
+  fatturazione.
+
+Schema: solo aggiunte, `db push` senza `--accept-data-loss` provato su un noleggio esistente.
+Verifica: browser a 390 px. Noleggio con pieno Sì (Diesel), danni No, e-mail e stato Fatturato:
+Salva spento finché mancano le due risposte. Bollettino nuovo con stato Fatturato. Nel database:
+`fatturato` e `fatturato_at` valorizzati, e-mail salvata. PATCH da archivio, e-mail nel PDF.
+
+Deploy: prima il backend `026d408` (su Railway il `db push` ha aggiunto le colonne senza errori), poi
+il frontend `93cdd6e`.
+
 ---
 
 ## Progetto Completato
