@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 23 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 24 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -3794,7 +3794,7 @@ Sì si apre la parte che c'era già, con No niente); sotto il nome di chi ha eff
 campo **E-mail di chi ha effettuato il noleggio**.
 
 - **Componente `SceltaOpzioni`:** pulsanti affiancati (radio veri, nascosti) per Sì/No e
-  Aperto/Fatturato; costanti `OPZIONI_SI_NO` e `OPZIONI_STATO`.
+  Aperto/Fatturato; costanti `OPZIONI_NO_SI` (nome dal 24/10, vedi sotto) e `OPZIONI_STATO`.
 - **Stato Aperto/Fatturato:** in fondo, dopo le firme e prima dei pulsanti; parte da *Aperto*.
   - Bollettini Nuovi: la POST accetta `fatturato` e imposta anche `fatturatoAt`. Il bollettino
     fatturato finisce quindi direttamente nel tab *Fatturati* dell'archivio, dove il responsabile
@@ -3818,6 +3818,17 @@ Salva spento finché mancano le due risposte. Bollettino nuovo con stato Fattura
 
 Deploy: prima il backend `026d408` (su Railway il `db push` ha aggiunto le colonne senza errori), poi
 il frontend `93cdd6e`.
+
+### Noleggi: No prima di Sì in pieno e danni (24 Ottobre 2026)
+
+Richiesta: invertire Sì e No nelle scelte *Ha fatto il pieno?* e *Ha riportato danni?*; con Sì si
+apre la parte da compilare, con No resta tutto com'è.
+
+Il comportamento era già quello; cambia l'ordine dei pulsanti: ora **No** a sinistra e **Sì** a
+destra. La costante è diventata `OPZIONI_NO_SI` (usata solo lì). Nessuna risposta preselezionata,
+come prima. Lo stato Aperto/Fatturato non cambia.
+
+Deploy: frontend `ce6f242`.
 
 ---
 
