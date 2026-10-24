@@ -1034,7 +1034,7 @@ flag `abilitatoNoleggi`), con le sue rotte `/api/noleggi`:
 |---|---|---|
 | GET | `/api/noleggi/anagrafiche` | autenticato + flag noleggi |
 | GET | `/api/noleggi` | autenticato + flag (il dipendente vede solo i propri) |
-| POST | `/api/noleggi` | autenticato + flag (`invia: true` = "Salva e invia"; `fatturato` e `firmaEmail` dal 23/10/2026) |
+| POST | `/api/noleggi` | autenticato + flag (`invia: true` = "Salva e invia"; `fatturato` e `firmaEmail` dal 23/10/2026; `danniPrecedenti`, `danniPrecedentiNote`, `danniPrecedentiIds` dal 24/10/2026) |
 | PATCH | `/api/noleggi/:id/fatturato` | RESPONSABILE + flag (dal 23/10/2026) |
 | POST | `/api/noleggi/:id/invia-mail` | chi l'ha compilato o il responsabile, + flag |
 | GET | `/api/noleggi/:id/pdf` | chi l'ha compilato o il responsabile, + flag |
@@ -3896,6 +3896,36 @@ luogo con e senza flag; responsabile senza flag che assegna e crea per sé. Tutt
 atteso.
 
 Deploy: backend `ea0d34d`.
+
+### Noleggi: danni già presenti prima dell'uscita (24 Ottobre 2026)
+
+Richiesta: nei noleggi, sopra la domanda sui danni, chiedere se il mezzo aveva già un danno prima
+di uscire.
+
+- **Form:** nuovo blocco **"Il mezzo aveva già danni prima di uscire?"** (No / Sì, nello stesso
+  ordine delle altre) sopra *Ha riportato danni?*. Come le altre due domande è obbligatoria: Salva
+  resta spento finché non si risponde. Con Sì compaiono descrizione facoltativa e foto (fino a 10),
+  come per i danni.
+- **Backend:** colonne `noleggi.danni_precedenti` (`Boolean?`) e `danni_precedenti_note`. *Scelta
+  fatta:* la prima è **nullable**: nei verbali precedenti la domanda non c'era, e nel PDF compare
+  "—" invece di un "No" mai detto. Foto con tipo `DANNI_PRECEDENTI` (la colonna `tipo` è testo,
+  nessuna migrazione). La POST accetta `danniPrecedenti`, `danniPrecedentiNote`,
+  `danniPrecedentiIds`; un frontend vecchio che non li manda lascia NULL.
+- **PDF:** la riga diventa *Pieno · Danni prima dell'uscita · Danni riportati*; *Fatturazione* passa
+  sulla riga sotto, a tutta larghezza. Due riquadri di descrizione (prima dell'uscita, riportati) e
+  due gruppi di foto con gli stessi titoli. La mail allega il PDF e le foto come prima.
+- **Archivio responsabile:** nella colonna *Danni* sotto Sì/No compare "Già all'uscita" (il tooltip
+  riporta le due descrizioni); fra le foto il gruppo "Danni prima". **Elenco dipendente:** "· danni
+  già all'uscita".
+
+Schema: solo aggiunte, `db push` senza `--accept-data-loss` provato su verbali esistenti (rimasti
+NULL). Verifica: browser a 390 px, verbale con danni prima dell'uscita e danni riportati, Salva
+spento senza la nuova risposta; database, archivio e PDF del nuovo verbale e di uno vecchio ("—").
+Le foto non sono provate in locale (servono le credenziali R2): seguono lo stesso percorso di quelle
+dei danni.
+
+Deploy: prima il backend `9ac35dc` (su Railway il `db push` ha aggiunto le colonne senza errori),
+poi il frontend `87edcd9`.
 
 ---
 
