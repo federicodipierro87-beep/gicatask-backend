@@ -64,6 +64,7 @@ export async function utentiRoutes(fastify: FastifyInstance) {
       abilitatoBollettini?: boolean;
       abilitatoBollettini2?: boolean;
       abilitatoNoleggi?: boolean;
+      abilitatoAttivita?: boolean;
       abilitatoAttivita2?: boolean;
       percentualeLavoro?: number;
     };
@@ -80,6 +81,7 @@ export async function utentiRoutes(fastify: FastifyInstance) {
           abilitatoBollettini: { type: 'boolean' },
           abilitatoBollettini2: { type: 'boolean' },
           abilitatoNoleggi: { type: 'boolean' },
+          abilitatoAttivita: { type: 'boolean' },
           abilitatoAttivita2: { type: 'boolean' },
           percentualeLavoro: { type: 'integer', minimum: 0, maximum: 100 },
         },

@@ -20,6 +20,9 @@ model Utente {
   abilitatoBollettini2 Boolean  @default(false) @map("abilitato_bollettini_2")
   // Sezione "Noleggi" dell'area dipendente e relativo archivio del responsabile
   abilitatoNoleggi     Boolean  @default(false) @map("abilitato_noleggi")
+  // Modulo "Nuova Attivita" (il form col cliente): acceso per default, perche'
+  // e' nato dopo che tutti lo usavano gia'
+  abilitatoAttivita    Boolean  @default(true) @map("abilitato_attivita")
   // Modulo "Nuova Attivita 2" (luogo al posto del cliente)
   abilitatoAttivita2   Boolean  @default(false) @map("abilitato_attivita_2")
   // Percentuale di lavoro base (100 = tempo pieno): scala le ore dovute del
