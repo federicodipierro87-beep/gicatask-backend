@@ -1042,6 +1042,10 @@ Dal 22/10/2026 c'è il modulo **Nuova Attività 2** (`/dipendente/nuova-2`, modi
 `/dipendente/modifica-2/:id`, flag `abilitatoAttivita2`). Usa le rotte `/api/attivita` di sempre,
 col campo `luogo` (`MAGAZZINO` | `CANTIERE`) al posto di cliente, cantiere e tipo.
 
+Dal 24/10/2026 anche **Nuova Attività** (`/dipendente/nuova`) ha un flag, `abilitatoAttivita`
+(acceso per default). La modifica (`/dipendente/modifica/:id`) resta aperta a tutti, come
+`/dipendente/modifica-2/:id`.
+
 #### Menu
 
 Le quattro pagine del responsabile stanno sotto un'unica voce **Bollettino** (Archivio, Mezzi,
@@ -3830,6 +3834,36 @@ come prima. Lo stato Aperto/Fatturato non cambia.
 
 Deploy: frontend `ce6f242`.
 
+### Utenti: spunta "Abilita Nuova Attività" (24 Ottobre 2026)
+
+Richiesta: nella sezione *Utenti* poter abilitare o disabilitare **Nuova Attività**, come già si fa
+con Nuova Attività 2.
+
+- **Flag:** nuova colonna `utenti.abilitato_attivita` (`abilitatoAttivita`). *Scelta fatta:* default
+  **true**, a differenza degli altri flag: al deploy tutti continuano a vedere Nuova Attività, che
+  finora era di tutti, e anche gli utenti creati dopo partono abilitati. Restituito da login e `/me`,
+  modificabile con `PUT /api/utenti/:id`; nel *Log* compare come "Abilitato Nuova Attività".
+- **Utenti:** spunta **Abilita Nuova Attività** nel modale di modifica, sopra quella di Nuova
+  Attività 2 (come le altre, solo in modifica).
+- **Area dipendente:** senza il flag sparisce la voce *Nuova Attività* dal menu e
+  `/dipendente/nuova` rimanda altrove (`requireAttivita` in `ProtectedRoute`), come per Nuova
+  Attività 2. Il controllo è solo nell'interfaccia, come per Nuova Attività 2: le rotte
+  `/api/attivita` non cambiano, perché servono anche alle assenze e a Nuova Attività 2.
+- **Pagina iniziale:** login, radice e redirect mandavano sempre il dipendente su
+  `/dipendente/nuova`; con il flag spento sarebbe stato un giro di redirect senza fine. Nuovo
+  `utils/paginaIniziale.ts`: senza il flag si arriva su *Le Mie Attività*.
+- **Le Mie Attività:** il pulsante "+ Nuova Attività" porta a Nuova Attività 2 se è l'unica
+  abilitata, e sparisce se non c'è nessuna delle due. *Modifica* sulle attività già inserite resta
+  disponibile.
+
+Schema: solo aggiunta, `db push` senza `--accept-data-loss` provato su utenti esistenti (tutti a
+true). Verifica: API (PUT, elenco, login, `/me`) e browser: dipendente senza flag arriva su Le Mie
+Attività, nessuna voce né pulsante, `/dipendente/nuova` rimanda all'elenco; con solo Nuova Attività
+2 il pulsante diventa "+ Nuova Attività 2"; spunta nel modale del responsabile.
+
+Deploy: prima il backend `b5d52f1` (su Railway il `db push` ha aggiunto la colonna senza errori),
+poi il frontend `7301a90`.
+
 ---
 
 ## Progetto Completato
@@ -4001,6 +4035,7 @@ frontend/
 │   ├── utils/
 │   │   ├── festivita.ts       # Pasqua e festivi Ticino (copia del backend)
 │   │   ├── nomeUtente.ts      # Cognome Nome (copia del backend)
+│   │   ├── paginaIniziale.ts  # Pagina dopo il login / redirect (rispetta abilitatoAttivita)
 │   │   └── durata.ts          # formatDuration con segno + assenze negative
 │   └── types/index.ts
 ├── netlify.toml
