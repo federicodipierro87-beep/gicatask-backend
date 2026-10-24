@@ -32,7 +32,7 @@ const ESTENSIONI: Record<string, string> = {
   'application/pdf': '.pdf',
 };
 
-export type TipoAllegatoNoleggio = 'SCONTRINO' | 'DANNI';
+export type TipoAllegatoNoleggio = 'SCONTRINO' | 'DANNI_PRECEDENTI' | 'DANNI';
 
 export interface FileNoleggio {
   tipo: string | null;

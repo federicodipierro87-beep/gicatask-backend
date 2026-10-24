@@ -33,6 +33,8 @@ const createBodySchema = {
     giorni: { type: 'number' },
     pieno: { type: 'boolean' },
     carburante: { type: 'string', maxLength: 20 },
+    danniPrecedenti: { type: 'boolean' },
+    danniPrecedentiNote: { type: 'string', maxLength: 5000 },
     danni: { type: 'boolean' },
     danniNote: { type: 'string', maxLength: 5000 },
     emailFatturazione: { type: 'string', maxLength: 254 },
@@ -43,6 +45,7 @@ const createBodySchema = {
     firmaImg: { type: 'string', minLength: 1, maxLength: 400000 },
     fatturato: { type: 'boolean' },
     scontrinoIds: { type: 'array', maxItems: 10, items: { type: 'number' } },
+    danniPrecedentiIds: { type: 'array', maxItems: 10, items: { type: 'number' } },
     danniIds: { type: 'array', maxItems: 10, items: { type: 'number' } },
     // "Salva e invia": manda subito il verbale all'indirizzo di fatturazione
     invia: { type: 'boolean' },
@@ -62,6 +65,8 @@ interface CreateBody {
   giorni: number;
   pieno?: boolean;
   carburante?: string;
+  danniPrecedenti?: boolean;
+  danniPrecedentiNote?: string;
   danni?: boolean;
   danniNote?: string;
   emailFatturazione?: string;
@@ -71,6 +76,7 @@ interface CreateBody {
   firmaImg: string;
   fatturato?: boolean;
   scontrinoIds?: number[];
+  danniPrecedentiIds?: number[];
   danniIds?: number[];
   invia?: boolean;
 }
@@ -266,6 +272,8 @@ export async function noleggiRoutes(fastify: FastifyInstance) {
         giorni: body.giorni,
         pieno: body.pieno ?? false,
         carburante: body.carburante ?? null,
+        danniPrecedenti: body.danniPrecedenti ?? null,
+        danniPrecedentiNote: body.danniPrecedentiNote ?? null,
         danni: body.danni ?? false,
         danniNote: body.danniNote ?? null,
         emailFatturazione: destinatario || null,
@@ -275,6 +283,7 @@ export async function noleggiRoutes(fastify: FastifyInstance) {
         firmaImg: body.firmaImg,
         fatturato: body.fatturato ?? false,
         scontrinoIds: body.scontrinoIds,
+        danniPrecedentiIds: body.danniPrecedentiIds,
         danniIds: body.danniIds,
         // IN_CORSO scritto subito: se il processo muore durante l'invio resta
         // traccia dell'invio richiesto

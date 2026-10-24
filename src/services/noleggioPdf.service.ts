@@ -122,6 +122,7 @@ function renderNoleggio(doc: PDFKit.PDFDocument, n: NoleggioFull, foto: FileNole
   y += 38;
 
   const scontrini = foto.filter((f) => f.tipo === 'SCONTRINO');
+  const fotoDanniPrecedenti = foto.filter((f) => f.tipo === 'DANNI_PRECEDENTI');
   const fotoDanni = foto.filter((f) => f.tipo === 'DANNI');
 
   labelCoppia(
@@ -132,18 +133,36 @@ function renderNoleggio(doc: PDFKit.PDFDocument, n: NoleggioFull, foto: FileNole
     y,
     col - 10
   );
-  labelCoppia(doc, 'Danni', n.danni ? 'Sì' : 'No', MARGIN + col, y, col - 10);
-  labelCoppia(doc, 'Fatturazione', n.emailFatturazione ?? '—', MARGIN + col * 2, y, col - 10);
+  // Verbali precedenti alla domanda: "—", non "No"
+  labelCoppia(
+    doc,
+    "Danni prima dell'uscita",
+    n.danniPrecedenti === null ? '—' : n.danniPrecedenti ? 'Sì' : 'No',
+    MARGIN + col,
+    y,
+    col - 10
+  );
+  labelCoppia(doc, 'Danni riportati', n.danni ? 'Sì' : 'No', MARGIN + col * 2, y, col - 10);
   y += 38;
 
-  if (n.danni && n.danniNote) {
-    doc.fontSize(8).fillColor('#666').text('Descrizione dei danni', MARGIN, y, { width: CONTENT_WIDTH });
+  labelCoppia(doc, 'Fatturazione', n.emailFatturazione ?? '—', MARGIN, y, CONTENT_WIDTH);
+  y += 38;
+
+  const descrizione = (titolo: string, testo: string) => {
+    doc.fontSize(8).fillColor('#666').text(titolo, MARGIN, y, { width: CONTENT_WIDTH });
     y += 12;
     doc.fontSize(10).fillColor('#000');
-    const altezza = Math.min(doc.heightOfString(n.danniNote, { width: CONTENT_WIDTH - 12 }) + 12, 200);
+    const altezza = Math.min(doc.heightOfString(testo, { width: CONTENT_WIDTH - 12 }) + 12, 200);
     doc.rect(MARGIN, y, CONTENT_WIDTH, altezza).strokeColor('#ccc').lineWidth(0.5).stroke();
-    doc.text(n.danniNote, MARGIN + 6, y + 6, { width: CONTENT_WIDTH - 12, height: altezza - 12, ellipsis: true });
+    doc.text(testo, MARGIN + 6, y + 6, { width: CONTENT_WIDTH - 12, height: altezza - 12, ellipsis: true });
     y += altezza + 14;
+  };
+
+  if (n.danniPrecedenti && n.danniPrecedentiNote) {
+    descrizione("Descrizione dei danni prima dell'uscita", n.danniPrecedentiNote);
+  }
+  if (n.danni && n.danniNote) {
+    descrizione('Descrizione dei danni riportati', n.danniNote);
   }
 
   // Firma in fondo ai dati e prima delle foto, che possono occupare pagine
@@ -168,7 +187,8 @@ function renderNoleggio(doc: PDFKit.PDFDocument, n: NoleggioFull, foto: FileNole
   y += 110;
 
   if (n.pieno) y = renderFoto(doc, 'Scontrino del pieno', scontrini, y + 6);
-  if (n.danni) y = renderFoto(doc, 'Foto dei danni', fotoDanni, y + 6);
+  if (n.danniPrecedenti) y = renderFoto(doc, "Foto dei danni prima dell'uscita", fotoDanniPrecedenti, y + 6);
+  if (n.danni) y = renderFoto(doc, 'Foto dei danni riportati', fotoDanni, y + 6);
 
   // Le foto oltre il limite della mail non arrivano fin qui: il verbale
   // registra comunque quante ne erano state allegate

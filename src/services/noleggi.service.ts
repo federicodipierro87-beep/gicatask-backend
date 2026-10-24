@@ -23,6 +23,9 @@ export interface CreateNoleggioInput {
   giorni: number;
   pieno: boolean;
   carburante?: string | null;
+  // Assente da un frontend precedente alla domanda: resta NULL
+  danniPrecedenti?: boolean | null;
+  danniPrecedentiNote?: string | null;
   danni: boolean;
   danniNote?: string | null;
   emailFatturazione?: string | null;
@@ -32,6 +35,7 @@ export interface CreateNoleggioInput {
   firmaImg: string;
   fatturato?: boolean;
   scontrinoIds?: number[];
+  danniPrecedentiIds?: number[];
   danniIds?: number[];
   emailStato?: string | null;
 }
@@ -57,6 +61,8 @@ const listSelect = {
   giorni: true,
   pieno: true,
   carburante: true,
+  danniPrecedenti: true,
+  danniPrecedentiNote: true,
   danni: true,
   danniNote: true,
   emailFatturazione: true,
@@ -186,6 +192,7 @@ export class NoleggiService {
     // Le foto valgono solo se la casella corrispondente e' spuntata: quelle
     // rimaste fuori restano orfane e la pulizia notturna le cancella
     const scontrinoIds = input.pieno ? (input.scontrinoIds ?? []).slice(0, 10) : [];
+    const danniPrecedentiIds = input.danniPrecedenti ? (input.danniPrecedentiIds ?? []).slice(0, 10) : [];
     const danniIds = input.danni ? (input.danniIds ?? []).slice(0, 10) : [];
 
     return this.prisma.$transaction(async (tx) => {
@@ -266,6 +273,8 @@ export class NoleggiService {
           giorni: input.giorni,
           pieno: input.pieno,
           carburante,
+          danniPrecedenti: input.danniPrecedenti ?? null,
+          danniPrecedentiNote: input.danniPrecedenti ? input.danniPrecedentiNote?.trim() || null : null,
           danni: input.danni,
           danniNote: input.danni ? input.danniNote?.trim() || null : null,
           emailFatturazione: email ? email.slice(0, 254) : null,
@@ -280,7 +289,11 @@ export class NoleggiService {
       });
 
       // Solo orfani propri: un id altrui o gia' collegato viene ignorato
-      for (const [tipo, ids] of [['SCONTRINO', scontrinoIds], ['DANNI', danniIds]] as const) {
+      for (const [tipo, ids] of [
+        ['SCONTRINO', scontrinoIds],
+        ['DANNI_PRECEDENTI', danniPrecedentiIds],
+        ['DANNI', danniIds],
+      ] as const) {
         if (ids.length === 0) continue;
         await tx.allegatoNoleggio.updateMany({
           where: { id: { in: ids }, noleggioId: null, caricatoDaId: input.utenteId },

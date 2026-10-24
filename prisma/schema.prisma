@@ -553,6 +553,10 @@ model Noleggio {
   giorni            Float
   pieno             Boolean     @default(false)
   carburante        Carburante?
+  // Danni gia' presenti prima dell'uscita; NULL nei verbali precedenti al
+  // 24/10/2026, quando la domanda non c'era
+  danniPrecedenti     Boolean?  @map("danni_precedenti")
+  danniPrecedentiNote String?   @map("danni_precedenti_note") @db.Text
   danni             Boolean     @default(false)
   danniNote         String?     @map("danni_note") @db.Text
   emailFatturazione String?     @map("email_fatturazione")
@@ -589,7 +593,7 @@ model Noleggio {
 model AllegatoNoleggio {
   id           Int      @id @default(autoincrement())
   noleggioId   Int?     @map("noleggio_id")
-  // SCONTRINO o DANNI
+  // SCONTRINO, DANNI_PRECEDENTI o DANNI
   tipo         String?
   caricatoDaId Int      @map("caricato_da")
   chiave       String   @unique
