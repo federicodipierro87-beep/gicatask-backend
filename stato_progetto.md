@@ -188,6 +188,10 @@ senza link, mentre `railway status --json` il link lo pretende (e scrive in
 - Dipendente può modificare/eliminare le proprie attività, senza limiti di data
 - Responsabile può modificare/eliminare qualsiasi attività e riassegnarla a un altro dipendente
   (campo `utenteId` in `PUT /:id`, accettato solo se il richiedente è RESPONSABILE)
+- Dal 24/10/2026 un dipendente senza `abilitatoAttivita` (attività col cliente) o
+  `abilitatoAttivita2` (attività col luogo) riceve **403** se in `POST /` ne crea una o se in
+  `PUT /:id` ne trasforma una in quel tipo. Assenze, correzioni dello stesso tipo e responsabile
+  esclusi.
 
 **Frontend:**
 
@@ -1044,7 +1048,8 @@ col campo `luogo` (`MAGAZZINO` | `CANTIERE`) al posto di cliente, cantiere e tip
 
 Dal 24/10/2026 anche **Nuova Attività** (`/dipendente/nuova`) ha un flag, `abilitatoAttivita`
 (acceso per default). La modifica (`/dipendente/modifica/:id`) resta aperta a tutti, come
-`/dipendente/modifica-2/:id`.
+`/dipendente/modifica-2/:id`. Entrambi i flag sono verificati anche dal server (vedi le regole di
+`/api/attivita` sopra).
 
 #### Menu
 
@@ -3847,8 +3852,8 @@ con Nuova Attività 2.
   Attività 2 (come le altre, solo in modifica).
 - **Area dipendente:** senza il flag sparisce la voce *Nuova Attività* dal menu e
   `/dipendente/nuova` rimanda altrove (`requireAttivita` in `ProtectedRoute`), come per Nuova
-  Attività 2. Il controllo è solo nell'interfaccia, come per Nuova Attività 2: le rotte
-  `/api/attivita` non cambiano, perché servono anche alle assenze e a Nuova Attività 2.
+  Attività 2. Il controllo era solo nell'interfaccia, come per Nuova Attività 2; dalla voce
+  successiva lo fa anche il server.
 - **Pagina iniziale:** login, radice e redirect mandavano sempre il dipendente su
   `/dipendente/nuova`; con il flag spento sarebbe stato un giro di redirect senza fine. Nuovo
   `utils/paginaIniziale.ts`: senza il flag si arriva su *Le Mie Attività*.
@@ -3863,6 +3868,34 @@ Attività, nessuna voce né pulsante, `/dipendente/nuova` rimanda all'elenco; co
 
 Deploy: prima il backend `b5d52f1` (su Railway il `db push` ha aggiunto la colonna senza errori),
 poi il frontend `7301a90`.
+
+### Attività: il server verifica i flag di Nuova Attività e Nuova Attività 2 (24 Ottobre 2026)
+
+Richiesta: aggiungere il controllo anche sul server. Fino a qui i due flag nascondevano solo menu e
+pagine, mentre il riepilogo lavoro (cap. 4.1) dice che i controlli non sono affidati alla sola
+interfaccia.
+
+- **Quale flag:** un'attività col cliente richiede `abilitatoAttivita`, una col luogo
+  `abilitatoAttivita2`; le assenze nessuno dei due (`moduloRichiesto()` in `attivita.service.ts`).
+  Il flag è letto dal database a ogni richiesta, come per bollettini e noleggi.
+- **Creazione:** `POST /api/attivita` di un dipendente senza il flag → **403** "Non sei abilitato a
+  Nuova Attività" (o "… 2"); il form mostra già il messaggio del server.
+- **Modifica:** *Scelta fatta:* chi ha perso il modulo corregge ancora le proprie attività già
+  inserite (orari, note, cliente), coerente con *Modifica* lasciato aperto nell'interfaccia. Il flag
+  serve solo se la modifica cambia il tipo: da luogo a cliente richiede `abilitatoAttivita`, da
+  cliente a luogo `abilitatoAttivita2`.
+- **Responsabile:** *Scelta fatta:* escluso dal controllo. Assegna e corregge le attività di tutti
+  (pagina *Assegna*, campo *Luogo* nella modifica) indipendentemente dai propri flag; nell'area
+  dipendente il suo menu segue comunque i flag.
+- Errore: classe `ModuloNonAbilitatoError`, che le rotte POST e PUT traducono in 403 invece del
+  solito 400.
+
+Verifica: API su Postgres locale, 14 casi: creazione col cliente, col luogo e assenza con e senza
+flag; correzione della propria attività senza flag; trasformazione luogo → cliente e cliente →
+luogo con e senza flag; responsabile senza flag che assegna e crea per sé. Tutti con l'esito
+atteso.
+
+Deploy: backend `ea0d34d`.
 
 ---
 
