@@ -18,6 +18,23 @@ interface CreateAttivitaInput {
   createdById: number;
 }
 
+/**
+ * Un dipendente senza il flag del modulo non può usarlo: le rotte rispondono
+ * 403 invece del solito 400.
+ */
+export class ModuloNonAbilitatoError extends Error {}
+
+type ModuloAttivita = 'attivita' | 'attivita2';
+
+/**
+ * Il modulo da cui nasce un'attività: col luogo "Nuova Attività 2", col
+ * cliente "Nuova Attività". Le assenze non dipendono da nessuno dei due.
+ */
+function moduloRichiesto(assenzaId: number | null, luogo: LuogoAttivita | null): ModuloAttivita | null {
+  if (assenzaId !== null) return null;
+  return luogo ? 'attivita2' : 'attivita';
+}
+
 function calculateTotalDuration(
   oraInizioMattino?: string,
   oraFineMattino?: string,
@@ -47,6 +64,26 @@ interface AttivitaWithRelations extends Attivita {
 
 export class AttivitaService {
   constructor(private prisma: PrismaClient) {}
+
+  // Il flag è letto dal database e non dal token, come per bollettini e
+  // noleggi: toglierlo ha effetto subito
+  private async assertModuloAbilitato(utenteId: number, modulo: ModuloAttivita | null) {
+    if (modulo === null) return;
+
+    const utente = await this.prisma.utente.findUnique({
+      where: { id: utenteId },
+      select: { abilitatoAttivita: true, abilitatoAttivita2: true },
+    });
+    const abilitato = modulo === 'attivita' ? utente?.abilitatoAttivita : utente?.abilitatoAttivita2;
+
+    if (!abilitato) {
+      throw new ModuloNonAbilitatoError(
+        modulo === 'attivita'
+          ? 'Non sei abilitato a Nuova Attività'
+          : 'Non sei abilitato a Nuova Attività 2'
+      );
+    }
+  }
 
   async getByUtente(
     utenteId: number,
@@ -151,11 +188,19 @@ export class AttivitaService {
     return durataAssenzaMinuti(tipo.nome);
   }
 
-  async create(input: CreateAttivitaInput): Promise<Attivita> {
+  /**
+   * `verificaModulo` è false per il responsabile, che assegna e corregge le
+   * attività di tutti indipendentemente dai propri flag.
+   */
+  async create(input: CreateAttivitaInput, verificaModulo = false): Promise<Attivita> {
     // With an absence selected, cliente/cantiere and time slots are optional
     const assenzaId = input.assenzaId ?? null;
     // "Nuova Attivita 2": il luogo prende il posto di cliente, cantiere e tipo
     const luogo = assenzaId === null ? input.luogo ?? null : null;
+
+    if (verificaModulo) {
+      await this.assertModuloAbilitato(input.utenteId, moduloRichiesto(assenzaId, luogo));
+    }
 
     if (assenzaId === null) {
       if (luogo === null) {
@@ -236,6 +281,16 @@ export class AttivitaService {
     const luogo = isAssenza
       ? null
       : input.luogo !== undefined ? input.luogo : attivita.luogo;
+
+    // Chi ha perso il modulo corregge ancora le attività già inserite: il
+    // flag serve solo se la modifica la fa diventare di un altro tipo
+    if (!isResponsabile) {
+      const prima = moduloRichiesto(attivita.assenzaId, attivita.luogo);
+      const dopo = moduloRichiesto(assenzaId ?? null, luogo ?? null);
+      if (dopo !== prima) {
+        await this.assertModuloAbilitato(requesterId, dopo);
+      }
+    }
 
     if (!isAssenza) {
       if (!luogo) {

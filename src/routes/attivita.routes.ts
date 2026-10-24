@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { AttivitaService } from '../services/attivita.service.js';
+import { AttivitaService, ModuloNonAbilitatoError } from '../services/attivita.service.js';
 import { ExportService } from '../services/export.service.js';
 import { SaldiOreService } from '../services/saldiOre.service.js';
 import { SaldiOreExportService } from '../services/saldiOreExport.service.js';
@@ -203,12 +203,12 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
         luogo: body.luogo,
         note: body.note,
         createdById: user.id,
-      });
+      }, user.ruolo !== 'RESPONSABILE');
 
       return reply.status(201).send(attivita);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Errore';
-      return reply.status(400).send({ error: message });
+      return reply.status(error instanceof ModuloNonAbilitatoError ? 403 : 400).send({ error: message });
     }
   });
 
@@ -267,7 +267,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       return reply.send(attivita);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Errore';
-      return reply.status(400).send({ error: message });
+      return reply.status(error instanceof ModuloNonAbilitatoError ? 403 : 400).send({ error: message });
     }
   });
 
