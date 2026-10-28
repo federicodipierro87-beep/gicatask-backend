@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 24 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 28 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -1035,8 +1035,10 @@ flag `abilitatoNoleggi`), con le sue rotte `/api/noleggi`:
 | GET | `/api/noleggi/anagrafiche` | autenticato + flag noleggi |
 | GET | `/api/noleggi` | autenticato + flag (il dipendente vede solo i propri) |
 | POST | `/api/noleggi` | autenticato + flag (`invia: true` = "Salva e invia"; `fatturato` e `firmaEmail` dal 23/10/2026; `danniPrecedenti`, `danniPrecedentiNote`, `danniPrecedentiIds` dal 24/10/2026) |
+| GET | `/api/noleggi/:id` | chi l'ha compilato o il responsabile, + flag (verbale con la firma, per la modifica; dal 28/10/2026) |
+| PUT | `/api/noleggi/:id` | chi l'ha compilato finché è aperto, il responsabile sempre, + flag (`firmaImg` facoltativa; dal 28/10/2026) |
 | PATCH | `/api/noleggi/:id/fatturato` | RESPONSABILE + flag (dal 23/10/2026) |
-| POST | `/api/noleggi/:id/invia-mail` | chi l'ha compilato o il responsabile, + flag |
+| POST | `/api/noleggi/:id/invia-mail` | chi l'ha compilato o il responsabile, + flag; solo se fatturato (dal 28/10/2026) |
 | GET | `/api/noleggi/:id/pdf` | chi l'ha compilato o il responsabile, + flag |
 | DELETE | `/api/noleggi/:id` | RESPONSABILE + flag |
 | POST/DELETE | `/api/noleggi/allegati`, `/allegati/:id` | autenticato + flag (solo orfani propri) |
@@ -3927,6 +3929,53 @@ dei danni.
 Deploy: prima il backend `9ac35dc` (su Railway il `db push` ha aggiunto le colonne senza errori),
 poi il frontend `87edcd9`.
 
+### Noleggi: Salva e invia solo da Fatturato, modifica finché è aperto (28 Ottobre 2026)
+
+Richiesta: con lo stato **Aperto** si può solo salvare, non *Salva e invia*; con lo stato chiuso
+(*Fatturato*) sia *Salva* sia *Salva e invia*. Finché è aperto chi l'ha compilato può modificare il
+noleggio; l'admin (il responsabile) lo modifica anche quando è chiuso.
+
+- **Chiuso = Fatturato:** *scelta fatta:* lo stato resta *Aperto / Fatturato* come dal 23/10, nessuna
+  etichetta nuova.
+- **Pulsanti del form:** con *Aperto* c'è solo **Salva**; scegliendo *Fatturato* compare anche **Salva
+  e invia**. Sotto lo stato una riga spiega cosa comporta la scelta.
+- **Invio:** *scelta fatta:* la regola vale ovunque, non solo nel form. Nell'elenco del dipendente
+  *Invia/Reinvia* c'è solo sui fatturati; nell'archivio *Invia mail* è spento sugli aperti (si spunta
+  prima *Fatturato*). Il server la applica anche lui: `POST /:id/invia-mail` su un aperto → 400; un
+  `invia: true` su un aperto, in POST o PUT, salva senza inviare invece di dare errore, che farebbe
+  rifare la firma.
+- **Modifica:** nuove rotte `GET /api/noleggi/:id` (verbale con la firma) e `PUT /api/noleggi/:id`.
+  Il dipendente modifica i propri finché sono aperti (pulsante **Modifica** in *I Miei Noleggi*); su
+  un fatturato il PUT risponde 403 "può modificarlo solo il responsabile" e il form si apre in sola
+  lettura con l'avviso. Il responsabile modifica tutti, sempre: **Modifica** nell'archivio apre il
+  form nel suo layout (`/responsabile/noleggi/:id/modifica`; quella del dipendente è
+  `/dipendente/noleggi/:id/modifica`). Nel form può anche riportare un fatturato ad aperto, e da lì
+  il dipendente torna a poterlo modificare.
+- **Firma in modifica:** compare quella salvata, con **Rifai la firma** (e *Tieni la firma di prima*
+  per tornare indietro). Il PUT la sostituisce solo se ne arriva una nuova.
+- **Foto in modifica:** quelle già collegate compaiono, si aprono col clic e si tolgono con ✕: il
+  server le scollega al salvataggio e la pulizia notturna le cancella, quindi *Annulla* non perde
+  nulla. Le nuove si caricano come prima e devono essere orfani di chi modifica.
+- **Stato in modifica:** passando a *Fatturato* la data di fatturazione è quella del salvataggio; un
+  verbale già fatturato tiene la sua. Tornando ad *Aperto* la data si azzera.
+- **Elenco dipendente:** riga *Stato: Aperto / Fatturato*; lo stato della mail compare solo sui
+  fatturati.
+- **Backend:** in `noleggi.service.ts` i controlli, le anagrafiche (cliente, cantiere, veicolo, e-mail
+  in anagrafica) e i campi sono stati estratti da `create` in `valida`, `collegaAnagrafiche` e `campi`,
+  usati anche da `update`. Nel Log la PUT è "Modifica verbale di noleggio", coi campi cambiati.
+- Schema invariato.
+
+Verifica: Postgres locale, 21 controlli API: salvataggio da aperto con richiesta d'invio (nessun
+invio); GET e PUT del proprio; foto tenute, tolte, aggiunte, e foto altrui ignorate; PUT da aperto a
+fatturato con invio; 403 al dipendente sul fatturato; responsabile che modifica il fatturato altrui
+con firma nuova, data di fatturazione invariata; invia-mail su aperto 400 e su fatturato 200;
+noleggio altrui 403; riapertura dal responsabile; date invertite 400; inesistente 404; voci nel Log.
+Browser (Edge, 390 px e desktop): pulsanti col cambio di stato, modifica con dati e firma caricati e
+salvataggio, sola lettura del fatturato per il dipendente, *Modifica* e *Invia mail* spento
+nell'archivio, modifica del responsabile con *Rifai la firma* / *Tieni la firma di prima*.
+
+Deploy: prima il backend `52d5b54`, poi il frontend `16624f0`.
+
 ---
 
 ## Progetto Completato
@@ -4070,7 +4119,7 @@ frontend/
 │   │   │   ├── BollettiniListPage.tsx
 │   │   │   ├── BollettinoFormPage.tsx
 │   │   │   ├── NoleggiListPage.tsx   # I Miei Noleggi
-│   │   │   └── NoleggioFormPage.tsx  # Verbale di noleggio con foto e firma
+│   │   │   └── NoleggioFormPage.tsx  # Verbale di noleggio con foto e firma; anche modifica
 │   │   └── responsabile/
 │   │       ├── ClientiPage.tsx
 │   │       ├── ClienteDetailPage.tsx
