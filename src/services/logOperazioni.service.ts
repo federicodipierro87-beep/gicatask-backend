@@ -116,6 +116,7 @@ const CATALOGO: Record<string, VoceCatalogo> = {
   'POST /api/noleggi': { area: 'Noleggi', azione: 'CREAZIONE', testo: 'Nuovo verbale di noleggio', modello: 'noleggio' },
   'POST /api/noleggi/allegati': { area: 'Noleggi', azione: 'ALTRO', testo: 'Caricamento foto noleggio' },
   'DELETE /api/noleggi/allegati/:id': { area: 'Noleggi', azione: 'ELIMINAZIONE', testo: 'Eliminazione foto noleggio' },
+  'PUT /api/noleggi/:id': { area: 'Noleggi', azione: 'MODIFICA', testo: 'Modifica verbale di noleggio', modello: 'noleggio' },
   'POST /api/noleggi/:id/invia-mail': { area: 'Noleggi', azione: 'ALTRO', testo: 'Invio verbale di noleggio per e-mail', modello: 'noleggio' },
   'PATCH /api/noleggi/:id/fatturato': { area: 'Noleggi', azione: 'MODIFICA', testo: 'Cambio stato fatturato', modello: 'noleggio' },
   'DELETE /api/noleggi/:id': { area: 'Noleggi', azione: 'ELIMINAZIONE', testo: 'Eliminazione verbale di noleggio', modello: 'noleggio' },

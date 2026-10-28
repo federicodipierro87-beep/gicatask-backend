@@ -52,6 +52,12 @@ const createBodySchema = {
   },
 } as const;
 
+// La modifica tiene la firma di prima se non ne arriva una nuova
+const updateBodySchema = {
+  ...createBodySchema,
+  required: ['data', 'clienteNome', 'veicoloNome', 'giorni', 'firmaNome'],
+} as const;
+
 interface CreateBody {
   /** Data di uscita del veicolo. */
   data: string;
@@ -81,6 +87,61 @@ interface CreateBody {
   invia?: boolean;
 }
 
+type UpdateBody = Omit<CreateBody, 'firmaImg'> & { firmaImg?: string };
+
+/** Date di uscita e ingresso del corpo, o il messaggio del 400. */
+function leggiDate(body: CreateBody | UpdateBody): { data: Date; dataIngresso: Date } | string {
+  const data = new Date(body.data);
+  if (Number.isNaN(data.getTime())) return 'Data di uscita non valida';
+  // Non nello schema: un 400 dello schema farebbe perdere la firma, qui il
+  // messaggio arriva leggibile sopra il form
+  const dataIngresso = new Date(body.dataIngresso ?? '');
+  if (Number.isNaN(dataIngresso.getTime())) return 'Indica la data di ingresso';
+  return { data, dataIngresso };
+}
+
+/** I campi del corpo passati al service allo stesso modo da POST e PUT. */
+function datiDalCorpo(body: CreateBody | UpdateBody, date: { data: Date; dataIngresso: Date }) {
+  return {
+    ...date,
+    cantiereNome: body.cantiereNome,
+    salvaCantiere: body.salvaCantiere,
+    clienteNome: body.clienteNome,
+    salvaCliente: body.salvaCliente,
+    veicoloNome: body.veicoloNome,
+    salvaVeicolo: body.salvaVeicolo,
+    giorni: body.giorni,
+    pieno: body.pieno ?? false,
+    carburante: body.carburante ?? null,
+    danniPrecedenti: body.danniPrecedenti ?? null,
+    danniPrecedentiNote: body.danniPrecedentiNote ?? null,
+    danni: body.danni ?? false,
+    danniNote: body.danniNote ?? null,
+    emailFatturazione: (body.emailFatturazione ?? '').trim() || null,
+    aggiornaEmailCliente: body.aggiornaEmailCliente,
+    firmaNome: body.firmaNome,
+    firmaEmail: body.firmaEmail ?? null,
+    fatturato: body.fatturato ?? false,
+    scontrinoIds: body.scontrinoIds,
+    danniPrecedentiIds: body.danniPrecedentiIds,
+    danniIds: body.danniIds,
+  };
+}
+
+/**
+ * "Salva e invia" vale solo con lo stato Fatturato: un verbale aperto si
+ * salva e basta. Una richiesta d'invio su un aperto viene ignorata, non
+ * respinta: un errore farebbe rifare la firma.
+ */
+function richiedeInvio(body: CreateBody | UpdateBody): boolean {
+  return Boolean(body.invia) && Boolean(body.fatturato) && (body.emailFatturazione ?? '').trim().length > 0;
+}
+
+/** IN_CORSO scritto subito: se il processo muore durante l'invio resta traccia. */
+function statoInvio(destinatario: string): string {
+  return normalizzaEmail(destinatario) ? 'IN_CORSO' : 'NON_VALIDA';
+}
+
 export async function noleggiRoutes(fastify: FastifyInstance) {
   const service = new NoleggiService(fastify.prisma);
   const allegatiService = new AllegatiNoleggioService(fastify.prisma);
@@ -101,6 +162,15 @@ export async function noleggiRoutes(fastify: FastifyInstance) {
   };
 
   const nonAutorizzato = (reply: FastifyReply) => reply.status(403).send({ error: 'Non autorizzato' });
+
+  /**
+   * Chi l'ha compilato lo modifica finche' e' aperto; il responsabile sempre,
+   * anche quelli altrui.
+   */
+  const puoModificare = (request: FastifyRequest, noleggio: { utenteId: number; fatturato: boolean }) => {
+    const user = request.user as JwtPayload;
+    return user.ruolo === 'RESPONSABILE' || (noleggio.utenteId === user.id && !noleggio.fatturato);
+  };
 
   // Suggerimenti per cantiere, cliente e veicolo
   fastify.get('/anagrafiche', {
@@ -244,50 +314,20 @@ export async function noleggiRoutes(fastify: FastifyInstance) {
     const user = request.user as JwtPayload;
     const body = request.body;
     const destinatario = (body.emailFatturazione ?? '').trim();
-    const invia = Boolean(body.invia) && destinatario.length > 0;
+    const invia = richiedeInvio(body);
 
-    const data = new Date(body.data);
-    if (Number.isNaN(data.getTime())) {
-      return reply.status(400).send({ error: 'Data di uscita non valida' });
-    }
-    // Non nello schema: un 400 dello schema farebbe perdere la firma, qui il
-    // messaggio arriva leggibile sopra il form
-    const dataIngresso = new Date(body.dataIngresso ?? '');
-    if (Number.isNaN(dataIngresso.getTime())) {
-      return reply.status(400).send({ error: 'Indica la data di ingresso' });
+    const date = leggiDate(body);
+    if (typeof date === 'string') {
+      return reply.status(400).send({ error: date });
     }
 
     let noleggioId: number;
     try {
       const creato = await service.create({
+        ...datiDalCorpo(body, date),
         utenteId: user.id,
-        data,
-        dataIngresso,
-        cantiereNome: body.cantiereNome,
-        salvaCantiere: body.salvaCantiere,
-        clienteNome: body.clienteNome,
-        salvaCliente: body.salvaCliente,
-        veicoloNome: body.veicoloNome,
-        salvaVeicolo: body.salvaVeicolo,
-        giorni: body.giorni,
-        pieno: body.pieno ?? false,
-        carburante: body.carburante ?? null,
-        danniPrecedenti: body.danniPrecedenti ?? null,
-        danniPrecedentiNote: body.danniPrecedentiNote ?? null,
-        danni: body.danni ?? false,
-        danniNote: body.danniNote ?? null,
-        emailFatturazione: destinatario || null,
-        aggiornaEmailCliente: body.aggiornaEmailCliente,
-        firmaNome: body.firmaNome,
-        firmaEmail: body.firmaEmail ?? null,
         firmaImg: body.firmaImg,
-        fatturato: body.fatturato ?? false,
-        scontrinoIds: body.scontrinoIds,
-        danniPrecedentiIds: body.danniPrecedentiIds,
-        danniIds: body.danniIds,
-        // IN_CORSO scritto subito: se il processo muore durante l'invio resta
-        // traccia dell'invio richiesto
-        emailStato: invia ? (normalizzaEmail(destinatario) ? 'IN_CORSO' : 'NON_VALIDA') : null,
+        emailStato: invia ? statoInvio(destinatario) : null,
       });
       noleggioId = creato.id;
     } catch (error) {
@@ -305,6 +345,80 @@ export async function noleggiRoutes(fastify: FastifyInstance) {
     request.log.info({ noleggioId, stato: esito.stato }, 'invio mail noleggio');
 
     return reply.status(201).send({ id: noleggioId, email: esito });
+  });
+
+  // Il verbale completo, firma compresa, per il form di modifica
+  fastify.get<{ Params: { id: string } }>('/:id', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    if (!(await assertAccessoNoleggi(fastify, request, reply))) return reply;
+
+    const noleggio = await service.getFull(parseInt(request.params.id, 10));
+    if (!noleggio) {
+      return reply.status(404).send({ error: 'Noleggio non trovato' });
+    }
+
+    if (!puoVedere(request, noleggio.utenteId)) {
+      return nonAutorizzato(reply);
+    }
+
+    return reply.send(noleggio);
+  });
+
+  fastify.put<{ Params: { id: string }; Body: UpdateBody }>('/:id', {
+    preHandler: [fastify.authenticate],
+    bodyLimit: BODY_LIMIT,
+    schema: { body: updateBodySchema },
+  }, async (request, reply) => {
+    if (!(await assertAccessoNoleggi(fastify, request, reply))) return reply;
+
+    const user = request.user as JwtPayload;
+    const id = parseInt(request.params.id, 10);
+    const noleggio = await service.getById(id);
+
+    if (!noleggio) {
+      return reply.status(404).send({ error: 'Noleggio non trovato' });
+    }
+
+    if (!puoModificare(request, noleggio)) {
+      return reply.status(403).send({
+        error: noleggio.utenteId === user.id
+          ? 'Il noleggio è fatturato: può modificarlo solo il responsabile'
+          : 'Non autorizzato',
+      });
+    }
+
+    const body = request.body;
+    const destinatario = (body.emailFatturazione ?? '').trim();
+    const invia = richiedeInvio(body);
+
+    const date = leggiDate(body);
+    if (typeof date === 'string') {
+      return reply.status(400).send({ error: date });
+    }
+
+    try {
+      const trovato = await service.update(id, {
+        ...datiDalCorpo(body, date),
+        firmaImg: body.firmaImg ?? null,
+        emailStato: invia ? statoInvio(destinatario) : null,
+      }, user.id);
+      if (!trovato) {
+        return reply.status(404).send({ error: 'Noleggio non trovato' });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Errore';
+      return reply.status(400).send({ error: message });
+    }
+
+    if (!invia) {
+      return reply.send({ id });
+    }
+
+    const esito = await emailService.invia(id, destinatario); // non lancia mai
+    request.log.info({ noleggioId: id, stato: esito.stato }, 'invio mail noleggio modificato');
+
+    return reply.send({ id, email: esito });
   });
 
   // Invio o reinvio: da chi l'ha compilato ("Salva" e poi invio) o dal
@@ -329,6 +443,11 @@ export async function noleggiRoutes(fastify: FastifyInstance) {
 
     if (!puoVedere(request, noleggio.utenteId)) {
       return nonAutorizzato(reply);
+    }
+
+    // Stessa regola del form: si invia solo un verbale fatturato
+    if (!noleggio.fatturato) {
+      return reply.status(400).send({ error: 'Il noleggio è aperto: per inviarlo imposta lo stato Fatturato' });
     }
 
     const destinatario = (request.body?.email ?? noleggio.emailFatturazione ?? '').trim();

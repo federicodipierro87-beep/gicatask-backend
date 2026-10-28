@@ -40,6 +40,14 @@ export interface CreateNoleggioInput {
   emailStato?: string | null;
 }
 
+/** Dati del verbale senza autore, firma e stato della mail. */
+type DatiNoleggio = Omit<CreateNoleggioInput, 'utenteId' | 'firmaImg' | 'emailStato'>;
+
+/** La modifica: la firma arriva solo se e' stata rifatta. */
+export type UpdateNoleggioInput = Omit<CreateNoleggioInput, 'utenteId' | 'firmaImg'> & {
+  firmaImg?: string | null;
+};
+
 export interface NoleggioFilters {
   utenteId?: number;
   startDate?: Date;
@@ -152,15 +160,10 @@ export class NoleggiService {
   }
 
   /**
-   * Salva il verbale firmato. Cantiere, cliente e veicolo sono testo libero:
-   * se il nome corrisponde a una voce di anagrafica (maiuscole a parte) il
-   * verbale la collega; se non c'e' e l'operatore ha chiesto di salvarla, la
-   * crea. Tutto in una transazione: o si salva il verbale con le anagrafiche,
-   * o niente.
-   *
-   * Lancia Error con un messaggio leggibile, che la rotta gira come 400.
+   * Controlli di merito comuni a creazione e modifica. Lancia Error con un
+   * messaggio leggibile, che la rotta gira come 400.
    */
-  async create(input: CreateNoleggioInput): Promise<{ id: number }> {
+  private valida(input: DatiNoleggio) {
     const clienteNome = pulisciNome(input.clienteNome);
     const cantiereNome = pulisciNome(input.cantiereNome) || null;
     const veicoloNome = pulisciNome(input.veicoloNome);
@@ -182,106 +185,148 @@ export class NoleggiService {
       carburante = input.carburante;
     }
 
-    if (!input.firmaNome.trim() || !input.firmaImg) {
+    if (!input.firmaNome.trim()) {
       throw new Error('Manca la firma di chi ha effettuato il noleggio');
     }
 
     const email = (input.emailFatturazione ?? '').trim();
-    const emailNormalizzata = normalizzaEmail(email);
 
-    // Le foto valgono solo se la casella corrispondente e' spuntata: quelle
-    // rimaste fuori restano orfane e la pulizia notturna le cancella
-    const scontrinoIds = input.pieno ? (input.scontrinoIds ?? []).slice(0, 10) : [];
-    const danniPrecedentiIds = input.danniPrecedenti ? (input.danniPrecedentiIds ?? []).slice(0, 10) : [];
-    const danniIds = input.danni ? (input.danniIds ?? []).slice(0, 10) : [];
+    return {
+      clienteNome,
+      cantiereNome,
+      veicoloNome,
+      carburante,
+      email,
+      emailNormalizzata: normalizzaEmail(email),
+      // Le foto valgono solo se la casella corrispondente e' spuntata: quelle
+      // rimaste fuori restano orfane e la pulizia notturna le cancella
+      allegati: [
+        ['SCONTRINO', input.pieno ? (input.scontrinoIds ?? []).slice(0, 10) : []],
+        ['DANNI_PRECEDENTI', input.danniPrecedenti ? (input.danniPrecedentiIds ?? []).slice(0, 10) : []],
+        ['DANNI', input.danni ? (input.danniIds ?? []).slice(0, 10) : []],
+      ] as const,
+    };
+  }
 
-    return this.prisma.$transaction(async (tx) => {
-      // Cliente
-      let cliente = await tx.cliente.findFirst({
-        where: { nome: insensibile(clienteNome) },
+  /**
+   * Cantiere, cliente e veicolo sono testo libero: se il nome corrisponde a
+   * una voce di anagrafica (maiuscole a parte) il verbale la collega; se non
+   * c'e' e l'operatore ha chiesto di salvarla, la crea.
+   */
+  private async collegaAnagrafiche(
+    tx: Prisma.TransactionClient,
+    input: DatiNoleggio,
+    v: ReturnType<NoleggiService['valida']>
+  ) {
+    // Cliente
+    let cliente = await tx.cliente.findFirst({
+      where: { nome: insensibile(v.clienteNome) },
+      select: { id: true, attivo: true },
+      // Prima gli attivi: con un omonimo disattivato si collega quello in uso
+      orderBy: [{ attivo: 'desc' }, { id: 'asc' }],
+    });
+
+    if (!cliente && input.salvaCliente) {
+      cliente = await tx.cliente.create({
+        data: { nome: v.clienteNome },
         select: { id: true, attivo: true },
-        // Prima gli attivi: con un omonimo disattivato si collega quello in uso
+      });
+    } else if (cliente && !cliente.attivo && input.salvaCliente) {
+      await tx.cliente.update({ where: { id: cliente.id }, data: { attivo: true } });
+    }
+
+    // Cantiere: in anagrafica sta sotto un cliente, quindi senza cliente
+    // salvato resta solo testo
+    let cantiereId: number | null = null;
+    if (v.cantiereNome && cliente) {
+      let cantiere = await tx.cantiere.findFirst({
+        where: { clienteId: cliente.id, nome: insensibile(v.cantiereNome) },
+        select: { id: true, attivo: true },
         orderBy: [{ attivo: 'desc' }, { id: 'asc' }],
       });
 
-      if (!cliente && input.salvaCliente) {
-        cliente = await tx.cliente.create({
-          data: { nome: clienteNome },
+      if (!cantiere && input.salvaCantiere) {
+        cantiere = await tx.cantiere.create({
+          data: { clienteId: cliente.id, nome: v.cantiereNome },
           select: { id: true, attivo: true },
         });
-      } else if (cliente && !cliente.attivo && input.salvaCliente) {
-        await tx.cliente.update({ where: { id: cliente.id }, data: { attivo: true } });
+      } else if (cantiere && !cantiere.attivo && input.salvaCantiere) {
+        await tx.cantiere.update({ where: { id: cantiere.id }, data: { attivo: true } });
       }
 
-      // Cantiere: in anagrafica sta sotto un cliente, quindi senza cliente
-      // salvato resta solo testo
-      let cantiereId: number | null = null;
-      if (cantiereNome && cliente) {
-        let cantiere = await tx.cantiere.findFirst({
-          where: { clienteId: cliente.id, nome: insensibile(cantiereNome) },
-          select: { id: true, attivo: true },
-          orderBy: [{ attivo: 'desc' }, { id: 'asc' }],
-        });
+      cantiereId = cantiere?.id ?? null;
+    }
 
-        if (!cantiere && input.salvaCantiere) {
-          cantiere = await tx.cantiere.create({
-            data: { clienteId: cliente.id, nome: cantiereNome },
-            select: { id: true, attivo: true },
-          });
-        } else if (cantiere && !cantiere.attivo && input.salvaCantiere) {
-          await tx.cantiere.update({ where: { id: cantiere.id }, data: { attivo: true } });
-        }
+    // Veicolo: il nome e' unico nella Banca dati veicoli
+    let veicolo = await tx.dreamVeicolo.findFirst({
+      where: { nome: insensibile(v.veicoloNome) },
+      select: { id: true, attivo: true },
+    });
 
-        cantiereId = cantiere?.id ?? null;
-      }
-
-      // Veicolo: il nome e' unico nella Banca dati veicoli
-      let veicolo = await tx.dreamVeicolo.findFirst({
-        where: { nome: insensibile(veicoloNome) },
+    if (!veicolo && input.salvaVeicolo) {
+      veicolo = await tx.dreamVeicolo.create({
+        data: { nome: v.veicoloNome },
         select: { id: true, attivo: true },
       });
+    } else if (veicolo && !veicolo.attivo && input.salvaVeicolo) {
+      await tx.dreamVeicolo.update({ where: { id: veicolo.id }, data: { attivo: true } });
+    }
 
-      if (!veicolo && input.salvaVeicolo) {
-        veicolo = await tx.dreamVeicolo.create({
-          data: { nome: veicoloNome },
-          select: { id: true, attivo: true },
-        });
-      } else if (veicolo && !veicolo.attivo && input.salvaVeicolo) {
-        await tx.dreamVeicolo.update({ where: { id: veicolo.id }, data: { attivo: true } });
-      }
+    // Indirizzo di fatturazione in anagrafica: solo se valido e se il
+    // cliente esiste
+    if (input.aggiornaEmailCliente && cliente && v.emailNormalizzata) {
+      await tx.cliente.update({
+        where: { id: cliente.id },
+        data: { emailFatturazione: v.emailNormalizzata },
+      });
+    }
 
-      // Indirizzo di fatturazione in anagrafica: solo se valido e se il
-      // cliente esiste
-      if (input.aggiornaEmailCliente && cliente && emailNormalizzata) {
-        await tx.cliente.update({
-          where: { id: cliente.id },
-          data: { emailFatturazione: emailNormalizzata },
-        });
-      }
+    return { cantiereId, clienteId: cliente?.id ?? null, veicoloId: veicolo?.id ?? null };
+  }
+
+  /** I campi del verbale scritti allo stesso modo da creazione e modifica. */
+  private campi(input: DatiNoleggio, v: ReturnType<NoleggiService['valida']>) {
+    return {
+      data: input.data,
+      dataIngresso: input.dataIngresso,
+      cantiereNome: v.cantiereNome,
+      clienteNome: v.clienteNome,
+      veicoloNome: v.veicoloNome,
+      giorni: input.giorni,
+      pieno: input.pieno,
+      carburante: v.carburante,
+      danniPrecedenti: input.danniPrecedenti ?? null,
+      danniPrecedentiNote: input.danniPrecedenti ? input.danniPrecedentiNote?.trim() || null : null,
+      danni: input.danni,
+      danniNote: input.danni ? input.danniNote?.trim() || null : null,
+      emailFatturazione: v.email ? v.email.slice(0, 254) : null,
+      firmaNome: input.firmaNome.trim().slice(0, 200),
+      firmaEmail: input.firmaEmail?.trim().slice(0, 254) || null,
+      fatturato: Boolean(input.fatturato),
+    };
+  }
+
+  /**
+   * Salva il verbale firmato, con le anagrafiche nuove nella stessa
+   * transazione: o si salva tutto, o niente.
+   *
+   * Lancia Error con un messaggio leggibile, che la rotta gira come 400.
+   */
+  async create(input: CreateNoleggioInput): Promise<{ id: number }> {
+    const v = this.valida(input);
+    if (!input.firmaImg) {
+      throw new Error('Manca la firma di chi ha effettuato il noleggio');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const anagrafiche = await this.collegaAnagrafiche(tx, input, v);
 
       const noleggio = await tx.noleggio.create({
         data: {
+          ...this.campi(input, v),
+          ...anagrafiche,
           utenteId: input.utenteId,
-          data: input.data,
-          dataIngresso: input.dataIngresso,
-          cantiereId,
-          cantiereNome,
-          clienteId: cliente?.id ?? null,
-          clienteNome,
-          veicoloId: veicolo?.id ?? null,
-          veicoloNome,
-          giorni: input.giorni,
-          pieno: input.pieno,
-          carburante,
-          danniPrecedenti: input.danniPrecedenti ?? null,
-          danniPrecedentiNote: input.danniPrecedenti ? input.danniPrecedentiNote?.trim() || null : null,
-          danni: input.danni,
-          danniNote: input.danni ? input.danniNote?.trim() || null : null,
-          emailFatturazione: email ? email.slice(0, 254) : null,
-          firmaNome: input.firmaNome.trim().slice(0, 200),
-          firmaEmail: input.firmaEmail?.trim().slice(0, 254) || null,
           firmaImg: input.firmaImg,
-          fatturato: Boolean(input.fatturato),
           fatturatoAt: input.fatturato ? new Date() : null,
           emailStato: input.emailStato ?? null,
         },
@@ -289,19 +334,65 @@ export class NoleggiService {
       });
 
       // Solo orfani propri: un id altrui o gia' collegato viene ignorato
-      for (const [tipo, ids] of [
-        ['SCONTRINO', scontrinoIds],
-        ['DANNI_PRECEDENTI', danniPrecedentiIds],
-        ['DANNI', danniIds],
-      ] as const) {
+      for (const [tipo, ids] of v.allegati) {
         if (ids.length === 0) continue;
         await tx.allegatoNoleggio.updateMany({
-          where: { id: { in: ids }, noleggioId: null, caricatoDaId: input.utenteId },
+          where: { id: { in: [...ids] }, noleggioId: null, caricatoDaId: input.utenteId },
           data: { noleggioId: noleggio.id, tipo },
         });
       }
 
       return noleggio;
+    });
+  }
+
+  /**
+   * Modifica del verbale. Chi puo' farlo lo decide la rotta. La firma resta
+   * quella di prima se non ne arriva una nuova. Le foto tolte tornano orfane
+   * e le cancella la pulizia notturna; quelle nuove devono essere orfani di
+   * chi modifica.
+   *
+   * Restituisce false se il verbale non esiste; lancia Error come `create`.
+   */
+  async update(id: number, input: UpdateNoleggioInput, autoreId: number): Promise<boolean> {
+    const v = this.valida(input);
+
+    return this.prisma.$transaction(async (tx) => {
+      const attuale = await tx.noleggio.findUnique({ where: { id }, select: { fatturatoAt: true } });
+      if (!attuale) return false;
+
+      const anagrafiche = await this.collegaAnagrafiche(tx, input, v);
+
+      await tx.noleggio.update({
+        where: { id },
+        data: {
+          ...this.campi(input, v),
+          ...anagrafiche,
+          ...(input.firmaImg ? { firmaImg: input.firmaImg } : {}),
+          // Gia' fatturato: resta la data in cui lo e' diventato
+          fatturatoAt: input.fatturato ? (attuale.fatturatoAt ?? new Date()) : null,
+          ...(input.emailStato ? { emailStato: input.emailStato } : {}),
+        },
+      });
+
+      const tenuti = v.allegati.flatMap(([, ids]) => ids);
+      await tx.allegatoNoleggio.updateMany({
+        where: { noleggioId: id, id: { notIn: tenuti } },
+        data: { noleggioId: null, tipo: null },
+      });
+
+      for (const [tipo, ids] of v.allegati) {
+        if (ids.length === 0) continue;
+        await tx.allegatoNoleggio.updateMany({
+          where: {
+            id: { in: [...ids] },
+            OR: [{ noleggioId: id }, { noleggioId: null, caricatoDaId: autoreId }],
+          },
+          data: { noleggioId: id, tipo },
+        });
+      }
+
+      return true;
     });
   }
 
