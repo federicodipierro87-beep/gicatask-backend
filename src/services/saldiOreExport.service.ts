@@ -267,8 +267,8 @@ export class SaldiOreExportService {
 
       doc.fontSize(8).fillColor('#666666');
       doc.text(
-        'Ore dovute = ore del mese a tempo pieno x percentuale di lavoro. Ore effettuate senza ' +
-          'assenze. Saldo cumulativo da gennaio.',
+        'Ore dovute = ore del mese a tempo pieno x percentuale di lavoro. Ore effettuate con le ' +
+          'assenze, come nel Report Attivita\'. Saldo cumulativo da gennaio.',
         { width: TABLE_WIDTH, align: 'center' }
       );
 
@@ -375,7 +375,7 @@ export class SaldiOreExportService {
         align: 'center',
       });
       doc.fontSize(8).fillColor('#666666');
-      doc.text('Ore effettuate senza assenze. % lavoro in vigore nel mese.', {
+      doc.text('Ore effettuate con le assenze, come nel Report Attivita\'. % lavoro in vigore nel mese.', {
         width: D_TABLE_WIDTH,
         align: 'center',
       });
@@ -571,7 +571,7 @@ export class SaldiOreExportService {
 
     worksheet.mergeCells('A2:F2');
     worksheet.getCell('A2').value =
-      'Ore in formato decimale (8,50 = 8h 30m). Ore effettuate senza assenze. Saldo cumulativo da gennaio.';
+      'Ore in formato decimale (8,50 = 8h 30m). Ore effettuate con le assenze, come nel Report Attivita\'. Saldo cumulativo da gennaio.';
     worksheet.getCell('A2').font = { size: 9, italic: true, color: { argb: 'FF666666' } };
     worksheet.getCell('A2').alignment = { horizontal: 'center' };
 
@@ -732,7 +732,7 @@ export class SaldiOreExportService {
 
       const nota = ws.addRow([
         `Da gennaio a ${titoloMese(meseKey).toLowerCase()}. Ore decimali (8,50 = 8h 30m). ` +
-          'Ore effettuate senza assenze.',
+          'Ore effettuate con le assenze, come nel Report Attivita\'.',
       ]);
       ws.mergeCells(nota.number, 1, nota.number, colonne);
       nota.getCell(1).font = { size: 9, italic: true, color: { argb: 'FF666666' } };

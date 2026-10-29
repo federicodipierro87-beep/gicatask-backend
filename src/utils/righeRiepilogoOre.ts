@@ -1,15 +1,16 @@
 /**
  * Le righe di riepilogo delle ore in fondo ai dettagli per dipendente, le
- * stesse del Report Attivita': il totale comprende le assenze, il saldo si fa
- * sulle sole ore di lavoro. Le ore di lavoro senza assenze non hanno una riga
- * propria.
+ * stesse del Report Attivita': totale (assenze comprese), dovute e saldo.
  */
 
 export interface RiepilogoOre {
   /** Tutte le ore, assenze comprese. */
   totaleMinuti: number;
   dovutiMinuti: number;
-  /** Solo ore di lavoro. */
+  /**
+   * Base del saldo. Fino al 28/10/2026 erano le sole ore di lavoro; ora sono
+   * le ore effettuate del Report Saldi Ore, cioe' il totale.
+   */
   lavoroMinuti: number;
 }
 

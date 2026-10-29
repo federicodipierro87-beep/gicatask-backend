@@ -87,9 +87,8 @@ const NOMI_MESI = [
 ];
 
 /**
- * Le righe finali della tabella, in ordine. Il saldo si fa sulle sole ore di
- * lavoro, come il Report Saldi Ore, mentre il totale ore mese comprende le
- * assenze. Le ore di lavoro senza assenze non hanno una riga propria.
+ * Le righe finali della tabella, in ordine. Il saldo è totale ore mese meno
+ * dovute, assenze comprese, come nel Report Saldi Ore.
  */
 function righeTotali(gruppo: GruppoReport): { etichetta: string; minuti: number | null; nota?: string }[] {
   const totale = gruppo.attivita.reduce((sum, a) => sum + a.durataMinuti, 0);
@@ -109,10 +108,6 @@ function righeTotali(gruppo: GruppoReport): { etichetta: string; minuti: number 
     return righe;
   }
 
-  const lavoro = gruppo.attivita
-    .filter((a) => !a.assenza)
-    .reduce((sum, a) => sum + a.durataMinuti, 0);
-
   const nota = dovute.mesiNonImpostati.length > 0
     ? `non impostate per ${dovute.mesiNonImpostati
         .map((m) => `${NOMI_MESI[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`)
@@ -120,7 +115,7 @@ function righeTotali(gruppo: GruppoReport): { etichetta: string; minuti: number 
     : undefined;
 
   righe.push({ etichetta: 'TOTALE ORE DOVUTE', minuti: dovute.minuti, nota });
-  righe.push({ etichetta: 'SALDO ORE', minuti: lavoro - dovute.minuti });
+  righe.push({ etichetta: 'SALDO ORE', minuti: totale - dovute.minuti });
   return righe;
 }
 

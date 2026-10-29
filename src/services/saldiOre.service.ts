@@ -29,13 +29,13 @@ export interface MeseSaldoOre {
   mese: number;
   percentuale: number;
   dovutiMinuti: number;
-  /** Solo ore di lavoro, senza assenze: e' la base del saldo. */
+  /**
+   * Base del saldo: tutte le ore, assenze comprese (il Recupero ore in
+   * negativo), come il "Totale ore mese" del Report Attivita'.
+   */
   effettuatiMinuti: number;
   differenzaMinuti: number;
-  /**
-   * Tutte le ore del mese, assenze comprese: il "Totale ore mese" del Report
-   * Attivita'. Non entra nel saldo.
-   */
+  /** Il "Totale ore mese" del Report Attivita': dal 29/10/2026 uguale a `effettuatiMinuti`. */
   totaleMinuti: number;
 }
 
@@ -80,10 +80,10 @@ export class SaldiOreService {
   /**
    * Saldi ore del mese `YYYY-MM`, una riga per dipendente.
    *
-   * Le ore effettuate sono le sole attivita' di lavoro: le assenze restano
-   * fuori, comprese quelle che valgono una giornata piena (Vacanza, Malattia),
-   * e non riducono le ore dovute: e' una scelta, un giorno di assenza fa
-   * scendere il saldo. Il cumulativo riparte da zero a gennaio.
+   * Le ore effettuate sono quelle del Report Attivita', assenze comprese: una
+   * Vacanza o una Malattia vale una giornata piena, il Recupero ore la toglie.
+   * Fino al 28/10/2026 le assenze restavano fuori e i due report non
+   * coincidevano. Il cumulativo riparte da zero a gennaio.
    */
   async getMese(meseKey: string): Promise<SaldiOreMese> {
     const match = MESE.exec(meseKey);
@@ -94,14 +94,13 @@ export class SaldiOreService {
     const anno = Number(match[1]);
     const mese = Number(match[2]);
     // Le singole attivita' e non un groupBy: Prisma non raggruppa per mese di
-    // una data, e le righe di un anno sono poche migliaia al massimo. Assenze
-    // comprese: servono al totale ore mese, e restano fuori da lavoro e saldo
+    // una data, e le righe di un anno sono poche migliaia al massimo
     const [attivita, oreDovute] = await Promise.all([
       this.prisma.attivita.findMany({
         where: {
           dataRiferimento: { gte: inizioMese(anno, 1), lt: inizioMese(anno, mese + 1) },
         },
-        select: { utenteId: true, dataRiferimento: true, durataMinuti: true, assenzaId: true },
+        select: { utenteId: true, dataRiferimento: true, durataMinuti: true },
       }),
       this.prisma.oreDovuteMese.findMany({ where: { anno, mese: { lte: mese } } }),
     ]);
@@ -110,9 +109,8 @@ export class SaldiOreService {
     const tempoPieno = new Map(oreDovute.map((r) => [r.mese, r.minuti]));
     const mesiDelPeriodo = Array.from({ length: mese }, (_, i) => i + 1);
 
-    // Minuti per utente, un elemento per mese da gennaio: `effettuati` le sole
-    // ore di lavoro, `totali` anche le assenze. La data e' @db.Date, riletta a
-    // mezzanotte UTC: il mese va preso in UTC
+    // Minuti per utente, un elemento per mese da gennaio. La data e' @db.Date,
+    // riletta a mezzanotte UTC: il mese va preso in UTC
     const effettuati = new Map<number, number[]>();
     const totali = new Map<number, number[]>();
     const aggiungi = (mappa: Map<number, number[]>, utenteId: number, i: number, minuti: number) => {
@@ -126,7 +124,7 @@ export class SaldiOreService {
     for (const a of attivita) {
       const i = a.dataRiferimento.getUTCMonth();
       aggiungi(totali, a.utenteId, i, a.durataMinuti);
-      if (a.assenzaId === null) aggiungi(effettuati, a.utenteId, i, a.durataMinuti);
+      aggiungi(effettuati, a.utenteId, i, a.durataMinuti);
     }
 
     const utenti = await utentiDeiReportOre(this.prisma, [...effettuati.keys()]);
