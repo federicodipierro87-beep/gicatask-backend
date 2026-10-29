@@ -151,6 +151,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       oraInizioPomeriggio?: string;
       oraFinePomeriggio?: string;
       clienteId?: number | null;
+      clienteNome?: string | null;
       cantiereId?: number | null;
       tipoAttivitaId?: number | null;
       assenzaId?: number | null;
@@ -171,6 +172,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
           oraInizioPomeriggio: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
           oraFinePomeriggio: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
           clienteId: { type: ['number', 'null'] },
+          clienteNome: { type: ['string', 'null'], maxLength: 200 },
           cantiereId: { type: ['number', 'null'] },
           tipoAttivitaId: { type: ['number', 'null'] },
           assenzaId: { type: ['number', 'null'] },
@@ -197,6 +199,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
         oraInizioPomeriggio: body.oraInizioPomeriggio,
         oraFinePomeriggio: body.oraFinePomeriggio,
         clienteId: body.clienteId,
+        clienteNome: body.clienteNome,
         cantiereId: body.cantiereId,
         tipoAttivitaId: body.tipoAttivitaId,
         assenzaId: body.assenzaId,
@@ -223,6 +226,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       oraInizioPomeriggio?: string;
       oraFinePomeriggio?: string;
       clienteId?: number | null;
+      clienteNome?: string | null;
       cantiereId?: number | null;
       tipoAttivitaId?: number | null;
       assenzaId?: number | null;
@@ -234,7 +238,10 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     schema: {
       body: {
         type: 'object',
-        properties: { luogo: SCHEMA_LUOGO },
+        properties: {
+          luogo: SCHEMA_LUOGO,
+          clienteNome: { type: ['string', 'null'], maxLength: 200 },
+        },
       },
     },
   }, async (request, reply) => {
@@ -254,6 +261,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
           oraInizioPomeriggio: body.oraInizioPomeriggio,
           oraFinePomeriggio: body.oraFinePomeriggio,
           clienteId: body.clienteId,
+          clienteNome: body.clienteNome,
           cantiereId: body.cantiereId,
           tipoAttivitaId: body.tipoAttivitaId,
           assenzaId: body.assenzaId,
