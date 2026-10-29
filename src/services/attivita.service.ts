@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma, Attivita, LuogoAttivita } from '@prisma/client';
+import { PrismaClient, Attivita, LuogoAttivita } from '@prisma/client';
 import { calculateDurationMinutes } from '../utils/duration.js';
 import { durataAssenzaMinuti } from '../utils/assenze.js';
 
@@ -10,8 +10,6 @@ interface CreateAttivitaInput {
   oraInizioPomeriggio?: string;
   oraFinePomeriggio?: string;
   clienteId?: number | null;
-  // Cliente scritto a mano, al posto di `clienteId` (Nuova Attività 2 in cantiere)
-  clienteNome?: string | null;
   cantiereId?: number | null;
   tipoAttivitaId?: number | null;
   assenzaId?: number | null;
@@ -19,22 +17,6 @@ interface CreateAttivitaInput {
   note?: string;
   createdById: number;
 }
-
-/**
- * Cliente scritto a mano. `id` NULL: non è in anagrafica e lo crea il
- * salvataggio dell'attività; `riattiva`: corrisponde a uno disattivato.
- */
-interface ClienteScritto {
-  id: number | null;
-  nome: string;
-  riattiva: boolean;
-}
-
-function pulisciNome(valore: string | null | undefined, max = 200): string {
-  return (valore ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
-}
-
-const insensibile = (nome: string) => ({ equals: nome, mode: 'insensitive' as const });
 
 /**
  * Un dipendente senza il flag del modulo non può usarlo: le rotte rispondono
@@ -51,15 +33,6 @@ type ModuloAttivita = 'attivita' | 'attivita2';
 function moduloRichiesto(assenzaId: number | null, luogo: LuogoAttivita | null): ModuloAttivita | null {
   if (assenzaId !== null) return null;
   return luogo ? 'attivita2' : 'attivita';
-}
-
-/**
- * Il cliente (e il cantiere, se il cliente ne ha) è obbligatorio per le
- * attività normali e per quelle in cantiere di "Nuova Attività 2". In
- * magazzino il form propone da solo il cliente Gica, senza cantiere.
- */
-function richiedeCliente(luogo: LuogoAttivita | null): boolean {
-  return luogo !== 'MAGAZZINO';
 }
 
 function calculateTotalDuration(
@@ -200,53 +173,6 @@ export class AttivitaService {
     }
   }
 
-  /**
-   * Come nei Bollettini Nuovi: si collega il cliente in anagrafica con lo
-   * stesso nome, maiuscole a parte, prima gli attivi. `null` se il nome è vuoto.
-   */
-  private async risolviClienteScritto(nome?: string | null): Promise<ClienteScritto | null> {
-    const nomeScritto = pulisciNome(nome);
-    if (!nomeScritto) return null;
-
-    const esistente = await this.prisma.cliente.findFirst({
-      where: { nome: insensibile(nomeScritto) },
-      select: { id: true, nome: true, attivo: true },
-      orderBy: [{ attivo: 'desc' }, { id: 'asc' }],
-    });
-
-    return esistente
-      ? { id: esistente.id, nome: esistente.nome, riattiva: !esistente.attivo }
-      : { id: null, nome: nomeScritto, riattiva: false };
-  }
-
-  // Il cliente nuovo entra in anagrafica solo se l'attività si salva. Si
-  // ricerca qui dentro perché un altro salvataggio potrebbe averlo appena creato
-  private async salvaClienteScritto(tx: Prisma.TransactionClient, cliente: ClienteScritto): Promise<number> {
-    if (cliente.id !== null) {
-      if (cliente.riattiva) {
-        await tx.cliente.update({ where: { id: cliente.id }, data: { attivo: true } });
-      }
-      return cliente.id;
-    }
-
-    const creato =
-      (await tx.cliente.findFirst({
-        where: { nome: insensibile(cliente.nome) },
-        select: { id: true },
-        orderBy: [{ attivo: 'desc' }, { id: 'asc' }],
-      })) ??
-      (await tx.cliente.create({ data: { nome: cliente.nome }, select: { id: true } }));
-    return creato.id;
-  }
-
-  // Il cantiere conta solo per un cliente già attivo: di uno nuovo o
-  // disattivato il form non ha proposto i cantieri
-  private async assertCantiereClienteScritto(cliente: ClienteScritto, cantiereId?: number | null) {
-    if (cliente.id !== null && !cliente.riattiva) {
-      await this.assertCantiereWhenRequired(cliente.id, cantiereId);
-    }
-  }
-
   // Un'assenza vale una giornata lavorativa piena, col segno che dipende dal
   // tipo: il Recupero ore sottrae le ore invece di aggiungerle
   private async durataAssenza(assenzaId: number): Promise<number> {
@@ -269,24 +195,20 @@ export class AttivitaService {
   async create(input: CreateAttivitaInput, verificaModulo = false): Promise<Attivita> {
     // With an absence selected, cliente/cantiere and time slots are optional
     const assenzaId = input.assenzaId ?? null;
-    // "Nuova Attivita 2": il luogo prende il posto del tipo
+    // "Nuova Attivita 2": il luogo prende il posto di cliente, cantiere e tipo
     const luogo = assenzaId === null ? input.luogo ?? null : null;
 
     if (verificaModulo) {
       await this.assertModuloAbilitato(input.utenteId, moduloRichiesto(assenzaId, luogo));
     }
 
-    const clienteScritto = input.clienteId ? null : await this.risolviClienteScritto(input.clienteNome);
-
     if (assenzaId === null) {
-      if (richiedeCliente(luogo)) {
-        if (clienteScritto) {
-          await this.assertCantiereClienteScritto(clienteScritto, input.cantiereId);
-        } else if (!input.clienteId) {
+      if (luogo === null) {
+        if (!input.clienteId) {
           throw new Error('Il cliente è obbligatorio');
-        } else {
-          await this.assertCantiereWhenRequired(input.clienteId, input.cantiereId);
         }
+
+        await this.assertCantiereWhenRequired(input.clienteId, input.cantiereId);
       }
 
       const hasMattino = input.oraInizioMattino && input.oraFineMattino;
@@ -306,7 +228,7 @@ export class AttivitaService {
           input.oraFinePomeriggio
         );
 
-    return this.prisma.$transaction(async (tx) => tx.attivita.create({
+    return this.prisma.attivita.create({
       data: {
         utenteId: input.utenteId,
         dataRiferimento: input.dataRiferimento,
@@ -315,17 +237,15 @@ export class AttivitaService {
         oraInizioPomeriggio: input.oraInizioPomeriggio || null,
         oraFinePomeriggio: input.oraFinePomeriggio || null,
         durataMinuti,
-        clienteId: clienteScritto
-          ? await this.salvaClienteScritto(tx, clienteScritto)
-          : input.clienteId ?? null,
-        cantiereId: luogo === 'MAGAZZINO' || clienteScritto?.id === null ? null : input.cantiereId ?? null,
+        clienteId: luogo ? null : input.clienteId ?? null,
+        cantiereId: luogo ? null : input.cantiereId ?? null,
         tipoAttivitaId: luogo ? null : input.tipoAttivitaId ?? null,
         assenzaId: input.assenzaId ?? null,
         luogo,
         note: input.note,
         createdById: input.createdById,
       },
-    }));
+    });
   }
 
   async update(
@@ -352,7 +272,6 @@ export class AttivitaService {
     const oraFinePomeriggio = input.oraFinePomeriggio !== undefined ? input.oraFinePomeriggio : attivita.oraFinePomeriggio;
 
     // Merge the other fields too, to validate against the resulting record
-    const clienteScritto = input.clienteId ? null : await this.risolviClienteScritto(input.clienteNome);
     const clienteId = input.clienteId !== undefined ? input.clienteId : attivita.clienteId;
     const cantiereId = input.cantiereId !== undefined ? input.cantiereId : attivita.cantiereId;
     const assenzaId = input.assenzaId !== undefined ? input.assenzaId : attivita.assenzaId;
@@ -374,14 +293,12 @@ export class AttivitaService {
     }
 
     if (!isAssenza) {
-      if (richiedeCliente(luogo ?? null)) {
-        if (clienteScritto) {
-          await this.assertCantiereClienteScritto(clienteScritto, cantiereId);
-        } else if (!clienteId) {
+      if (!luogo) {
+        if (!clienteId) {
           throw new Error('Il cliente è obbligatorio');
-        } else {
-          await this.assertCantiereWhenRequired(clienteId, cantiereId);
         }
+
+        await this.assertCantiereWhenRequired(clienteId, cantiereId);
       }
 
       const hasMattino = oraInizioMattino && oraFineMattino;
@@ -401,7 +318,7 @@ export class AttivitaService {
           oraFinePomeriggio || undefined
         );
 
-    return this.prisma.$transaction(async (tx) => tx.attivita.update({
+    return this.prisma.attivita.update({
       where: { id },
       data: {
         ...(input.utenteId !== undefined ? { utenteId: input.utenteId } : {}),
@@ -411,20 +328,16 @@ export class AttivitaService {
         ...(input.oraInizioPomeriggio !== undefined ? { oraInizioPomeriggio: input.oraInizioPomeriggio || null } : {}),
         ...(input.oraFinePomeriggio !== undefined ? { oraFinePomeriggio: input.oraFinePomeriggio || null } : {}),
         durataMinuti,
-        ...(clienteScritto
-          ? { clienteId: await this.salvaClienteScritto(tx, clienteScritto) }
-          : input.clienteId !== undefined ? { clienteId: input.clienteId ?? null } : {}),
+        ...(input.clienteId !== undefined ? { clienteId: input.clienteId ?? null } : {}),
         ...(input.cantiereId !== undefined ? { cantiereId: input.cantiereId ?? null } : {}),
-        ...(clienteScritto?.id === null ? { cantiereId: null } : {}),
         ...(input.tipoAttivitaId !== undefined ? { tipoAttivitaId: input.tipoAttivitaId || null } : {}),
         ...(input.assenzaId !== undefined ? { assenzaId: input.assenzaId ?? null } : {}),
-        // Il luogo esclude il tipo, il magazzino anche il cantiere
+        // Il luogo esclude cliente, cantiere e tipo, che vengono svuotati
         luogo,
-        ...(luogo ? { tipoAttivitaId: null } : {}),
-        ...(luogo === 'MAGAZZINO' ? { cantiereId: null } : {}),
+        ...(luogo ? { clienteId: null, cantiereId: null, tipoAttivitaId: null } : {}),
         ...(input.note !== undefined ? { note: input.note || null } : {}),
       },
-    }));
+    });
   }
 
   async delete(id: number, requesterId: number, isResponsabile: boolean): Promise<void> {

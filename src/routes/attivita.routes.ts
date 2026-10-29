@@ -151,7 +151,6 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       oraInizioPomeriggio?: string;
       oraFinePomeriggio?: string;
       clienteId?: number | null;
-      clienteNome?: string | null;
       cantiereId?: number | null;
       tipoAttivitaId?: number | null;
       assenzaId?: number | null;
@@ -172,7 +171,6 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
           oraInizioPomeriggio: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
           oraFinePomeriggio: { type: 'string', pattern: '^([01]\\d|2[0-3]):([0-5]\\d)$' },
           clienteId: { type: ['number', 'null'] },
-          clienteNome: { type: ['string', 'null'], maxLength: 200 },
           cantiereId: { type: ['number', 'null'] },
           tipoAttivitaId: { type: ['number', 'null'] },
           assenzaId: { type: ['number', 'null'] },
@@ -199,7 +197,6 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
         oraInizioPomeriggio: body.oraInizioPomeriggio,
         oraFinePomeriggio: body.oraFinePomeriggio,
         clienteId: body.clienteId,
-        clienteNome: body.clienteNome,
         cantiereId: body.cantiereId,
         tipoAttivitaId: body.tipoAttivitaId,
         assenzaId: body.assenzaId,
@@ -226,7 +223,6 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
       oraInizioPomeriggio?: string;
       oraFinePomeriggio?: string;
       clienteId?: number | null;
-      clienteNome?: string | null;
       cantiereId?: number | null;
       tipoAttivitaId?: number | null;
       assenzaId?: number | null;
@@ -238,10 +234,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
     schema: {
       body: {
         type: 'object',
-        properties: {
-          luogo: SCHEMA_LUOGO,
-          clienteNome: { type: ['string', 'null'], maxLength: 200 },
-        },
+        properties: { luogo: SCHEMA_LUOGO },
       },
     },
   }, async (request, reply) => {
@@ -261,7 +254,6 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
           oraInizioPomeriggio: body.oraInizioPomeriggio,
           oraFinePomeriggio: body.oraFinePomeriggio,
           clienteId: body.clienteId,
-          clienteNome: body.clienteNome,
           cantiereId: body.cantiereId,
           tipoAttivitaId: body.tipoAttivitaId,
           assenzaId: body.assenzaId,
@@ -551,7 +543,7 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
         durataMinuti: totals._sum.durataMinuti || 0,
       },
       // Il raggruppamento è anche per luogo: le attività di "Nuova Attività 2"
-      // con un cliente vanno sommate a quelle normali dello stesso cliente
+      // salvate col cliente dal 29 al 30/10/2026 vanno sommate allo stesso cliente
       perCliente: [...byCliente
         .reduce((gruppi, c) => {
           const chiave = c.clienteId !== null ? `c${c.clienteId}` : c.luogo ?? 'assenze';
