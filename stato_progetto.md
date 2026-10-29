@@ -1048,7 +1048,8 @@ Dal 22/10/2026 c'è il modulo **Nuova Attività 2** (`/dipendente/nuova-2`, modi
 `/dipendente/modifica-2/:id`, flag `abilitatoAttivita2`). Usa le rotte `/api/attivita` di sempre,
 col campo `luogo` (`MAGAZZINO` | `CANTIERE`) al posto del tipo. Dal 29/10/2026 ha anche il cliente:
 in magazzino Gica (scelto dal form, senza cantiere), in cantiere obbligatorio come nel form 1, col
-cantiere se il cliente ne ha.
+cantiere se il cliente ne ha. Il cliente del cantiere si può anche scrivere a mano: POST e PUT
+accettano `clienteNome` al posto di `clienteId` e il server lo aggiunge all'anagrafica.
 
 Dal 24/10/2026 anche **Nuova Attività** (`/dipendente/nuova`) ha un flag, `abilitatoAttivita`
 (acceso per default). La modifica (`/dipendente/modifica/:id`) resta aperta a tutti, come
@@ -4026,6 +4027,36 @@ cantiere apre cliente e cantiere, elenco; modifica di un'attività in cantiere c
 `/stats` con attività normali e di magazzino su Gica: una riga sola.
 
 Deploy: prima il backend `6fbe5e7`, poi il frontend `59e72ae`.
+
+---
+
+### Nuova Attività 2: cliente del cantiere scritto a mano (29 Ottobre 2026)
+
+Richiesta: poter inserire a mano il cliente quando non c'è nell'elenco.
+
+- **Form:** con *Cantiere* il campo *Cliente* non è più una tendina ma un campo di testo con i
+  suggerimenti sotto (`CampoSuggerimenti`, come in Bollettini Nuovi), che compaiono dalla prima
+  lettera. Scegliendo o scrivendo per intero il nome di un cliente in anagrafica si comporta come
+  prima (cantieri del cliente, obbligatorio se ne ha). Un nome che non c'è mostra "Nuovo cliente:
+  verrà aggiunto all'anagrafica quando salvi l'attività" e non chiede il cantiere.
+- **Server:** `POST`/`PUT /api/attivita` accettano `clienteNome` (max 200 caratteri) quando manca
+  `clienteId`. Spazi ripuliti; si collega il cliente con lo stesso nome, maiuscole a parte, prima gli
+  attivi; uno disattivato viene riattivato (senza obbligo del cantiere, come nei bollettini);
+  altrimenti il cliente si crea nella stessa transazione dell'attività, quindi un salvataggio
+  rifiutato (per esempio senza orario) non lascia clienti orfani.
+- **Scelta fatta:** il dipendente aggiunge il cliente senza passare dal responsabile, come già nei
+  Bollettini Nuovi; il nuovo cliente compare subito in *Clienti*, senza e-mail di fatturazione né
+  cantieri. Il form 1 (*Nuova Attività*) e la pagina del responsabile restano con la tendina.
+- In modifica il campo mostra il nome salvato; un cliente disattivato nel frattempo resta collegato
+  senza essere riattivato, finché non si cambia il nome.
+
+Verifica (Postgres locale): nome nuovo con spazi doppi creato ripulito, stesso nome in minuscolo
+collegato allo stesso cliente, cliente con cantieri senza cantiere rifiutato, salvataggio senza
+orario senza cliente orfano, cliente disattivato riattivato, `PUT` con nome nuovo. Browser
+(telefono): suggerimenti dalla prima lettera, cantiere che compare scegliendo il cliente e sparisce
+con un nome nuovo, salvataggio e riapertura in modifica.
+
+Deploy: prima il backend `cc8325b`, poi il frontend `988dbc3`.
 
 ---
 
