@@ -2413,7 +2413,7 @@ una riga di totale in fondo:
 |---|---|
 | Dipendente | cognome e nome |
 | Ore dovute | **0 per ora**: arriveranno da una tabella dedicata |
-| Ore effettuate | somma di `durata_minuti` del mese, **solo lavoro** (`assenza_id IS NULL`) |
+| Ore effettuate | somma di `durata_minuti` del mese, **solo lavoro** (`assenza_id IS NULL`); dal 29/10/2026 assenze comprese |
 | Differenza | effettuate − dovute: positiva = il dipendente è a credito |
 | Saldo cumulativo | somma delle differenze **da gennaio** al mese scelto; si azzera a ogni anno |
 
@@ -2425,7 +2425,7 @@ Differenza e saldo sono verdi se positivi e rossi se negativi.
 - **Chi compare:** tutti i dipendenti attivi, anche a zero ore, perché con le ore dovute un mese
   vuoto è un saldo negativo. Responsabili e utenti disattivati compaiono solo se hanno ore di
   lavoro nell'anno. Ordine: ruolo, cognome, nome, come nelle tendine.
-- **Le assenze sono escluse** dalle ore effettuate, comprese quelle da giornata piena (Vacanza,
+- *(Superato il 29/10/2026: ora le assenze sono comprese.)* **Le assenze sono escluse** dalle ore effettuate, comprese quelle da giornata piena (Vacanza,
   Malattia): toccherà alle ore dovute tenerne conto. Il *Recupero ore* non richiede un caso a
   parte: quel giorno non ci sono ore di lavoro e il saldo scende da solo.
 - **Ore dovute:** l'unico punto da riscrivere è `minutiDovuti(utenteId, anno, mese)` in
@@ -3082,6 +3082,7 @@ delle pagine Saldi Ore e Ore dovute. Restano *Totale ore (mese)*, *Totale ore do
 **Il calcolo non cambia:** il saldo resta *ore di lavoro − ore dovute*, senza le assenze. Quindi,
 quando nel periodo ci sono assenze, il saldo non è più la differenza fra le due righe sopra.
 Le voci del 28 Settembre che descrivono la riga valgono per la situazione di allora.
+*Dal 29 Ottobre 2026 il saldo comprende le assenze ed è di nuovo totale − dovute (vedi sotto).*
 
 ### Dominio task.gica.ch (30 Settembre 2026)
 
@@ -4057,6 +4058,40 @@ orario senza cliente orfano, cliente disattivato riattivato, `PUT` con nome nuov
 con un nome nuovo, salvataggio e riapertura in modifica.
 
 Deploy: prima il backend `cc8325b`, poi il frontend `988dbc3`.
+
+---
+
+### Saldi Ore uguale al Report Attività: assenze comprese (29 Ottobre 2026)
+
+Segnalazione: per un dipendente (Benj) le ore del **Report Attività** erano giuste, quelle del
+**Report Saldi Ore** no.
+
+**Causa:** non un errore di calcolo ma una regola del 27/09. Le *Ore effettuate* del Saldi Ore
+contavano solo il lavoro (`assenza_id IS NULL`), mentre il totale del Report Attività comprende le
+assenze: +8h 12m per Vacanza, Malattia, Festivo…, −8h 12m per il Recupero ore. Con una vacanza nel
+mese il Saldi Ore mostrava 8h 12m in meno e il saldo scendeva come per un giorno non lavorato. La
+stessa regola faceva sì che nell'export del Report Attività per dipendente il *SALDO ORE* non fosse
+*TOTALE ORE MESE − TOTALE ORE DOVUTE*. I dati di produzione non sono stati letti: la lettura dal
+database di produzione è stata bloccata dai permessi, la causa è stata trovata nel codice.
+
+**Scelta dell'utente:** le ore effettuate sono il totale del Report Attività, Recupero ore
+compreso (opzione proposta in alternativa: assenze sì, Recupero no, perché un giorno di Recupero
+pesa così due volte sul saldo, una per le ore dovute non lavorate e una per il −8h 12m).
+
+- `saldiOre.service.ts`: `effettuati` somma tutte le attività; `effettuatiMinuti` e `totaleMinuti`
+  ora coincidono (restano entrambi nell'API). Da qui derivano colonna *Ore effettuate*, differenza,
+  saldo cumulativo, prospetto, vista Dipendente, export Saldi Ore e il riepilogo della pagina *Ore
+  dovute* (`lavoroMinuti` in `oreDovute.routes.ts`).
+- `export.service.ts` (`righeTotali`): *SALDO ORE* = totale − dovute.
+- `utils/righeRiepilogoOre.ts`: commenti; il calcolo usa `lavoroMinuti`, che ora vale il totale.
+- Testi "Ore effettuate senza assenze" → "con le assenze, come nel Report Attività" nella pagina
+  Saldi Ore e negli export PDF ed Excel.
+
+Verifica (Postgres locale): dipendente con lavoro, una Vacanza (+492) e un Recupero ore (−492);
+totale del Report Attività 2070 minuti = *Ore effettuate* del Saldi Ore; nell'Excel del Report
+Attività 34,5 − 166,67 = −132,17 = differenza del Saldi Ore.
+
+Deploy: prima il backend `63e8a2c`, poi il frontend `9c2b1fb`.
 
 ---
 
