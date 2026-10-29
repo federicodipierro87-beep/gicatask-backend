@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 28 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 29 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -1046,7 +1046,9 @@ flag `abilitatoNoleggi`), con le sue rotte `/api/noleggi`:
 
 Dal 22/10/2026 c'è il modulo **Nuova Attività 2** (`/dipendente/nuova-2`, modifica
 `/dipendente/modifica-2/:id`, flag `abilitatoAttivita2`). Usa le rotte `/api/attivita` di sempre,
-col campo `luogo` (`MAGAZZINO` | `CANTIERE`) al posto di cliente, cantiere e tipo.
+col campo `luogo` (`MAGAZZINO` | `CANTIERE`) al posto del tipo. Dal 29/10/2026 ha anche il cliente:
+in magazzino Gica (scelto dal form, senza cantiere), in cantiere obbligatorio come nel form 1, col
+cantiere se il cliente ne ha.
 
 Dal 24/10/2026 anche **Nuova Attività** (`/dipendente/nuova`) ha un flag, `abilitatoAttivita`
 (acceso per default). La modifica (`/dipendente/modifica/:id`) resta aperta a tutti, come
@@ -3978,6 +3980,55 @@ Deploy: prima il backend `52d5b54`, poi il frontend `16624f0`.
 
 ---
 
+### Nuova Attività 2: cliente Gica in magazzino, cliente e cantiere in cantiere (29 Ottobre 2026)
+
+Richiesta: in *Nuova Attività 2* inserire anche il cliente. Scegliendo **Magazzino** il cliente
+diventa da solo **Gica**; scegliendo **Cantiere** si apre la scelta del cliente e, se quel cliente
+ha dei cantieri, anche quella del cantiere.
+
+- **Magazzino:** sotto la scelta compare *Cliente* in sola lettura con "Gica". *Scelta fatta:* il
+  cliente è quello che si chiama esattamente "Gica" o, se manca, il più corto che inizia con "Gica"
+  (quindi non "Gica Noleggi"). Se non ce n'è nessuno il form lo dice e salva senza cliente. Il
+  cantiere non c'è e il server lo toglie anche se mandato.
+- **Cantiere:** tendina *Cliente* obbligatoria; con un cliente che ha cantieri attivi compare la
+  tendina *Cantiere*, obbligatoria e già scelta se il cantiere è uno solo. Cambiando cliente un
+  cantiere dell'altro cliente non resta selezionato. Le stesse regole valgono sul server.
+- **Il tipo** resta assente, come prima.
+- **Attività 2 già inserite:** restano senza cliente. Aprendole in modifica, una in magazzino
+  prende Gica al salvataggio; una in cantiere chiede il cliente.
+- **Dove si vede:** in *Le Mie Attività* la riga diventa "Magazzino → Gica" o "Cantiere → Cliente →
+  Cantiere". Nei dettagli (elenco, Dashboard, Report) l'etichetta è "Cliente (Magazzino)" /
+  "Cliente (Cantiere)", "Luogo" solo per le vecchie senza cliente. Nella colonna *Cliente* di
+  report, PDF ed Excel compare il cliente (prima "Magazzino"/"Cantiere"), e le ore del magazzino
+  finiscono quindi sotto Gica.
+- **Responsabile:** nella modifica di un'attività 2 ora vede *Cliente* (e *Cantiere* se in
+  cantiere) sotto il *Luogo*; prima la pagina mandava il cliente vuoto e l'avrebbe cancellato.
+
+#### Backend
+
+`attivita.service.ts`: nuova `richiedeCliente(luogo)`, vera per le attività normali e per il
+cantiere; il luogo non svuota più cliente e cantiere ma solo il tipo, il magazzino anche il cantiere.
+`attivita.routes.ts`, `/stats`: il raggruppamento è per cliente e luogo, quindi le righe dello stesso
+cliente vengono sommate (Gica compare una volta sola).
+
+#### Frontend
+
+`Attivita2FormPage` (clienti, cantieri del cliente, `trovaClienteGica`), `AssegnaAttivitaPage`
+(`conCliente`), `types/index.ts` (`etichettaClienteAttivita`), `AttivitaListPage`, `ReportPage`,
+`ResponsabileDashboard`.
+
+#### Verifica
+
+Postgres 18 locale con "Gica", "Gica Noleggi" e un cliente con cantieri. API: magazzino col
+cantiere (tolto), cantiere senza cliente e senza cantiere (errori), cantiere completo, cliente
+senza cantieri. Browser (Edge, larghezza telefono): magazzino mostra Gica e salva il cliente giusto,
+cantiere apre cliente e cantiere, elenco; modifica di un'attività in cantiere con cambio cliente.
+`/stats` con attività normali e di magazzino su Gica: una riga sola.
+
+Deploy: prima il backend `6fbe5e7`, poi il frontend `59e72ae`.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
@@ -4114,7 +4165,7 @@ frontend/
 │   │   ├── dipendente/
 │   │   │   ├── AttivitaListPage.tsx
 │   │   │   ├── AttivitaFormPage.tsx
-│   │   │   ├── Attivita2FormPage.tsx # Nuova Attività 2: magazzino o cantiere
+│   │   │   ├── Attivita2FormPage.tsx # Nuova Attività 2: magazzino (Gica) o cantiere (cliente)
 │   │   │   ├── AssenzaFormPage.tsx   # Form separato per le assenze
 │   │   │   ├── BollettiniListPage.tsx
 │   │   │   ├── BollettinoFormPage.tsx
