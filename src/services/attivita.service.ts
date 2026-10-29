@@ -35,6 +35,15 @@ function moduloRichiesto(assenzaId: number | null, luogo: LuogoAttivita | null):
   return luogo ? 'attivita2' : 'attivita';
 }
 
+/**
+ * Il cliente (e il cantiere, se il cliente ne ha) è obbligatorio per le
+ * attività normali e per quelle in cantiere di "Nuova Attività 2". In
+ * magazzino il form propone da solo il cliente Gica, senza cantiere.
+ */
+function richiedeCliente(luogo: LuogoAttivita | null): boolean {
+  return luogo !== 'MAGAZZINO';
+}
+
 function calculateTotalDuration(
   oraInizioMattino?: string,
   oraFineMattino?: string,
@@ -195,7 +204,7 @@ export class AttivitaService {
   async create(input: CreateAttivitaInput, verificaModulo = false): Promise<Attivita> {
     // With an absence selected, cliente/cantiere and time slots are optional
     const assenzaId = input.assenzaId ?? null;
-    // "Nuova Attivita 2": il luogo prende il posto di cliente, cantiere e tipo
+    // "Nuova Attivita 2": il luogo prende il posto del tipo
     const luogo = assenzaId === null ? input.luogo ?? null : null;
 
     if (verificaModulo) {
@@ -203,7 +212,7 @@ export class AttivitaService {
     }
 
     if (assenzaId === null) {
-      if (luogo === null) {
+      if (richiedeCliente(luogo)) {
         if (!input.clienteId) {
           throw new Error('Il cliente è obbligatorio');
         }
@@ -237,8 +246,8 @@ export class AttivitaService {
         oraInizioPomeriggio: input.oraInizioPomeriggio || null,
         oraFinePomeriggio: input.oraFinePomeriggio || null,
         durataMinuti,
-        clienteId: luogo ? null : input.clienteId ?? null,
-        cantiereId: luogo ? null : input.cantiereId ?? null,
+        clienteId: input.clienteId ?? null,
+        cantiereId: luogo === 'MAGAZZINO' ? null : input.cantiereId ?? null,
         tipoAttivitaId: luogo ? null : input.tipoAttivitaId ?? null,
         assenzaId: input.assenzaId ?? null,
         luogo,
@@ -293,7 +302,7 @@ export class AttivitaService {
     }
 
     if (!isAssenza) {
-      if (!luogo) {
+      if (richiedeCliente(luogo ?? null)) {
         if (!clienteId) {
           throw new Error('Il cliente è obbligatorio');
         }
@@ -332,9 +341,10 @@ export class AttivitaService {
         ...(input.cantiereId !== undefined ? { cantiereId: input.cantiereId ?? null } : {}),
         ...(input.tipoAttivitaId !== undefined ? { tipoAttivitaId: input.tipoAttivitaId || null } : {}),
         ...(input.assenzaId !== undefined ? { assenzaId: input.assenzaId ?? null } : {}),
-        // Il luogo esclude cliente, cantiere e tipo, che vengono svuotati
+        // Il luogo esclude il tipo, il magazzino anche il cantiere
         luogo,
-        ...(luogo ? { clienteId: null, cantiereId: null, tipoAttivitaId: null } : {}),
+        ...(luogo ? { tipoAttivitaId: null } : {}),
+        ...(luogo === 'MAGAZZINO' ? { cantiereId: null } : {}),
         ...(input.note !== undefined ? { note: input.note || null } : {}),
       },
     });

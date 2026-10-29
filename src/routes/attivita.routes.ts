@@ -542,15 +542,24 @@ export async function attivitaRoutes(fastify: FastifyInstance) {
         attivita: totals._count,
         durataMinuti: totals._sum.durataMinuti || 0,
       },
-      perCliente: byCliente
-        .map((c) => ({
-          clienteId: c.clienteId,
-          clienteNome: c.clienteId !== null
-            ? (clientiMap.get(c.clienteId) || 'Unknown')
-            : c.luogo ? NOMI_LUOGO[c.luogo] : 'Assenze',
-          attivita: c._count,
-          durataMinuti: c._sum.durataMinuti || 0,
-        }))
+      // Il raggruppamento è anche per luogo: le attività di "Nuova Attività 2"
+      // con un cliente vanno sommate a quelle normali dello stesso cliente
+      perCliente: [...byCliente
+        .reduce((gruppi, c) => {
+          const chiave = c.clienteId !== null ? `c${c.clienteId}` : c.luogo ?? 'assenze';
+          const gruppo = gruppi.get(chiave) ?? {
+            clienteId: c.clienteId,
+            clienteNome: c.clienteId !== null
+              ? (clientiMap.get(c.clienteId) || 'Unknown')
+              : c.luogo ? NOMI_LUOGO[c.luogo] : 'Assenze',
+            attivita: 0,
+            durataMinuti: 0,
+          };
+          gruppo.attivita += c._count;
+          gruppo.durataMinuti += c._sum.durataMinuti || 0;
+          return gruppi.set(chiave, gruppo);
+        }, new Map<string, { clienteId: number | null; clienteNome: string; attivita: number; durataMinuti: number }>())
+        .values()]
         .sort((a, b) => b.durataMinuti - a.durataMinuti),
       perUtente: byUtente
         .map((u) => ({
