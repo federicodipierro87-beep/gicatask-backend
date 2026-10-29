@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 29 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 30 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -1046,10 +1046,8 @@ flag `abilitatoNoleggi`), con le sue rotte `/api/noleggi`:
 
 Dal 22/10/2026 c'è il modulo **Nuova Attività 2** (`/dipendente/nuova-2`, modifica
 `/dipendente/modifica-2/:id`, flag `abilitatoAttivita2`). Usa le rotte `/api/attivita` di sempre,
-col campo `luogo` (`MAGAZZINO` | `CANTIERE`) al posto del tipo. Dal 29/10/2026 ha anche il cliente:
-in magazzino Gica (scelto dal form, senza cantiere), in cantiere obbligatorio come nel form 1, col
-cantiere se il cliente ne ha. Il cliente del cantiere si può anche scrivere a mano: POST e PUT
-accettano `clienteNome` al posto di `clienteId` e il server lo aggiunge all'anagrafica.
+col campo `luogo` (`MAGAZZINO` | `CANTIERE`) al posto di cliente, cantiere e tipo.
+(Il cliente aggiunto il 29/10/2026 è stato tolto di nuovo il 30/10/2026.)
 
 Dal 24/10/2026 anche **Nuova Attività** (`/dipendente/nuova`) ha un flag, `abilitatoAttivita`
 (acceso per default). La modifica (`/dipendente/modifica/:id`) resta aperta a tutti, come
@@ -4095,6 +4093,31 @@ Deploy: prima il backend `63e8a2c`, poi il frontend `9c2b1fb`.
 
 ---
 
+### Nuova Attività 2: tolto di nuovo il cliente (30 Ottobre 2026)
+
+Richiesta: tornare indietro sulla modifica magazzino → Gica / cantiere → cliente e cantiere.
+Annullate entrambe le voci del 29/10 (*cliente Gica in magazzino, cliente e cantiere in cantiere* e
+*cliente del cantiere scritto a mano*): *Nuova Attività 2* torna com'era dal 22/10, solo
+**Magazzino** o **Cantiere**, senza cliente, cantiere né tipo. Lo stesso per la modifica del
+responsabile in *Assegna Attività*, per le etichette (di nuovo "Luogo") e per la POST/PUT, che non
+accettano più `clienteNome` e col luogo svuotano di nuovo cliente e cantiere. Il Saldi Ore con le
+assenze dello stesso giorno resta.
+
+- **Scelta fatta:** in `/stats` resta la somma per cliente delle righe con lo stesso cliente.
+  Senza, le attività 2 salvate col cliente il 29-30/10 comparirebbero come una seconda riga dello
+  stesso cliente.
+- **Dati salvati nel frattempo:** le attività 2 inserite il 29-30/10 tengono il cliente (e il
+  cantiere) scelto; nei report compare quel cliente invece di "Magazzino"/"Cantiere". Riaprendole
+  in modifica e salvando, il cliente viene tolto. I clienti scritti a mano in quei giorni restano in
+  *Clienti*, e si possono disattivare da lì.
+
+Fatto con `git revert` dei commit `cc8325b` e `6fbe5e7` (backend) e `988dbc3` e `59e72ae`
+(frontend); il frontend è tornato identico a prima, salvo le scritte del Saldi Ore.
+
+Deploy: prima il backend `2c7ce3f`, poi il frontend `b83d3a7`.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
@@ -4231,7 +4254,7 @@ frontend/
 │   │   ├── dipendente/
 │   │   │   ├── AttivitaListPage.tsx
 │   │   │   ├── AttivitaFormPage.tsx
-│   │   │   ├── Attivita2FormPage.tsx # Nuova Attività 2: magazzino (Gica) o cantiere (cliente)
+│   │   │   ├── Attivita2FormPage.tsx # Nuova Attività 2: magazzino o cantiere
 │   │   │   ├── AssenzaFormPage.tsx   # Form separato per le assenze
 │   │   │   ├── BollettiniListPage.tsx
 │   │   │   ├── BollettinoFormPage.tsx
