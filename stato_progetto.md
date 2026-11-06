@@ -4165,6 +4165,48 @@ Deploy: backend `390a2c2`.
 
 ---
 
+### Sicurezza: le tre falle di gravità bassa dell'audit (6 Novembre 2026)
+
+Le altre tre falle confermate dall'audit del 5/11, dopo le due prioritarie della voce precedente.
+
+**1. `GET /api/utenti` aperto a tutti i dipendenti.** Lista e dettaglio chiedevano solo il login:
+qualsiasi dipendente vedeva ruoli, flag, utenti disattivati (`?includeInactive=true`) e lo storico
+delle percentuali di lavoro dei colleghi, dati che altrove (HR, Ore dovute, Saldi Ore) sono solo del
+responsabile. Ora `utenti.routes.ts` chiede `RESPONSABILE` anche per le due letture, come per le
+scritture. Nel frontend le usano solo pagine del responsabile (Utenti, Report, Assegna Attività,
+archivi bollettini e noleggi); i dipendenti usano `/api/auth/users`, che dà solo id e nome.
+
+**2. Letture dal database prima dell'autenticazione.** L'hook globale del pannello Log legge il
+record "prima" della modifica per le rotte con `:id`, e lo faceva bastando la *presenza* di un header
+`Authorization` o del cookie: una richiesta anonima con `Authorization: x` faceva leggere righe
+intere (le firme fino a 400.000 caratteri ciascuna) prima del 401. Ora `logOperazioni.ts` usa la
+verifica del token che lo stesso plugin aveva già (`utenteDaToken`): senza un token valido nessuna
+lettura.
+
+**3. Backup bloccabili con firme enormi.** `createBackup` costruiva tutto il database come un'unica
+stringa JSON, che V8 non sa creare oltre ~512 MB: qualche centinaio di bollettini con firme della
+dimensione massima bastava a far finire in ERRORE ogni backup, automatico e manuale, e un backup
+vicino al limite non si sarebbe potuto ripristinare. Nuovo `utils/fileBackup.ts`: il file si scrive
+un record per riga, a pezzi, e si rilegge riga per riga, quindi nessuna stringa supera un singolo
+record. Il file resta un JSON valido con la stessa struttura (versione `1.1`, non più indentato, quindi
+più piccolo); i backup `1.0` già su R2 si ripristinano come prima, con `JSON.parse`.
+
+- **Scelta fatta:** non ho abbassato il limite di 400.000 caratteri della firma, che l'audit
+  suggeriva: una firma reale rifiutata dal server andrebbe persa. Il ripristino carica ancora tutto
+  in memoria e resta nella transazione di sempre.
+
+Verifica: formato nuovo riletto identico all'originale (testi con a capo, virgolette, emoji, date),
+ancora leggibile come JSON; backup 1.0 indentato letto; file troncato rifiutato; backup da 546 MB
+(700 bollettini con due firme da 390.000 caratteri) scritto e riletto in 5 s, dove il vecchio metodo
+dava `Invalid string length`. Rotte con Prisma simulato: dipendente 403 su `/api/utenti`,
+`?includeInactive=true` e `/api/utenti/1`, responsabile 200; richieste anonime con `Authorization: x`,
+cookie `token=x` o Bearer falso: 401 senza nessuna lettura dal database; col token del responsabile il
+Log legge ancora il record prima della modifica.
+
+Deploy: backend `6eeada6`.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
