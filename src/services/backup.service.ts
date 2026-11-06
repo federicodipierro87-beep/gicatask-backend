@@ -3,6 +3,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, List
 import { Readable } from 'stream';
 import { seedTipiAssenza } from './seed.service.js';
 import { migraGradoOccupazioneHr, migraSalarioHr, migraStatoCivileHr } from './hr.service.js';
+import { VERSIONE_BACKUP, leggiBackup, serializzaBackup, type FileBackup } from '../utils/fileBackup.js';
 
 interface BackupData {
   version: string;
@@ -93,7 +94,7 @@ export class BackupService {
     try {
       // Export all data
       const backupData: BackupData = {
-        version: '1.0',
+        version: VERSIONE_BACKUP,
         createdAt: new Date().toISOString(),
         tables: {
           utenti: await this.prisma.utente.findMany(),
@@ -133,8 +134,8 @@ export class BackupService {
         },
       };
 
-      const jsonData = JSON.stringify(backupData, null, 2);
-      const buffer = Buffer.from(jsonData, 'utf-8');
+      // Un record per riga, mai una stringa unica: vedi utils/fileBackup.ts
+      const buffer = serializzaBackup(backupData as unknown as FileBackup);
       const filename = `backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
 
       // Upload to R2
@@ -222,8 +223,7 @@ export class BackupService {
       chunks.push(chunk);
     }
 
-    const jsonString = Buffer.concat(chunks).toString('utf-8');
-    return JSON.parse(jsonString) as BackupData;
+    return leggiBackup(Buffer.concat(chunks)) as unknown as BackupData;
   }
 
   async restoreBackup(id: number): Promise<{ restored: boolean; stats: Record<string, number> }> {

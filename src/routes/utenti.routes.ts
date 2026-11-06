@@ -5,18 +5,19 @@ import { Ruolo } from '@prisma/client';
 export async function utentiRoutes(fastify: FastifyInstance) {
   const service = new UtentiService(fastify.prisma);
 
-  // Get all users
+  // Solo responsabile: percentuali di lavoro, flag e utenti disattivati sono
+  // dati da responsabile. Ai dipendenti basta /api/auth/users (id e nome)
   fastify.get('/', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
     const { includeInactive } = request.query as { includeInactive?: string };
     const utenti = await service.getAll(includeInactive === 'true');
     return reply.send(utenti);
   });
 
-  // Get user by ID
+  // Get user by ID (responsabile only)
   fastify.get<{ Params: { id: string } }>('/:id', {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.requireRole('RESPONSABILE')],
   }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
     const utente = await service.getById(id);

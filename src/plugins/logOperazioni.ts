@@ -73,7 +73,9 @@ async function logOperazioniPlugin(fastify: FastifyInstance) {
     request.statoLog = stato;
 
     const id = idNumerico((request.params as Record<string, unknown> | undefined)?.['id']);
-    const autenticato = Boolean(request.headers.authorization || request.cookies?.token);
+    // Solo un token valido: una richiesta che finira' in 401 non deve far
+    // leggere al database un record intero, firme comprese
+    const autenticato = utenteDaToken(request) !== null;
     if (!voce.modello || !id || !autenticato) return;
 
     try {
