@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 30 Ottobre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 6 Novembre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -4115,6 +4115,53 @@ Fatto con `git revert` dei commit `cc8325b` e `6fbe5e7` (backend) e `988dbc3` e 
 (frontend); il frontend è tornato identico a prima, salvo le scritte del Saldi Ore.
 
 Deploy: prima il backend `2c7ce3f`, poi il frontend `b83d3a7`.
+
+---
+
+### Sicurezza: PNG malformati nei PDF e token rivalidati sul database (6 Novembre 2026)
+
+Dall'audit di sicurezza del 5/11 (report completo fuori dai repository, in
+`~/security-audit-skill/gicatask/run-1/REPORT.md`) le due correzioni prioritarie.
+
+**1. Un PNG costruito apposta faceva cadere il server (gravità alta).** Un dipendente col flag
+bollettini o noleggi poteva salvare come firma un PNG malformato. pdfkit decodifica i PNG con
+trasparenza (e gli interlacciati) con png-js, che decomprime in modo asincrono e lancia l'errore
+dentro la callback di zlib: nessun try/catch lo prendeva e il processo Node si chiudeva, poi
+ricadeva a ogni nuova apertura del PDF, anche dall'archivio del responsabile. Il vecchio
+`pngValido` delle foto HR controllava solo zlib e lasciava passare un byte di filtro non valido.
+Nel provare la correzione è emersa una variante peggiore: un chunk con lunghezza >= 2^31 manda il
+parser di png-js in un **ciclo infinito**, che blocca il server senza farlo ripartire.
+
+- Nuovo `utils/pngSicuro.ts` (`immagineSicuraPerPdf`): rifà in modo sincrono la lettura di png-js
+  (chunk, IHDR, IDAT, decompressione con limite di dimensione, byte di filtro riga per riga, anche
+  per le sette passate dell'interlacciamento) e scarta ciò che la farebbe fallire. JPEG e altri
+  formati passano: pdfkit li legge in modo sincrono e l'errore resta nel try/catch.
+- Chiamato prima di **ogni** `doc.image`: firme di bollettini (`bollettinoPdf.service.ts`) e
+  noleggi, foto dei noleggi (`noleggioPdf.service.ts`), foto HR (`allegatiHr.service.ts`, al posto
+  di `pngValido`, e ora per contenuto e non per tipo dichiarato). Il controllo è al momento della
+  stampa, quindi copre anche eventuali firme malformate già salvate.
+- Un'immagine scartata resta un riquadro vuoto (per le foto dei noleggi compare il nome del file),
+  come già per un'immagine illeggibile. **Scelta fatta:** sono scartati anche i PNG a palette sotto
+  gli 8 bit con trasparenza e gli interlacciati larghi meno di 5 pixel, che png-js legge male; le
+  firme del canvas (RGBA a 8 bit) e le foto da telefono non sono toccate.
+
+**2. Token valido 7 giorni senza ricontrollo (gravità media).** `authenticate` si fidava del ruolo
+scritto nel token al login: un responsabile disattivato o declassato continuava a lavorare fino a
+7 giorni, e col vecchio token poteva perfino riattivarsi. Ora `plugins/auth.ts` rilegge `ruolo` e
+`attivo` dell'utente a ogni richiesta (una lettura per chiave primaria): utente disattivato o
+cancellato → 401, che il frontend al prossimo caricamento tratta come sessione scaduta; utente
+declassato → vale il ruolo attuale, quindi 403 sulle rotte da responsabile.
+
+Verifica: 8 PNG validi (firma 300x100 RGBA, 16 bit, IDAT spezzato, palette con tRNS,
+interlacciato…) accettati e disegnati da pdfkit; 8 malevoli scartati; senza il controllo,
+6 di questi facevano cadere (5) o bloccare (1) un processo separato. Autenticazione con Prisma
+simulato: attivo 200, disattivato 401, declassato 403 su `/admin`, cancellato/id non numerico/token falso 401.
+
+Restano dall'audit, da verificare su Railway e sul database: account attivi senza password,
+`JWT_SECRET` impostato, e il vecchio cookie `token` (SameSite=None) ancora accettato da
+`authenticate` (toglierlo chiude 3 punti dell'audit).
+
+Deploy: backend `390a2c2`.
 
 ---
 
