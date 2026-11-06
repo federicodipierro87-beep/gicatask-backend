@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import type { NoleggioFull } from './noleggi.service.js';
 import type { FileNoleggio } from './allegatiNoleggio.service.js';
 import { sanitizeFilenamePart } from './bollettinoPdf.service.js';
+import { immagineSicuraPerPdf } from '../utils/pngSicuro.js';
 
 const MARGIN = 40;
 const PAGE_WIDTH = 595; // A4 verticale
@@ -62,6 +63,8 @@ function renderFoto(doc: PDFKit.PDFDocument, titolo: string, foto: FileNoleggio[
       const x = MARGIN + colonna * (larghezza + gap);
       doc.rect(x, y, larghezza, altezza).strokeColor('#ccc').lineWidth(0.5).stroke();
       try {
+        // Un PNG malformato abbatterebbe il processo fuori da questo try/catch
+        if (!immagineSicuraPerPdf(f.buffer)) throw new Error('Immagine non decodificabile');
         doc.image(f.buffer, x + 4, y + 4, {
           fit: [larghezza - 8, altezza - 8],
           align: 'center',
@@ -172,7 +175,9 @@ function renderNoleggio(doc: PDFKit.PDFDocument, n: NoleggioFull, foto: FileNole
   doc.fontSize(8).fillColor('#666').text('Firma di chi ha effettuato il noleggio', x, y, { width: larghezzaFirma });
   doc.rect(x, y + 12, larghezzaFirma, 62).strokeColor('#ccc').lineWidth(0.5).stroke();
   try {
-    doc.image(Buffer.from(n.firmaImg, 'base64'), x + 4, y + 16, {
+    const firma = Buffer.from(n.firmaImg, 'base64');
+    if (!immagineSicuraPerPdf(firma)) throw new Error('Firma non decodificabile');
+    doc.image(firma, x + 4, y + 16, {
       fit: [larghezzaFirma - 8, 54],
       align: 'center',
       valign: 'center',

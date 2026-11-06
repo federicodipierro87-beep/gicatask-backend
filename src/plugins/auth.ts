@@ -25,25 +25,39 @@ async function authPlugin(fastify: FastifyInstance) {
   fastify.decorate(
     'authenticate',
     async function (request: FastifyRequest, reply: FastifyReply) {
+      // `return reply`: in un hook async, una risposta inviata senza
+      // restituirla NON ferma la richiesta, e l'handler girerebbe lo stesso
+      const nonAutorizzato = () =>
+        reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or expired token' });
+
+      let decoded: JwtPayload;
       try {
         // Try Authorization header first, then cookie as fallback
         const authHeader = request.headers.authorization;
         if (authHeader && authHeader.startsWith('Bearer ')) {
-          const token = authHeader.substring(7);
-          const decoded = fastify.jwt.verify<JwtPayload>(token);
-          request.user = decoded;
+          decoded = fastify.jwt.verify<JwtPayload>(authHeader.substring(7));
         } else if (request.cookies?.token) {
           // Fallback to cookie for backwards compatibility
-          const decoded = fastify.jwt.verify<JwtPayload>(request.cookies.token);
-          request.user = decoded;
+          decoded = fastify.jwt.verify<JwtPayload>(request.cookies.token);
         } else {
           throw new Error('No token provided');
         }
       } catch (err) {
-        // `return reply`: in un hook async, una risposta inviata senza
-        // restituirla NON ferma la richiesta, e l'handler girerebbe lo stesso
-        return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or expired token' });
+        return nonAutorizzato();
       }
+
+      if (!Number.isInteger(decoded.id)) return nonAutorizzato();
+
+      // Il token dura 7 giorni e porta con se' il ruolo del momento del login:
+      // stato e ruolo si rileggono a ogni richiesta, cosi' un utente
+      // disattivato perde subito l'accesso e uno declassato i permessi
+      const utente = await fastify.prisma.utente.findUnique({
+        where: { id: decoded.id },
+        select: { ruolo: true, attivo: true },
+      });
+      if (!utente || !utente.attivo) return nonAutorizzato();
+
+      request.user = { id: decoded.id, ruolo: utente.ruolo };
     }
   );
 
@@ -68,5 +82,5 @@ async function authPlugin(fastify: FastifyInstance) {
 
 export default fp(authPlugin, {
   name: 'auth',
-  dependencies: [],
+  dependencies: ['prisma'],
 });

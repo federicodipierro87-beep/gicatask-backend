@@ -2,8 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
-import { inflateSync } from 'zlib';
 import { ALLEGATO_ORFANO } from './hr.service.js';
+import { immagineSicuraPerPdf } from '../utils/pngSicuro.js';
 
 /**
  * Foto dei tesserini delle formazioni HR e dei documenti personali. Stesso schema degli allegati del
@@ -26,37 +26,6 @@ const MIME_AMMESSI = [
 ];
 
 const MAX_BYTES = 10 * 1024 * 1024;
-
-const PNG_FIRMA = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-
-/**
- * pdfkit decomprime i PNG con trasparenza in modo asincrono, e un errore di
- * zlib in quel punto non arriva a nessun try/catch: abbatte il processo. Qui
- * si decomprimono i dati IDAT in modo sincrono, dove l'errore si intercetta.
- */
-export function pngValido(buffer: Buffer): boolean {
-  if (buffer.length < 8 || !buffer.subarray(0, 8).equals(PNG_FIRMA)) return false;
-
-  const idat: Buffer[] = [];
-  let pos = 8;
-
-  while (pos + 8 <= buffer.length) {
-    const lunghezza = buffer.readUInt32BE(pos);
-    const tipo = buffer.toString('ascii', pos + 4, pos + 8);
-    const fine = pos + 12 + lunghezza;
-    if (fine > buffer.length) return false;
-    if (tipo === 'IDAT') idat.push(buffer.subarray(pos + 8, pos + 8 + lunghezza));
-    if (tipo === 'IEND') break;
-    pos = fine;
-  }
-
-  try {
-    inflateSync(Buffer.concat(idat));
-    return idat.length > 0;
-  } catch {
-    return false;
-  }
-}
 
 const ESTENSIONI: Record<string, string> = {
   'image/jpeg': '.jpg',
@@ -159,7 +128,8 @@ export class AllegatiHrService {
     for (const allegato of allegati) {
       try {
         const buffer = await this.leggiChiave(allegato.chiave);
-        if (allegato.mimeType === 'image/png' && !pngValido(buffer)) continue;
+        // Per contenuto, non per tipo dichiarato: pdfkit guarda i byte
+        if (!immagineSicuraPerPdf(buffer)) continue;
         risultato.set(allegato.id, buffer);
       } catch (error) {
         console.error(`[Allegati HR] Lettura ${allegato.chiave} per il PDF fallita:`, error);

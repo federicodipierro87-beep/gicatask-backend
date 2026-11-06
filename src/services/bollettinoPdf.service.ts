@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import type { TipoVoce } from '@prisma/client';
+import { immagineSicuraPerPdf } from '../utils/pngSicuro.js';
 
 interface RigaPdf {
   tipo: TipoVoce;
@@ -274,7 +275,10 @@ function renderFirma(
 
   if (immagineB64) {
     try {
-      doc.image(Buffer.from(immagineB64, 'base64'), x + 4, y + 16, {
+      const immagine = Buffer.from(immagineB64, 'base64');
+      // Un PNG malformato abbatterebbe il processo fuori da questo try/catch
+      if (!immagineSicuraPerPdf(immagine)) throw new Error('Firma non decodificabile');
+      doc.image(immagine, x + 4, y + 16, {
         fit: [width - 8, 54],
         align: 'center',
         valign: 'center',
