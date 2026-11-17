@@ -1,6 +1,6 @@
 # GicaTask - Stato del Progetto
 
-**Ultimo aggiornamento:** 6 Novembre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
+**Ultimo aggiornamento:** 17 Novembre 2026 - **PROGETTO COMPLETATO + MIGLIORAMENTI**
 
 ## Panoramica
 
@@ -4207,6 +4207,40 @@ Deploy: backend `6eeada6`.
 
 ---
 
+### Assenze su più giorni con calendario Dal/Al (17 Novembre 2026)
+
+Il form **Assenze** del dipendente (`AssenzaFormPage.tsx`) ha in cima una scelta **Un giorno / Più
+giorni**. *Un giorno* è il form di sempre. *Più giorni* mostra due date, **Dal** e **Al** (estremi
+inclusi), e registra un'assenza da **8h 12m** (o −8h 12m per il Recupero ore) per **ogni giorno
+lavorativo** del periodo: un record per giorno, come se fossero stati inseriti uno alla volta, quindi
+report, saldi ed export non cambiano.
+
+- **Giorni saltati:** sabati, domeniche e **festivi ticinesi** (nuova `periodoLavorativo()` in
+  `frontend/src/utils/festivita.ts`). Saltati anche i giorni che hanno **già un'assenza** del
+  dipendente: il form le legge con `GET /api/attivita/me?startDate&endDate` al cambio delle date.
+- **Anteprima** sotto le date: quanti giorni verranno registrati e il totale ore, l'elenco dei giorni,
+  il numero di weekend e i festivi esclusi, i giorni saltati perché già registrati. Il pulsante diventa
+  "Registra N giorni".
+- **Solo frontend:** ogni giorno è una `POST /api/attivita` normale, quindi valgono le validazioni
+  esistenti e il pannello Log registra una "Nuova attività" per giorno. Se una chiamata fallisce a
+  metà, il form dice quanti giorni sono stati registrati e su quale si è fermato; premendo di nuovo si
+  registrano solo i mancanti, perché quelli già salvati risultano "già registrati".
+- **Limiti:** periodo massimo 366 giorni (un anno digitato a metà non genera centinaia di migliaia di
+  giorni); "Al" prima di "Dal" dà un messaggio e il pulsante resta disattivato. La **modifica** di
+  un'assenza resta su un giorno solo.
+- **Scelte fatte:** festivi esclusi anche se la richiesta parlava solo di sabati e domeniche (una
+  Vacanza sul 25.12 consumerebbe un giorno di ferie su un festivo); un giorno con un'assenza già
+  presente viene saltato, non sovrascritto. Il form Assegna Attività del responsabile non è cambiato.
+
+Verifica in locale (Postgres 18 + backend + frontend, Edge headless): periodo 21.12.2026–08.01.2027 con
+una Vacanza già presente il 23.12 → 11 giorni creati da 492 minuti, saltati 4 weekend, 25.12, 01.01,
+06.01 e il 23.12; riaprendo il form sullo stesso periodo "Nessun giorno da registrare" e pulsante
+disattivato. Layout controllato anche a 390 px.
+
+Deploy: frontend `89d6053`.
+
+---
+
 ## Progetto Completato
 
 Tutte le fasi sono state completate con successo.
@@ -4344,7 +4378,7 @@ frontend/
 │   │   │   ├── AttivitaListPage.tsx
 │   │   │   ├── AttivitaFormPage.tsx
 │   │   │   ├── Attivita2FormPage.tsx # Nuova Attività 2: magazzino o cantiere
-│   │   │   ├── AssenzaFormPage.tsx   # Form separato per le assenze
+│   │   │   ├── AssenzaFormPage.tsx   # Form assenze, un giorno o periodo Dal/Al
 │   │   │   ├── BollettiniListPage.tsx
 │   │   │   ├── BollettinoFormPage.tsx
 │   │   │   ├── NoleggiListPage.tsx   # I Miei Noleggi
@@ -4374,7 +4408,7 @@ frontend/
 │   │       ├── HrPage.tsx                 # Schede HR: attivi/uscenti, stampe
 │   │       └── HrSchedaPage.tsx           # Form della scheda HR
 │   ├── utils/
-│   │   ├── festivita.ts       # Pasqua e festivi Ticino (copia del backend)
+│   │   ├── festivita.ts       # Pasqua, festivi Ticino (copia del backend), giorni lavorativi di un periodo
 │   │   ├── nomeUtente.ts      # Cognome Nome (copia del backend)
 │   │   ├── paginaIniziale.ts  # Pagina dopo il login / redirect (rispetta abilitatoAttivita)
 │   │   └── durata.ts          # formatDuration con segno + assenze negative
